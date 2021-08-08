@@ -1,2 +1,2 @@
 # boost
-A collection of boosting algorithms
+A collection of boosting algorithms implemented with Rust
