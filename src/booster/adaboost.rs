@@ -2,49 +2,7 @@
 // then we generalize it to boosting framework.
 //
 
-
-#[test]
-fn adaboost_new() {
-    let adaboost = AdaBoost::new();
-
-    assert_eq!(adaboost.dist.len(), 0);
-}
-
-
-#[test]
-fn adaboost_with_samplesize() {
-    let adaboost = AdaBoost::with_samplesize(10);
-
-    assert_eq!(adaboost.dist.len(), 10);
-
-    let v = adaboost.dist[0];
-
-    assert_eq!(v, 1.0 / 10.0);
-}
-
-
-#[test]
-fn predict_test() {
-    let examples = vec![ vec![1.0], vec![-1.0] ];
-    let labels = vec![1.0, -1.0];
-    let h = Box::new(
-        |data: &[f64]| -> f64 { data[0].signum() }
-    );
-
-    let mut adaboost = AdaBoost::with_samplesize(examples.len());
-
-    adaboost.update_params(h, &examples, &labels);
-
-
-    let predictions = adaboost.predict_all(&examples);
-
-    for i in 0..examples.len() {
-        assert_eq!(labels[i], predictions[i]);
-    }
-}
-
-
-struct AdaBoost {
+pub struct AdaBoost {
     pub dist: Vec<f64>,
     pub weights: Vec<f64>,
     pub classifiers: Vec<Box<dyn Fn(&[f64]) -> f64>>,
@@ -53,14 +11,14 @@ struct AdaBoost {
 
 
 impl AdaBoost {
-    fn new() -> AdaBoost {
+    pub fn new() -> AdaBoost {
         AdaBoost {
             dist: Vec::new(), weights: Vec::new(), classifiers: Vec::new(), max_loop: 0
         }
     }
 
 
-    fn with_samplesize(m: usize) -> AdaBoost {
+    pub fn with_samplesize(m: usize) -> AdaBoost {
         assert!(m != 0);
         let uni = 1.0 / m as f64;
         AdaBoost {
@@ -69,7 +27,7 @@ impl AdaBoost {
     }
 
 
-    fn update_params(&mut self, h: Box<dyn Fn(&[f64]) -> f64>, examples: &[Vec<f64>], labels: &[f64]) {
+    pub fn update_params(&mut self, h: Box<dyn Fn(&[f64]) -> f64>, examples: &[Vec<f64>], labels: &[f64]) {
 
         assert_eq!(examples.len(), labels.len());
 
@@ -113,7 +71,7 @@ impl AdaBoost {
     }
 
 
-    fn predict(&self, example: &[f64]) -> f64 {
+    pub fn predict(&self, example: &[f64]) -> f64 {
         assert_eq!(self.weights.len(), self.classifiers.len());
         let n = self.weights.len();
 
@@ -126,7 +84,7 @@ impl AdaBoost {
         confidence.signum()
     }
 
-    fn predict_all(&self, examples: &[Vec<f64>]) -> Vec<f64> {
+    pub fn predict_all(&self, examples: &[Vec<f64>]) -> Vec<f64> {
         let mut predictions = Vec::new();
 
         for example in examples.iter() {
@@ -134,10 +92,4 @@ impl AdaBoost {
         }
         predictions
     }
-}
-
-
-
-fn main() {
-    println!("Hello, world!");
 }
