@@ -1,7 +1,6 @@
 extern crate boost;
 
 use boost::base_learner::dstump::DStump;
-use boost::booster::adaboost::AdaBoost;
 
 
 #[test]
