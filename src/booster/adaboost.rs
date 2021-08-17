@@ -1,19 +1,19 @@
 // We first implement adaboost only.
 // then we generalize it to boosting framework.
 //
+use super::super::base_learner::dstump::DStump;
 
 pub struct AdaBoost {
     pub dist: Vec<f64>,
     pub weights: Vec<f64>,
     pub classifiers: Vec<Box<dyn Fn(&[f64]) -> f64>>,
-    max_loop: usize,
 }
 
 
 impl AdaBoost {
     pub fn new() -> AdaBoost {
         AdaBoost {
-            dist: Vec::new(), weights: Vec::new(), classifiers: Vec::new(), max_loop: 0
+            dist: Vec::new(), weights: Vec::new(), classifiers: Vec::new()
         }
     }
 
@@ -22,12 +22,19 @@ impl AdaBoost {
         assert!(m != 0);
         let uni = 1.0 / m as f64;
         AdaBoost {
-            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(), max_loop: 0
+            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new()
         }
     }
 
 
-    pub fn update_params(&mut self, h: Box<dyn Fn(&[f64]) -> f64>, examples: &[Vec<f64>], labels: &[f64]) {
+    pub fn max_loop(&self, eps: f64) -> usize {
+        let m = self.dist.len();
+
+        ((m as f64).ln() / (eps * eps)) as usize
+    }
+
+
+    pub fn update_params(&mut self, h: Box<dyn Fn(&[f64]) -> f64>, examples: &[Vec<f64>], labels: &[f64]) -> Option<()> {
 
         assert_eq!(examples.len(), labels.len());
 
@@ -39,35 +46,65 @@ impl AdaBoost {
         }
 
 
+        // This assertion may fail because of the numerical error
+        // assert!(edge >= -1.0);
+        // assert!(edge <=  1.0);
+
+
+        if edge >= 1.0 {
+            self.weights.clear();
+            self.classifiers.clear();
+
+            self.weights.push(1.0);
+            self.classifiers.push(h);
+
+            return None;
+        }
+
+
         let weight_of_h = ((1.0 + edge) / (1.0 - edge)).ln() / 2.0;
 
 
+        // To prevent overflow, take the logarithm.
         for i in 0..m {
-            self.dist[i] = self.dist[i].ln() - weight_of_h * (labels[i] * h(&examples[i]));
+            self.dist[i] = self.dist[i].ln() - weight_of_h * labels[i] * h(&examples[i]);
         }
 
         let mut indices = (0..m).collect::<Vec<usize>>();
         indices.sort_unstable_by(|&i, &j| self.dist[i].partial_cmp(&self.dist[j]).unwrap());
 
 
-        let mut normalizer = 0.0;
-        for i in 0..m {
+        let mut normalizer = self.dist[indices[0]];
+        for i in 1..m {
             let mut a = normalizer;
             let mut b = self.dist[indices[i]];
-            if self.dist[indices[i]] > normalizer {
-                a = self.dist[indices[i]];
-                b = normalizer;
+            if a < b {
+                std::mem::swap(&mut a, &mut b);
             }
 
-            normalizer = a + (b - a).exp().ln();
+            normalizer = a + (1.0 + (b - a).exp()).ln();
         }
 
         for i in 0..m {
-            self.dist[i] /= normalizer;
+            self.dist[i] = (self.dist[i] - normalizer).exp();
         }
 
         self.classifiers.push(h);
         self.weights.push(weight_of_h);
+
+        Some(())
+    }
+
+
+    pub fn run(&mut self, dstump: DStump, examples: &[Vec<f64>], labels: &[f64], eps: f64) {
+        let max_loop = self.max_loop(eps);
+    
+        for t in 1..max_loop {
+            let h = dstump.best_hypothesis(examples, labels, &self.dist);
+            if let None = self.update_params(h, examples, labels) {
+                break;
+            }
+        }
     }
 
 
