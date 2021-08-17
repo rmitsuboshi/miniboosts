@@ -1,7 +1,7 @@
 # boost
 A collection of boosting algorithms written in Rust
 
-## What I will implement:
+## What I will write:
 
 - Booster
     - [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub)
