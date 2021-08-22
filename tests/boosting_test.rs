@@ -9,7 +9,7 @@ use boost::base_learner::dstump::DStump;
 
 #[test]
 fn boosting_test() {
-    let mut file = File::open("/Users/ryotaromitsuboshi/Documents/GitHub/boost/tests/small_toy_example.txt").unwrap();
+    let mut file = File::open("./small_toy_example.txt").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let mut examples = Vec::new();
