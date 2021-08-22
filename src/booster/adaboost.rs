@@ -1,12 +1,15 @@
 // We first implement adaboost only.
 // then we generalize it to boosting framework.
 //
-use super::super::base_learner::dstump::DStump;
+use super::core::Booster;
+use super::super::base_learner::core::Classifier;
+use super::super::base_learner::core::BaseLearner;
+
 
 pub struct AdaBoost {
     pub dist: Vec<f64>,
     pub weights: Vec<f64>,
-    pub classifiers: Vec<Box<dyn Fn(&[f64]) -> f64>>,
+    pub classifiers: Vec<Box<dyn Classifier>>,
 }
 
 
@@ -34,18 +37,19 @@ impl AdaBoost {
     }
 
 
-    pub fn update_params(&mut self, h: Box<dyn Fn(&[f64]) -> f64>, examples: &[Vec<f64>], labels: &[f64]) -> Option<()> {
+}
 
-        assert_eq!(examples.len(), labels.len());
 
-        let m = examples.len();
+impl Booster for AdaBoost {
+    fn update_params(&mut self, h: Box<dyn Classifier>, sample: &[Vec<f64>], labels: &[f64]) -> Option<()> {
+
+
+        let m = sample.len();
 
         let mut edge = 0.0;
         for i in 0..m {
-            edge += self.dist[i] * labels[i] * h(&examples[i]);
+            edge += self.dist[i] * labels[i] * h.predict(&sample[i]);
         }
-
-
         // This assertion may fail because of the numerical error
         // assert!(edge >= -1.0);
         // assert!(edge <=  1.0);
@@ -67,7 +71,7 @@ impl AdaBoost {
 
         // To prevent overflow, take the logarithm.
         for i in 0..m {
-            self.dist[i] = self.dist[i].ln() - weight_of_h * labels[i] * h(&examples[i]);
+            self.dist[i] = self.dist[i].ln() - weight_of_h * labels[i] * h.predict(&sample[i]);
         }
 
         let mut indices = (0..m).collect::<Vec<usize>>();
@@ -96,37 +100,29 @@ impl AdaBoost {
     }
 
 
-    pub fn run(&mut self, dstump: DStump, examples: &[Vec<f64>], labels: &[f64], eps: f64) {
+    fn run(&mut self, base_learner: Box<dyn BaseLearner>, sample: &[Vec<f64>], labels: &[f64], eps: f64) {
         let max_loop = self.max_loop(eps);
+        println!("max_loop: {}", max_loop);
     
         for t in 1..max_loop {
-            let h = dstump.best_hypothesis(examples, labels, &self.dist);
-            if let None = self.update_params(h, examples, labels) {
+            let h = base_learner.best_hypothesis(sample, labels, &self.dist);
+            if let None = self.update_params(h, sample, labels) {
                 break;
             }
         }
     }
 
 
-    pub fn predict(&self, example: &[f64]) -> f64 {
+    fn predict(&self, example: &[f64]) -> f64 {
         assert_eq!(self.weights.len(), self.classifiers.len());
         let n = self.weights.len();
 
         let mut confidence = 0.0;
         for i in 0..n {
-            confidence +=  self.weights[i] * self.classifiers[i](example);
+            confidence +=  self.weights[i] * self.classifiers[i].predict(example);
         }
 
 
         confidence.signum()
-    }
-
-    pub fn predict_all(&self, examples: &[Vec<f64>]) -> Vec<f64> {
-        let mut predictions = Vec::new();
-
-        for example in examples.iter() {
-            predictions.push(self.predict(&example));
-        }
-        predictions
     }
 }
