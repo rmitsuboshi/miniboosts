@@ -1,57 +1,93 @@
+use super::core::BaseLearner;
+use super::core::Classifier;
+
+
+
 enum PositiveSide { RHS, LHS }
 
 
+pub struct DStumpClassifier {
+    threshold: f64,
+    feature_index: usize,
+    positive_side: PositiveSide
+}
+
+
+impl DStumpClassifier {
+    pub fn new() -> DStumpClassifier {
+        DStumpClassifier { threshold: 0.0, feature_index: 0, positive_side: PositiveSide::RHS }
+    }
+}
+
+
+impl Classifier for DStumpClassifier {
+    fn predict(&self, example: &[f64]) -> f64 {
+        let val = example[self.feature_index];
+        match self.positive_side {
+            PositiveSide::RHS => (val - self.threshold).signum(),
+            PositiveSide::LHS => (self.threshold - val).signum()
+        }
+    }
+}
+
+
 pub struct DStump {
-    pub example_size: usize,
-    pub feature_size: usize,
+    pub sample_size: usize,  // Number of training examples
+    pub feature_size: usize, // Number of features per example
     pub indices: Vec<Vec<usize>>,
 }
 
 
 impl DStump {
     pub fn new() -> DStump {
-        DStump { example_size: 0, feature_size: 0, indices: Vec::new() }
+        DStump { sample_size: 0, feature_size: 0, indices: Vec::new() }
     }
 
-    pub fn with_sample(examples: &[Vec<f64>], labels: &[f64]) -> DStump {
-        assert_eq!(examples.len(), labels.len());
-        let example_size = examples.len();
 
-        assert!(examples.len() > 0);
-        let feature_size = examples[0].len();
+    pub fn with_sample(sample: &[Vec<f64>], labels: &[f64]) -> DStump {
+        assert_eq!(sample.len(), labels.len());
+        let sample_size = sample.len();
+
+        assert!(sample.len() > 0);
+        let feature_size = sample[0].len();
 
         let mut indices = Vec::with_capacity(feature_size);
 
         for j in 0..feature_size {
             let vals = {
-                let mut _vals = vec![0.0; example_size];
-                for i in 0..example_size {
-                    _vals[i] = examples[i][j];
+                let mut _vals = vec![0.0; sample_size];
+                for i in 0..sample_size {
+                    _vals[i] = sample[i][j];
                 }
                 _vals
             };
 
-            let mut idx = (0..example_size).collect::<Vec<usize>>();
+            let mut idx = (0..sample_size).collect::<Vec<usize>>();
             idx.sort_unstable_by(|&ii, &jj| vals[ii].partial_cmp(&vals[jj]).unwrap());
 
             indices.push(idx);
         }
-        DStump { example_size, feature_size, indices }
+        DStump { sample_size, feature_size, indices }
     }
+}
 
-    pub fn best_hypothesis(&self, examples: &[Vec<f64>], labels: &[f64], distribution: &[f64]) -> Box<dyn Fn(&[f64]) -> f64> {
+impl BaseLearner for DStump {
+    fn best_hypothesis(&self, sample: &[Vec<f64>], labels: &[f64], distribution: &[f64]) -> Box<dyn Classifier> {
         let init_edge = {
             let mut _edge = 0.0;
-            for i in 0..self.example_size {
+            for i in 0..self.sample_size {
                 _edge += distribution[i] * labels[i];
             }
             _edge
         };
 
-        let mut best_threshold = examples[self.indices[0][0]][0] - 1.0;
-        let mut best_feature = 0_usize;
-        let mut best_sense = PositiveSide::RHS;
         let mut best_edge = init_edge;
+
+        let mut dstump_classifier = DStumpClassifier {
+            threshold: sample[self.indices[0][0]][0] - 1.0,
+            feature_index: 0_usize,
+            positive_side: PositiveSide::RHS
+        };
 
 
 
@@ -61,52 +97,34 @@ impl DStump {
             let mut edge = init_edge;
 
 
-            let mut left  = examples[idx[0]][j] - 1.0;
-            let mut right = examples[idx[0]][j];
+            let mut left  = sample[idx[0]][j] - 1.0;
+            let mut right = sample[idx[0]][j];
 
 
-            for ii in 0..self.example_size {
+            for ii in 0..self.sample_size {
                 let i = idx[ii];
 
                 edge -= 2.0 * distribution[i] * labels[i];
 
-                if i + 1_usize != self.example_size && right == examples[i+1][j] { continue; }
+                if i + 1_usize != self.sample_size && right == sample[i+1][j] { continue; }
 
                 left  = right;
-                right = if ii + 1_usize == self.example_size { examples[i][j] + 1.0 } else { examples[idx[ii+1]][j] };
+                right = if ii + 1_usize == self.sample_size { sample[i][j] + 1.0 } else { sample[idx[ii+1]][j] };
 
                 if best_edge < edge.abs() {
-                    best_threshold = (left + right) / 2.0;
-                    best_feature   = j;
+                    dstump_classifier.threshold = (left + right) / 2.0;
+                    dstump_classifier.feature_index = j;
                     if edge > 0.0 {
                         best_edge  = edge;
-                        best_sense = PositiveSide::RHS;
+                        dstump_classifier.positive_side = PositiveSide::RHS;
                     } else {
                         best_edge  = - edge;
-                        best_sense = PositiveSide::LHS;
+                        dstump_classifier.positive_side = PositiveSide::LHS;
                     }
                 }
             }
         }
-
-        let sense = match best_sense {
-            PositiveSide::RHS => true,
-            _ => false
-        };
-        println!("thr: {}, feature: {}, sense: {}, edge: {}", best_threshold, best_feature, sense, best_edge);
-
-        let hypothesis = move |data: &[f64]| -> f64 {
-            let val = data[best_feature];
-            match best_sense {
-                PositiveSide::RHS => {
-                    (val - best_threshold).signum()
-                },
-                PositiveSide::LHS => {
-                    (best_threshold - val).signum()
-                }
-            }
-        };
-        Box::new(hypothesis)
+        Box::new(dstump_classifier)
     }
 }
 

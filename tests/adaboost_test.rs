@@ -1,5 +1,8 @@
 extern crate boost;
 
+use boost::booster::core::Booster;
+use boost::base_learner::core::Classifier;
+use boost::base_learner::dstump::DStumpClassifier;
 use boost::booster::adaboost::AdaBoost;
 
 
@@ -30,6 +33,8 @@ fn predict_test() {
     let h = Box::new(
         |data: &[f64]| -> f64 { data[0].signum() }
     );
+
+    let h = Box::new(DStumpClassifier::new());
 
     let mut adaboost = AdaBoost::with_samplesize(examples.len());
 
