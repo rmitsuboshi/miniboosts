@@ -1,5 +1,7 @@
 extern crate boost;
 
+use boost::data_type::*;
+
 use boost::booster::core::Booster;
 use boost::base_learner::core::Classifier;
 use boost::base_learner::dstump::DStumpClassifier;
@@ -15,35 +17,27 @@ fn adaboost_new() {
 
 
 #[test]
-fn adaboost_with_samplesize() {
-    let adaboost = AdaBoost::with_samplesize(10);
-
-    assert_eq!(adaboost.dist.len(), 10);
-
-    let v = adaboost.dist[0];
-
-    assert_eq!(v, 1.0 / 10.0);
-}
-
-
-#[test]
 fn predict_test() {
     let examples = vec![ vec![1.0], vec![-1.0] ];
     let labels = vec![1.0, -1.0];
+
+
+    let sample = to_sample(examples, labels);
     let h = Box::new(
         |data: &[f64]| -> f64 { data[0].signum() }
     );
 
     let h = Box::new(DStumpClassifier::new());
 
-    let mut adaboost = AdaBoost::with_samplesize(examples.len());
+    let mut adaboost = AdaBoost::with_sample(&sample);
 
-    adaboost.update_params(h, &examples, &labels);
+    adaboost.update_params(h, &sample);
 
 
-    let predictions = adaboost.predict_all(&examples);
 
-    for i in 0..examples.len() {
-        assert_eq!(labels[i], predictions[i]);
+
+
+    for i in 0..sample.len() {
+        assert_eq!(sample[i].1, adaboost.predict(&sample[i].0));
     }
 }

@@ -1,7 +1,11 @@
 extern crate boost;
 
+
 use std::io::prelude::*;
 use std::fs::File;
+use std::env;
+
+use boost::data_type::*;
 use boost::booster::core::Booster;
 use boost::booster::adaboost::AdaBoost;
 use boost::base_learner::dstump::DStump;
@@ -9,7 +13,10 @@ use boost::base_learner::dstump::DStump;
 
 #[test]
 fn boosting_test() {
-    let mut file = File::open("./small_toy_example.txt").unwrap();
+    let mut path = env::current_dir().unwrap();
+    println!("path: {:?}", path);
+    path.push("tests/small_toy_example.txt");
+    let mut file = File::open(path).unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let mut examples = Vec::new();
@@ -26,22 +33,23 @@ fn boosting_test() {
         examples.push(_example);
     }
 
-    let mut adaboost = AdaBoost::with_samplesize(examples.len());
-    let dstump = DStump::with_sample(&examples, &labels);
+    let sample = to_sample(examples, labels);
+
+    let mut adaboost = AdaBoost::with_sample(&sample);
+    let dstump = DStump::with_sample(&sample);
     let dstump = Box::new(dstump);
 
 
-    adaboost.run(dstump, &examples, &labels, 0.1);
+    adaboost.run(dstump, &sample, 0.1);
 
 
     let mut loss = 0.0;
-    let predictions = adaboost.predict_all(&examples);
-    for i in 0..examples.len() {
-        if labels[i] != predictions[i] { loss += 1.0; }
-        // assert_eq!(labels[i], adaboost.predict(&examples[i]));
+    for i in 0..sample.len() {
+        let p = adaboost.predict(&sample[i].0);
+        if sample[i].1 != p { loss += 1.0; }
     }
 
-    loss /= examples.len() as f64;
+    loss /= sample.len() as f64;
     println!("Loss: {}", loss);
     assert!(true);
 }

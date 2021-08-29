@@ -1,5 +1,7 @@
 extern crate boost;
 
+use boost::data_type::*;
+
 use boost::base_learner::core::BaseLearner;
 use boost::base_learner::dstump::DStump;
 
@@ -23,7 +25,8 @@ fn dstump_with_sample() {
     let labels = vec![1.0, -1.0, 1.0];
 
 
-    let dstump = DStump::with_sample(&examples, &labels);
+    let sample = to_sample(examples, labels);
+    let dstump = DStump::with_sample(&sample);
 
 
     let ans = vec![
@@ -50,21 +53,24 @@ fn dstump_hypothesis() {
     let labels = vec![1.0, -1.0, 1.0];
 
 
-    let dstump = DStump::with_sample(&examples, &labels);
+    let sample = to_sample(examples, labels);
+
+
+    let dstump = DStump::with_sample(&sample);
 
     let distribution = vec![1.0/3.0; 3];
-    let h = dstump.best_hypothesis(&examples, &labels, &distribution);
+    let h = dstump.best_hypothesis(&sample, &distribution);
 
-    assert_eq!(h.predict(&examples[0]), labels[0]);
-    assert_eq!(h.predict(&examples[1]), labels[1]);
-    assert_eq!(h.predict(&examples[2]), labels[2]);
+    assert_eq!(h.predict(&sample[0].0), sample[0].1);
+    assert_eq!(h.predict(&sample[1].0), sample[1].1);
+    assert_eq!(h.predict(&sample[2].0), sample[2].1);
 
 
     let distribution = vec![0.7, 0.1, 0.2];
-    let h = dstump.best_hypothesis(&examples, &labels, &distribution);
-    assert_eq!(h.predict(&examples[0]), labels[0]);
-    assert_eq!(h.predict(&examples[1]), labels[1]);
-    assert_eq!(h.predict(&examples[2]), labels[2]);
+    let h = dstump.best_hypothesis(&sample, &distribution);
+    assert_eq!(h.predict(&sample[0].0), sample[0].1);
+    assert_eq!(h.predict(&sample[1].0), sample[1].1);
+    assert_eq!(h.predict(&sample[2].0), sample[2].1);
 }
 
 
