@@ -1,3 +1,4 @@
+use crate::data_type::Sample;
 
 pub trait Classifier {
     fn predict(&self, example: &[f64]) -> f64;
@@ -12,6 +13,6 @@ pub trait Classifier {
 
 
 pub trait BaseLearner {
-    fn best_hypothesis(&self, sample: &[Vec<f64>], labels: &[f64], distribution: &[f64]) -> Box<dyn Classifier>;
+    fn best_hypothesis(&self, sample: &Sample, distribution: &[f64]) -> Box<dyn Classifier>;
 }
 

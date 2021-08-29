@@ -1,11 +1,14 @@
+use crate::data_type::Sample;
 use super::core::BaseLearner;
 use super::core::Classifier;
 
 
 
+#[derive(Eq, PartialEq)]
 enum PositiveSide { RHS, LHS }
 
 
+#[derive(PartialEq)]
 pub struct DStumpClassifier {
     threshold: f64,
     feature_index: usize,
@@ -44,20 +47,17 @@ impl DStump {
     }
 
 
-    pub fn with_sample(sample: &[Vec<f64>], labels: &[f64]) -> DStump {
-        assert_eq!(sample.len(), labels.len());
+    pub fn with_sample(sample: &Sample) -> DStump {
         let sample_size = sample.len();
-
-        assert!(sample.len() > 0);
-        let feature_size = sample[0].len();
+        let feature_size = sample[0].0.len();
 
         let mut indices = Vec::with_capacity(feature_size);
-
         for j in 0..feature_size {
             let vals = {
                 let mut _vals = vec![0.0; sample_size];
                 for i in 0..sample_size {
-                    _vals[i] = sample[i][j];
+                    let _example = &sample[i].0;
+                    _vals[i] = _example[j];
                 }
                 _vals
             };
@@ -72,11 +72,12 @@ impl DStump {
 }
 
 impl BaseLearner for DStump {
-    fn best_hypothesis(&self, sample: &[Vec<f64>], labels: &[f64], distribution: &[f64]) -> Box<dyn Classifier> {
+    fn best_hypothesis(&self, sample: &Sample, distribution: &[f64]) -> Box<dyn Classifier> {
         let init_edge = {
             let mut _edge = 0.0;
             for i in 0..self.sample_size {
-                _edge += distribution[i] * labels[i];
+                let label = sample[i].1;
+                _edge += distribution[i] * label;
             }
             _edge
         };
@@ -84,7 +85,7 @@ impl BaseLearner for DStump {
         let mut best_edge = init_edge;
 
         let mut dstump_classifier = DStumpClassifier {
-            threshold: sample[self.indices[0][0]][0] - 1.0,
+            threshold: (sample[self.indices[0][0]].0)[0] - 1.0,
             feature_index: 0_usize,
             positive_side: PositiveSide::RHS
         };
@@ -97,19 +98,21 @@ impl BaseLearner for DStump {
             let mut edge = init_edge;
 
 
-            let mut left  = sample[idx[0]][j] - 1.0;
-            let mut right = sample[idx[0]][j];
+            let mut left;
+            let mut right = (sample[idx[0]].0)[j];
 
 
             for ii in 0..self.sample_size {
                 let i = idx[ii];
 
-                edge -= 2.0 * distribution[i] * labels[i];
+                let (example, label) = &sample[i];
 
-                if i + 1_usize != self.sample_size && right == sample[i+1][j] { continue; }
+                edge -= 2.0 * distribution[i] * label;
+
+                if ii + 1_usize != self.sample_size && (right == (sample[idx[ii+1]].0)[j] || *label == sample[idx[ii+1]].1) { continue; }
 
                 left  = right;
-                right = if ii + 1_usize == self.sample_size { sample[i][j] + 1.0 } else { sample[idx[ii+1]][j] };
+                right = if ii + 1_usize == self.sample_size { example[j] + 1.0 } else { (sample[idx[ii+1]].0)[j] };
 
                 if best_edge < edge.abs() {
                     dstump_classifier.threshold = (left + right) / 2.0;
