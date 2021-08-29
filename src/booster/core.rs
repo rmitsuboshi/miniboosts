@@ -1,10 +1,11 @@
+use crate::data_type::Sample;
 use super::super::base_learner::core::Classifier;
 use super::super::base_learner::core::BaseLearner;
 
 pub trait Booster {
-    fn update_params(&mut self, h: Box<dyn Classifier>, examples: &[Vec<f64>], labels: &[f64]) -> Option<()>;
+    fn update_params(&mut self, h: Box<dyn Classifier>, sample: &Sample) -> Option<()>;
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner>, sample: &[Vec<f64>], labels: &[f64], eps: f64);
+    fn run(&mut self, base_learner: Box<dyn BaseLearner>, sample: &Sample, eps: f64);
 
     fn predict(&self, example: &[f64]) -> f64;
 
