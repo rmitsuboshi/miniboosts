@@ -1,9 +1,11 @@
 // We first implement adaboost only.
 // then we generalize it to boosting framework.
 //
+use crate::data_type::Sample;
+
 use super::core::Booster;
-use super::super::base_learner::core::Classifier;
-use super::super::base_learner::core::BaseLearner;
+use crate::base_learner::core::Classifier;
+use crate::base_learner::core::BaseLearner;
 
 
 pub struct AdaBoost {
@@ -21,7 +23,8 @@ impl AdaBoost {
     }
 
 
-    pub fn with_samplesize(m: usize) -> AdaBoost {
+    pub fn with_sample(sample: &Sample) -> AdaBoost {
+        let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
         AdaBoost {
@@ -41,14 +44,15 @@ impl AdaBoost {
 
 
 impl Booster for AdaBoost {
-    fn update_params(&mut self, h: Box<dyn Classifier>, sample: &[Vec<f64>], labels: &[f64]) -> Option<()> {
+    fn update_params(&mut self, h: Box<dyn Classifier>, sample: &Sample) -> Option<()> {
 
 
         let m = sample.len();
 
         let mut edge = 0.0;
         for i in 0..m {
-            edge += self.dist[i] * labels[i] * h.predict(&sample[i]);
+            let (example, label) = &sample[i];
+            edge += self.dist[i] * label * h.predict(&example);
         }
         // This assertion may fail because of the numerical error
         // assert!(edge >= -1.0);
@@ -71,7 +75,8 @@ impl Booster for AdaBoost {
 
         // To prevent overflow, take the logarithm.
         for i in 0..m {
-            self.dist[i] = self.dist[i].ln() - weight_of_h * labels[i] * h.predict(&sample[i]);
+            let (example, label) = &sample[i];
+            self.dist[i] = self.dist[i].ln() - weight_of_h * label * h.predict(&example);
         }
 
         let mut indices = (0..m).collect::<Vec<usize>>();
@@ -100,13 +105,14 @@ impl Booster for AdaBoost {
     }
 
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner>, sample: &[Vec<f64>], labels: &[f64], eps: f64) {
+    fn run(&mut self, base_learner: Box<dyn BaseLearner>, sample: &Sample, eps: f64) {
         let max_loop = self.max_loop(eps);
         println!("max_loop: {}", max_loop);
     
-        for t in 1..max_loop {
-            let h = base_learner.best_hypothesis(sample, labels, &self.dist);
-            if let None = self.update_params(h, sample, labels) {
+        for _t in 1..max_loop {
+            let h = base_learner.best_hypothesis(sample, &self.dist);
+            if let None = self.update_params(h, sample) {
+                println!("Break loop at: {}", _t);
                 break;
             }
         }
