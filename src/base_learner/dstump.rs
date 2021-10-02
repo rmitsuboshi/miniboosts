@@ -1,6 +1,6 @@
-use crate::data_type::Sample;
-use super::core::BaseLearner;
-use super::core::Classifier;
+use crate::data_type::{Data, Label, Sample};
+use crate::base_learner::core::BaseLearner;
+use crate::base_learner::core::Classifier;
 
 
 
@@ -23,8 +23,8 @@ impl DStumpClassifier {
 }
 
 
-impl Classifier for DStumpClassifier {
-    fn predict(&self, example: &[f64]) -> f64 {
+impl Classifier<f64, f64> for DStumpClassifier {
+    fn predict(&self, example: &Data<f64>) -> Label<f64> {
         let val = example[self.feature_index];
         match self.positive_side {
             PositiveSide::RHS => (val - self.threshold).signum(),
@@ -47,7 +47,7 @@ impl DStump {
     }
 
 
-    pub fn with_sample(sample: &Sample) -> DStump {
+    pub fn with_sample(sample: &Sample<f64, f64>) -> DStump {
         let sample_size = sample.len();
         let feature_size = sample[0].0.len();
 
@@ -71,8 +71,8 @@ impl DStump {
     }
 }
 
-impl BaseLearner for DStump {
-    fn best_hypothesis(&self, sample: &Sample, distribution: &[f64]) -> Box<dyn Classifier> {
+impl BaseLearner<f64, f64> for DStump {
+    fn best_hypothesis(&self, sample: &Sample<f64, f64>, distribution: &[f64]) -> Box<dyn Classifier<f64, f64>> {
         let init_edge = {
             let mut _edge = 0.0;
             for i in 0..self.sample_size {

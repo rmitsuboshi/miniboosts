@@ -1,10 +1,13 @@
-pub type Sample = Vec<(Vec<f64>, f64)>;
 
 
-pub fn to_sample(examples: Vec<Vec<f64>>, labels: Vec<f64>) -> Sample {
-    // let mut sample = Vec::new();
+pub type Data<D> = Vec<D>;
+pub type Label<L> = L;
+
+pub type Sample<D, L> = Vec<(Data<D>, Label<L>)>;
+
+
+pub fn to_sample<D, L>(examples: Vec<Data<D>>, labels: Vec<Label<L>>) -> Sample<D, L> {
     examples.into_iter()
             .zip(labels)
-            .collect::<Sample>()
+            .collect::<Sample<D, L>>()
 }
-
