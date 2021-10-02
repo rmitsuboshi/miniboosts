@@ -19,8 +19,8 @@ fn boosting_test() {
     let mut file = File::open(path).unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
-    let mut examples = Vec::new();
-    let mut labels   = Vec::new();
+    let mut examples: Vec<Data<f64>> = Vec::new();
+    let mut labels: Vec<Label<f64>> = Vec::new();
 
     for line in contents.lines() {
         let mut line = line.split_whitespace();

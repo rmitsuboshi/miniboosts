@@ -1,10 +1,10 @@
-use crate::data_type::Sample;
+use crate::data_type::{Data, Label, Sample};
 
-pub trait Classifier {
-    fn predict(&self, example: &[f64]) -> f64;
+pub trait Classifier<D, L> {
+    fn predict(&self, example: &Data<D>) -> Label<L>;
 
 
-    fn predict_all(&self, examples: &[Vec<f64>]) -> Vec<f64> {
+    fn predict_all(&self, examples: &[Data<D>]) -> Vec<Label<L>> {
         examples.iter()
                 .map(|example| self.predict(&example))
                 .collect()
@@ -12,7 +12,7 @@ pub trait Classifier {
 }
 
 
-pub trait BaseLearner {
-    fn best_hypothesis(&self, sample: &Sample, distribution: &[f64]) -> Box<dyn Classifier>;
+pub trait BaseLearner<D, L> {
+    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64]) -> Box<dyn Classifier<D,L>>;
 }
 

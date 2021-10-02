@@ -1,6 +1,6 @@
-use crate::data_type::Sample;
-use super::core::{BaseLearner, Classifier};
-use super::dstump::DStump;
+use crate::data_type::{Data, Label, Sample};
+use crate::base_learner::core::{BaseLearner, Classifier};
+use crate::base_learner::dstump::DStump;
 
 
 struct Node {
@@ -11,7 +11,7 @@ struct Node {
 
 
 impl Node {
-    fn descent(&self, _example: &[f64]) -> f64 {
+    fn descent<D, L>(&self, _example: &Data<D>) -> Label<L> {
         let mut prediction = self.condition.predict(_example);
 
 
@@ -34,8 +34,8 @@ pub struct DTreeClassifier {
 }
 
 
-impl Classifier for DTreeClassifier {
-    fn predict(&self, example: &[f64]) -> f64 {
+impl Classifier<D, L> for DTreeClassifier {
+    fn predict(&self, example: &Data<D>) -> Label<L> {
         self.root.descent(example)
     }
 }
@@ -54,7 +54,7 @@ impl DTree {
     }
 
 
-    pub fn with_sample(sample: &Sample) -> DTree {
+    pub fn with_sample<D, L>(sample: &Sample<D, L>) -> DTree {
         let max_depth = (sample.len() as f64).log2() as usize;
         let max_depth = Some(max_depth);
         DTree { max_depth }
@@ -67,7 +67,7 @@ impl DTree {
     }
 
 
-    fn construct_tree(&self, sample: &Sample, _indices: Vec<usize>, distribution: &[f64], depth: usize) -> Box<Node> {
+    fn construct_tree<D, L>(&self, sample: &Sample<D, L>, _indices: Vec<usize>, distribution: &[f64], depth: usize) -> Box<Node> {
         // Get best split condition by decision stump
         let mut sub_sample = Vec::with_capacity(_indices.len());
         let mut sub_distribution = Vec::with_capacity(_indices.len());
@@ -111,8 +111,8 @@ impl DTree {
     }
 }
 
-impl BaseLearner for DTree {
-    fn best_hypothesis(&self, sample: &Sample, distribution: &[f64]) -> Box<dyn Classifier> {
+impl BaseLearner<D, L> for DTree {
+    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64]) -> Box<dyn Classifier> {
         let indices = (0..distribution.len()).collect::<Vec<usize>>();
         // let mut _distribution = vec![0.0; distribution.len()];
         // _distribution.copy_from_slice(distribution);

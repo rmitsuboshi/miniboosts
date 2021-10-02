@@ -1,29 +1,23 @@
 // We first implement adaboost only.
 // then we generalize it to boosting framework.
 //
-use crate::data_type::Sample;
+use crate::data_type::{Data, Label, Sample};
 
-use super::core::Booster;
+use crate::booster::core::Booster;
 use crate::base_learner::core::Classifier;
 use crate::base_learner::core::BaseLearner;
 
 
-pub struct AdaBoost {
+pub struct AdaBoost<D, L> {
     pub dist: Vec<f64>,
     pub weights: Vec<f64>,
-    pub classifiers: Vec<Box<dyn Classifier>>,
+    pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
 }
 
 
-impl AdaBoost {
-    pub fn new() -> AdaBoost {
-        AdaBoost {
-            dist: Vec::new(), weights: Vec::new(), classifiers: Vec::new()
-        }
-    }
+impl AdaBoost<f64, f64> {
 
-
-    pub fn with_sample(sample: &Sample) -> AdaBoost {
+    pub fn with_sample(sample: &Sample<f64, f64>) -> AdaBoost<f64, f64> {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
@@ -43,8 +37,8 @@ impl AdaBoost {
 }
 
 
-impl Booster for AdaBoost {
-    fn update_params(&mut self, h: Box<dyn Classifier>, sample: &Sample) -> Option<()> {
+impl Booster<f64, f64> for AdaBoost<f64, f64> {
+    fn update_params(&mut self, h: Box<dyn Classifier<f64, f64>>, sample: &Sample<f64, f64>) -> Option<()> {
 
 
         let m = sample.len();
@@ -105,7 +99,7 @@ impl Booster for AdaBoost {
     }
 
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner>, sample: &Sample, eps: f64) {
+    fn run(&mut self, base_learner: Box<dyn BaseLearner<f64, f64>>, sample: &Sample<f64, f64>, eps: f64) {
         let max_loop = self.max_loop(eps);
         println!("max_loop: {}", max_loop);
     
@@ -119,7 +113,7 @@ impl Booster for AdaBoost {
     }
 
 
-    fn predict(&self, example: &[f64]) -> f64 {
+    fn predict(&self, example: &Data<f64>) -> Label<f64> {
         assert_eq!(self.weights.len(), self.classifiers.len());
         let n = self.weights.len();
 
