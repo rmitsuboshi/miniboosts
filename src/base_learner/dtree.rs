@@ -3,15 +3,15 @@ use crate::base_learner::core::{BaseLearner, Classifier};
 use crate::base_learner::dstump::DStump;
 
 
-struct Node {
-    left:  Option<Box<Node>>,
-    right: Option<Box<Node>>,
-    condition: Box<dyn Classifier>,
+struct Node<D, L> {
+    left:  Option<Box<Node<D, L>>>,
+    right: Option<Box<Node<D, L>>>,
+    condition: Box<dyn Classifier<D, L>>,
 }
 
 
-impl Node {
-    fn descent<D, L>(&self, _example: &Data<D>) -> Label<L> {
+impl Node<f64, f64> {
+    fn descent(&self, _example: &Data<f64>) -> Label<f64> {
         let mut prediction = self.condition.predict(_example);
 
 
@@ -29,13 +29,13 @@ impl Node {
 }
 
 
-pub struct DTreeClassifier {
-    root: Box<Node>
+pub struct DTreeClassifier<D, L> {
+    root: Box<Node<D, L>>
 }
 
 
-impl Classifier<D, L> for DTreeClassifier {
-    fn predict(&self, example: &Data<D>) -> Label<L> {
+impl Classifier<f64, f64> for DTreeClassifier<f64, f64> {
+    fn predict(&self, example: &Data<f64>) -> Label<f64> {
         self.root.descent(example)
     }
 }
@@ -49,11 +49,6 @@ pub struct DTree {
 
 
 impl DTree {
-    pub fn new() -> DTree {
-        DTree { max_depth: None }
-    }
-
-
     pub fn with_sample<D, L>(sample: &Sample<D, L>) -> DTree {
         let max_depth = (sample.len() as f64).log2() as usize;
         let max_depth = Some(max_depth);
@@ -67,7 +62,9 @@ impl DTree {
     }
 
 
-    fn construct_tree<D, L>(&self, sample: &Sample<D, L>, _indices: Vec<usize>, distribution: &[f64], depth: usize) -> Box<Node> {
+    fn construct_tree(&self, sample: &Sample<f64, f64>, _indices: Vec<usize>, distribution: &[f64], depth: usize) -> Box<Node<f64, f64>>
+    {
+
         // Get best split condition by decision stump
         let mut sub_sample = Vec::with_capacity(_indices.len());
         let mut sub_distribution = Vec::with_capacity(_indices.len());
@@ -111,8 +108,8 @@ impl DTree {
     }
 }
 
-impl BaseLearner<D, L> for DTree {
-    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64]) -> Box<dyn Classifier> {
+impl BaseLearner<f64, f64> for DTree {
+    fn best_hypothesis(&self, sample: &Sample<f64, f64>, distribution: &[f64]) -> Box<dyn Classifier<f64, f64>> {
         let indices = (0..distribution.len()).collect::<Vec<usize>>();
         // let mut _distribution = vec![0.0; distribution.len()];
         // _distribution.copy_from_slice(distribution);
