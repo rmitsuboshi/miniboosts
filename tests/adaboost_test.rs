@@ -10,7 +10,10 @@ use boost::booster::adaboost::AdaBoost;
 
 #[test]
 fn predict_test() {
-    let examples: Vec<Data<f64>> = vec![ vec![1.0], vec![-1.0] ];
+    let examples: Vec<Data<f64>> = vec![
+        Data::Dense(vec![1.0]),
+        Data::Dense(vec![-1.0])
+    ];
     let labels: Vec<Label<f64>> = vec![1.0, -1.0];
 
 
