@@ -18,9 +18,9 @@ fn dstump_new() {
 #[test]
 fn dstump_with_sample() {
     let examples = vec![
-        vec![  1.2, 0.5, -1.0,  2.0],
-        vec![  0.1, 0.2,  0.3, -9.0],
-        vec![-21.0, 2.0,  1.9,  7.1]
+        Data::Dense(vec![  1.2, 0.5, -1.0,  2.0]),
+        Data::Dense(vec![  0.1, 0.2,  0.3, -9.0]),
+        Data::Dense(vec![-21.0, 2.0,  1.9,  7.1])
     ];
     let labels = vec![1.0, -1.0, 1.0];
 
@@ -46,9 +46,9 @@ fn dstump_with_sample() {
 #[test]
 fn dstump_hypothesis() {
     let examples = vec![
-        vec![  1.2, 0.5, -1.0,  2.0],
-        vec![  0.1, 0.2,  0.3, -9.0],
-        vec![-21.0, 2.0,  1.9,  7.1]
+        Data::Dense(vec![  1.2, 0.5, -1.0,  2.0]),
+        Data::Dense(vec![  0.1, 0.2,  0.3, -9.0]),
+        Data::Dense(vec![-21.0, 2.0,  1.9,  7.1])
     ];
     let labels = vec![1.0, -1.0, 1.0];
 

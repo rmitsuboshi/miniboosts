@@ -1,4 +1,4 @@
-use crate::data_type::{Data, Label, Sample};
+use crate::data_type::{DType, Data, Label, Sample};
 use crate::base_learner::core::BaseLearner;
 use crate::base_learner::core::Classifier;
 
@@ -25,7 +25,16 @@ impl DStumpClassifier {
 
 impl Classifier<f64, f64> for DStumpClassifier {
     fn predict(&self, example: &Data<f64>) -> Label<f64> {
-        let val = example[self.feature_index];
+        let val = example.value_at(self.feature_index);
+        // let val = match example {
+        //     Data::Sparse(v) => {
+        //         match v.get(&self.feature_index) {
+        //             Some(_val) => _val,
+        //             None => 0.0
+        //         }
+        //     },
+        //     Data::Dense(v) => v[self.feature_index]
+        // };
         match self.positive_side {
             PositiveSide::RHS => (val - self.threshold).signum(),
             PositiveSide::LHS => (self.threshold - val).signum()
@@ -34,10 +43,13 @@ impl Classifier<f64, f64> for DStumpClassifier {
 }
 
 
+type FeatureIndex = Vec<usize>;
+
+
 pub struct DStump {
     pub sample_size: usize,  // Number of training examples
     pub feature_size: usize, // Number of features per example
-    pub indices: Vec<Vec<usize>>,
+    pub indices: Vec<FeatureIndex>,
 }
 
 
@@ -49,24 +61,55 @@ impl DStump {
 
     pub fn with_sample(sample: &Sample<f64, f64>) -> DStump {
         let sample_size = sample.len();
-        let feature_size = sample[0].0.len();
+        let feature_size = sample.feature_len();
+
 
         let mut indices = Vec::with_capacity(feature_size);
-        for j in 0..feature_size {
-            let vals = {
-                let mut _vals = vec![0.0; sample_size];
-                for i in 0..sample_size {
-                    let _example = &sample[i].0;
-                    _vals[i] = _example[j];
+        match sample.dtype {
+            DType::Sparse => {
+                for j in 0..feature_size {
+                    let mut _vals: Vec<(f64, usize)> = Vec::with_capacity(sample_size);
+                    for i in 0..sample_size {
+                        let _example = &sample.sample[i].0;
+                        let _v = _example.value_at(j);
+                        if _v != 0.0 {
+                            _vals.push((_v, j));
+                        }
+                        // if let Some(_v) = _example.get(&j) {
+                        //     _vals.push((_v, j));
+                        // }
+                    }
+                    _vals.sort_by(|_a, _b| _a.0.partial_cmp(&_b.0).unwrap());
+                    // _vals.sort_by_key(|_v| _v.0);
+                    let _index = _vals.iter()
+                                      .map(|tuple| tuple.1)
+                                      .collect::<Vec<usize>>();
+                    indices.push(_index);
                 }
-                _vals
-            };
+            },
 
-            let mut idx = (0..sample_size).collect::<Vec<usize>>();
-            idx.sort_unstable_by(|&ii, &jj| vals[ii].partial_cmp(&vals[jj]).unwrap());
+            DType::Dense => {
+                for j in 0..feature_size {
+                    let vals = {
+                        let mut _vals = vec![0.0; sample_size];
+                        for i in 0..sample_size {
+                            // get ith example
+                            let _example = &sample.sample[i].0;
+                            _vals[i] = _example.value_at(j);
+                            // _vals[i] = _example[j];
+                        }
+                        _vals
+                    };
 
-            indices.push(idx);
+                    let mut _index = (0..sample_size).collect::<Vec<usize>>();
+                    _index.sort_unstable_by(|&ii, &jj| vals[ii].partial_cmp(&vals[jj]).unwrap());
+
+                    indices.push(_index);
+                }
+            }
         }
+
+        // Construct DStump
         DStump { sample_size, feature_size, indices }
     }
 }
@@ -85,7 +128,7 @@ impl BaseLearner<f64, f64> for DStump {
         let mut best_edge = init_edge;
 
         let mut dstump_classifier = DStumpClassifier {
-            threshold: (sample[self.indices[0][0]].0)[0] - 1.0,
+            threshold: sample[self.indices[0][0]].0.value_at(0) - 1.0,
             feature_index: 0_usize,
             positive_side: PositiveSide::RHS
         };
@@ -99,7 +142,7 @@ impl BaseLearner<f64, f64> for DStump {
 
 
             let mut left;
-            let mut right = (sample[idx[0]].0)[j];
+            let mut right = sample[idx[0]].0.value_at(j);
 
 
             for ii in 0..self.sample_size {
@@ -109,10 +152,10 @@ impl BaseLearner<f64, f64> for DStump {
 
                 edge -= 2.0 * distribution[i] * label;
 
-                if ii + 1_usize != self.sample_size && (right == (sample[idx[ii+1]].0)[j] || *label == sample[idx[ii+1]].1) { continue; }
+                if ii + 1_usize != self.sample_size && (right == sample[idx[ii+1]].0.value_at(j) || *label == sample[idx[ii+1]].1) { continue; }
 
                 left  = right;
-                right = if ii + 1_usize == self.sample_size { example[j] + 1.0 } else { (sample[idx[ii+1]].0)[j] };
+                right = if ii + 1_usize == self.sample_size { example.value_at(j) + 1.0 } else { sample[idx[ii+1]].0.value_at(j) };
 
                 if best_edge < edge.abs() {
                     dstump_classifier.threshold = (left + right) / 2.0;

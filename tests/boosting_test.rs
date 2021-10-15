@@ -30,7 +30,7 @@ fn boosting_test() {
         labels.push(_label);
 
         let _example = _example.split(',').map(|x| x.parse::<f64>().unwrap()).collect();
-        examples.push(_example);
+        examples.push(Data::Dense(_example));
     }
 
     let sample = to_sample(examples, labels);
