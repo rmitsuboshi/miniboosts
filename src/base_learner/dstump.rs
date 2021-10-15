@@ -26,15 +26,6 @@ impl DStumpClassifier {
 impl Classifier<f64, f64> for DStumpClassifier {
     fn predict(&self, example: &Data<f64>) -> Label<f64> {
         let val = example.value_at(self.feature_index);
-        // let val = match example {
-        //     Data::Sparse(v) => {
-        //         match v.get(&self.feature_index) {
-        //             Some(_val) => _val,
-        //             None => 0.0
-        //         }
-        //     },
-        //     Data::Dense(v) => v[self.feature_index]
-        // };
         match self.positive_side {
             PositiveSide::RHS => (val - self.threshold).signum(),
             PositiveSide::LHS => (self.threshold - val).signum()
@@ -70,17 +61,13 @@ impl DStump {
                 for j in 0..feature_size {
                     let mut _vals: Vec<(f64, usize)> = Vec::with_capacity(sample_size);
                     for i in 0..sample_size {
-                        let _example = &sample.sample[i].0;
+                        let _example = &sample[i].0;
                         let _v = _example.value_at(j);
                         if _v != 0.0 {
                             _vals.push((_v, j));
                         }
-                        // if let Some(_v) = _example.get(&j) {
-                        //     _vals.push((_v, j));
-                        // }
                     }
                     _vals.sort_by(|_a, _b| _a.0.partial_cmp(&_b.0).unwrap());
-                    // _vals.sort_by_key(|_v| _v.0);
                     let _index = _vals.iter()
                                       .map(|tuple| tuple.1)
                                       .collect::<Vec<usize>>();
@@ -94,9 +81,8 @@ impl DStump {
                         let mut _vals = vec![0.0; sample_size];
                         for i in 0..sample_size {
                             // get ith example
-                            let _example = &sample.sample[i].0;
+                            let _example = &sample[i].0;
                             _vals[i] = _example.value_at(j);
-                            // _vals[i] = _example[j];
                         }
                         _vals
                     };
