@@ -121,42 +121,49 @@ impl BaseLearner<f64, f64> for DStump {
 
 
 
-        for j in 0..self.feature_size {
-            let idx = &self.indices[j];
+        match sample.dtype {
+            DType::Sparse => {
+                todo!();
+            },
+            DType::Dense => {
+                for j in 0..self.feature_size {
+                    let idx = &self.indices[j];
 
-            let mut edge = init_edge;
+                    let mut edge = init_edge;
 
 
-            let mut left;
-            let mut right = sample[idx[0]].0.value_at(j);
+                    let mut left;
+                    let mut right = sample[idx[0]].0.value_at(j);
 
 
-            for ii in 0..self.sample_size {
-                let i = idx[ii];
+                    for ii in 0..self.sample_size {
+                        let i = idx[ii];
 
-                let (example, label) = &sample[i];
+                        let (example, label) = &sample[i];
 
-                edge -= 2.0 * distribution[i] * label;
+                        edge -= 2.0 * distribution[i] * label;
 
-                if ii + 1_usize != self.sample_size && (right == sample[idx[ii+1]].0.value_at(j) || *label == sample[idx[ii+1]].1) { continue; }
+                        if ii + 1_usize != self.sample_size && (right == sample[idx[ii+1]].0.value_at(j) || *label == sample[idx[ii+1]].1) { continue; }
 
-                left  = right;
-                right = if ii + 1_usize == self.sample_size { example.value_at(j) + 1.0 } else { sample[idx[ii+1]].0.value_at(j) };
+                        left  = right;
+                        right = if ii + 1_usize == self.sample_size { example.value_at(j) + 1.0 } else { sample[idx[ii+1]].0.value_at(j) };
 
-                if best_edge < edge.abs() {
-                    dstump_classifier.threshold = (left + right) / 2.0;
-                    dstump_classifier.feature_index = j;
-                    if edge > 0.0 {
-                        best_edge  = edge;
-                        dstump_classifier.positive_side = PositiveSide::RHS;
-                    } else {
-                        best_edge  = - edge;
-                        dstump_classifier.positive_side = PositiveSide::LHS;
+                        if best_edge < edge.abs() {
+                            dstump_classifier.threshold = (left + right) / 2.0;
+                            dstump_classifier.feature_index = j;
+                            if edge > 0.0 {
+                                best_edge  = edge;
+                                dstump_classifier.positive_side = PositiveSide::RHS;
+                            } else {
+                                best_edge  = - edge;
+                                dstump_classifier.positive_side = PositiveSide::LHS;
+                            }
+                        }
                     }
                 }
-            }
+                Box::new(dstump_classifier)
+            },
         }
-        Box::new(dstump_classifier)
     }
 }
 
