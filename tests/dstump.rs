@@ -1,5 +1,7 @@
 extern crate boost;
 
+use std::collections::HashMap;
+
 use boost::data_type::*;
 
 use boost::base_learner::core::BaseLearner;
@@ -44,7 +46,7 @@ fn dstump_with_sample() {
 
 
 #[test]
-fn dstump_hypothesis() {
+fn best_hypothesis() {
     let examples = vec![
         Data::Dense(vec![  1.2, 0.5, -1.0,  2.0]),
         Data::Dense(vec![  0.1, 0.2,  0.3, -9.0]),
@@ -74,5 +76,42 @@ fn dstump_hypothesis() {
 }
 
 
+#[test]
+fn best_hypothesis_sparse() {
+    let tuples: Vec<(usize, f64)> = vec![(1, 0.2), (3, -12.5), (8, -4.0), (9, 0.8)];
+
+    let mut examples = vec![HashMap::new(); 10];
+
+    for (i, v) in tuples {
+        examples[i].insert(0, v);
+    }
+    let examples = examples.into_iter().map(|x| Data::Sparse(x)).collect::<Vec<Data<f64>>>();
+
+    let mut labels = vec![1.0; 10];
+    labels[3] = -1.0; labels[8] = -1.0;
+
+
+    let sample = to_sample(examples, labels);
+
+
+    let dstump = DStump::with_sample(&sample);
+
+    assert_eq!(dstump.sample_size, 10);
+    assert_eq!(dstump.feature_size, 1);
+
+    let distribution = vec![1.0/10.0; 10];
+    let h = dstump.best_hypothesis(&sample, &distribution);
+
+    assert_eq!(h.predict(&sample[0].0), sample[0].1);
+    assert_eq!(h.predict(&sample[1].0), sample[1].1);
+    assert_eq!(h.predict(&sample[2].0), sample[2].1);
+
+
+    // let distribution = vec![0.7, 0.1, 0.2];
+    // let h = dstump.best_hypothesis(&sample, &distribution);
+    // assert_eq!(h.predict(&sample[0].0), sample[0].1);
+    // assert_eq!(h.predict(&sample[1].0), sample[1].1);
+    // assert_eq!(h.predict(&sample[2].0), sample[2].1);
+}
 
 
