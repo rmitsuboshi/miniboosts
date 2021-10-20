@@ -21,14 +21,14 @@ fn test() {
     let sample = to_sample(data, label);
 
 
-    assert_eq!(sample[0].0.value_at(0), 0.0);
-    assert_eq!(sample[1].0.value_at(0), 2.0);
-    assert_eq!(sample[2].0.value_at(0), 0.0);
-    assert_eq!(sample[3].0.value_at(0), 1.0);
-    assert_eq!(sample[0].0.value_at(1), 1.0);
-    assert_eq!(sample[1].0.value_at(1), 1.0);
-    assert_eq!(sample[2].0.value_at(1), 9.0);
-    assert_eq!(sample[3].0.value_at(1), 6.0);
+    assert_eq!(sample[0].data.value_at(0), 0.0);
+    assert_eq!(sample[1].data.value_at(0), 2.0);
+    assert_eq!(sample[2].data.value_at(0), 0.0);
+    assert_eq!(sample[3].data.value_at(0), 1.0);
+    assert_eq!(sample[0].data.value_at(1), 1.0);
+    assert_eq!(sample[1].data.value_at(1), 1.0);
+    assert_eq!(sample[2].data.value_at(1), 9.0);
+    assert_eq!(sample[3].data.value_at(1), 6.0);
 
     // let expected = vec![
     //     (Data::Dense(vec![0.0, 1.0]),  1.0),

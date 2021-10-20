@@ -63,16 +63,16 @@ fn best_hypothesis() {
     let distribution = vec![1.0/3.0; 3];
     let h = dstump.best_hypothesis(&sample, &distribution);
 
-    assert_eq!(h.predict(&sample[0].0), sample[0].1);
-    assert_eq!(h.predict(&sample[1].0), sample[1].1);
-    assert_eq!(h.predict(&sample[2].0), sample[2].1);
+    assert_eq!(h.predict(&sample[0].data), sample[0].label);
+    assert_eq!(h.predict(&sample[1].data), sample[1].label);
+    assert_eq!(h.predict(&sample[2].data), sample[2].label);
 
 
     let distribution = vec![0.7, 0.1, 0.2];
     let h = dstump.best_hypothesis(&sample, &distribution);
-    assert_eq!(h.predict(&sample[0].0), sample[0].1);
-    assert_eq!(h.predict(&sample[1].0), sample[1].1);
-    assert_eq!(h.predict(&sample[2].0), sample[2].1);
+    assert_eq!(h.predict(&sample[0].data), sample[0].label);
+    assert_eq!(h.predict(&sample[1].data), sample[1].label);
+    assert_eq!(h.predict(&sample[2].data), sample[2].label);
 }
 
 
@@ -102,16 +102,10 @@ fn best_hypothesis_sparse() {
     let distribution = vec![1.0/10.0; 10];
     let h = dstump.best_hypothesis(&sample, &distribution);
 
-    assert_eq!(h.predict(&sample[0].0), sample[0].1);
-    assert_eq!(h.predict(&sample[1].0), sample[1].1);
-    assert_eq!(h.predict(&sample[2].0), sample[2].1);
+    assert_eq!(h.predict(&sample[0].data), sample[0].label);
+    assert_eq!(h.predict(&sample[1].data), sample[1].label);
+    assert_eq!(h.predict(&sample[2].data), sample[2].label);
 
-
-    // let distribution = vec![0.7, 0.1, 0.2];
-    // let h = dstump.best_hypothesis(&sample, &distribution);
-    // assert_eq!(h.predict(&sample[0].0), sample[0].1);
-    // assert_eq!(h.predict(&sample[1].0), sample[1].1);
-    // assert_eq!(h.predict(&sample[2].0), sample[2].1);
 }
 
 

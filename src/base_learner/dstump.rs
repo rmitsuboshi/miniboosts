@@ -25,8 +25,8 @@ impl DStumpClassifier {
 
 
 impl Classifier<f64, f64> for DStumpClassifier {
-    fn predict(&self, example: &Data<f64>) -> Label<f64> {
-        let val = example.value_at(self.feature_index);
+    fn predict(&self, data: &Data<f64>) -> Label<f64> {
+        let val = data.value_at(self.feature_index);
         match self.positive_side {
             PositiveSide::RHS => (val - self.threshold).signum(),
             PositiveSide::LHS => (self.threshold - val).signum()
@@ -62,8 +62,8 @@ impl DStump {
                 for j in 0..feature_size {
                     let mut _vals: Vec<(f64, usize)> = Vec::with_capacity(sample_size);
                     for i in 0..sample_size {
-                        let _example = &sample[i].0;
-                        let _v = _example.value_at(j);
+                        let _data = &sample[i].data;
+                        let _v = _data.value_at(j);
                         if _v != 0.0 {
                             _vals.push((_v, j));
                         }
@@ -81,9 +81,8 @@ impl DStump {
                     let vals = {
                         let mut _vals = vec![0.0; sample_size];
                         for i in 0..sample_size {
-                            // get ith example
-                            let _example = &sample[i].0;
-                            _vals[i] = _example.value_at(j);
+                            let _data = &sample[i].data;
+                            _vals[i] = _data.value_at(j);
                         }
                         _vals
                     };
@@ -106,7 +105,7 @@ impl BaseLearner<f64, f64> for DStump {
         let init_edge = {
             let mut _edge = 0.0;
             for i in 0..self.sample_size {
-                let label = sample[i].1;
+                let label = sample[i].label;
                 _edge += distribution[i] * label;
             }
             _edge
@@ -115,7 +114,7 @@ impl BaseLearner<f64, f64> for DStump {
         let mut best_edge = init_edge;
 
         let mut dstump_classifier = DStumpClassifier {
-            threshold: sample[self.indices[0][0]].0.value_at(0) - 1.0,
+            threshold: sample[self.indices[0][0]].data.value_at(0) - 1.0,
             feature_index: 0_usize,
             positive_side: PositiveSide::RHS
         };
@@ -144,7 +143,7 @@ impl BaseLearner<f64, f64> for DStump {
                         let _idx = self.indices[j].iter().collect::<HashSet<&usize>>();
                         for _i in 0..self.sample_size {
                             if !_idx.contains(&_i) {
-                                let (_, _label) = sample[_i];
+                                let _label = sample[_i].label;
                                 _zero_values += _label * distribution[_i];
                             }
                         }
@@ -153,16 +152,17 @@ impl BaseLearner<f64, f64> for DStump {
 
 
                     let mut left: f64;
-                    let mut right = sample[self.indices[j][0]].0.value_at(j);
+                    let mut right = sample[self.indices[j][0]].data.value_at(j);
 
                     let mut idx = self.indices[j].iter().peekable();
 
                     let mut still_negative = right < 0.0;
                     while let Some(&i) = idx.next() {
-                        let (example, label) = &sample[i];
+                        let data  = &sample[i].data;
+                        let label = &sample[i].label;
 
 
-                        if still_negative && example.value_at(i) > 0.0 {
+                        if still_negative && data.value_at(i) > 0.0 {
                             still_negative = false;
                             left = right;
                             right = 0.0;
@@ -178,13 +178,13 @@ impl BaseLearner<f64, f64> for DStump {
 
                         left = right;
                         if let Some(&&i_next) = idx.peek() {
-                            let (next_example, _) = &sample[i_next];
-                            if right == next_example.value_at(j) {
+                            let next_data = &sample[i_next].data;
+                            if right == next_data.value_at(j) {
                                 continue;
                             }
-                            right = next_example.value_at(j);
+                            right = next_data.value_at(j);
                         } else {
-                            right = example.value_at(j) + 1.0;
+                            right = data.value_at(j) + 1.0;
                         }
 
 
@@ -209,25 +209,25 @@ impl BaseLearner<f64, f64> for DStump {
 
 
                     let mut left;
-                    let mut right = sample[self.indices[j][0]].0.value_at(j);
+                    let mut right = sample[self.indices[j][0]].data.value_at(j);
 
 
                     let mut idx = self.indices[j].iter().peekable();
 
                     while let Some(&i) = idx.next() {
-                        let (example, label) = &sample[i];
+                        let label = &sample[i].label;
 
                         edge -= 2.0 * distribution[i] * label;
 
                         left = right;
                         if let Some(&&i_next) = idx.peek() {
-                            let (next_example, _) = &sample[i_next];
-                            if right == next_example.value_at(j) {
+                            let next_data = &sample[i_next].data;
+                            if right == next_data.value_at(j) {
                                 continue;
                             }
-                            right = next_example.value_at(j);
+                            right = next_data.value_at(j);
                         } else {
-                            right = example.value_at(j) + 1.0;
+                            right = sample[i].data.value_at(j) + 1.0;
                         }
 
                         let threshold = (left + right) / 2.0;

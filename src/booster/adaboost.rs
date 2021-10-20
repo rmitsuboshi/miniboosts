@@ -45,8 +45,9 @@ impl Booster<f64, f64> for AdaBoost<f64, f64> {
 
         let mut edge = 0.0;
         for i in 0..m {
-            let (example, label) = &sample[i];
-            edge += self.dist[i] * label * h.predict(&example);
+            let data  = &sample[i].data;
+            let label = &sample[i].label;
+            edge += self.dist[i] * label * h.predict(&data);
         }
         // This assertion may fail because of the numerical error
         // assert!(edge >= -1.0);
@@ -69,8 +70,9 @@ impl Booster<f64, f64> for AdaBoost<f64, f64> {
 
         // To prevent overflow, take the logarithm.
         for i in 0..m {
-            let (example, label) = &sample[i];
-            self.dist[i] = self.dist[i].ln() - weight_of_h * label * h.predict(&example);
+            let data  = &sample[i].data;
+            let label = &sample[i].label;
+            self.dist[i] = self.dist[i].ln() - weight_of_h * label * h.predict(&data);
         }
 
         let mut indices = (0..m).collect::<Vec<usize>>();
@@ -113,13 +115,13 @@ impl Booster<f64, f64> for AdaBoost<f64, f64> {
     }
 
 
-    fn predict(&self, example: &Data<f64>) -> Label<f64> {
+    fn predict(&self, data: &Data<f64>) -> Label<f64> {
         assert_eq!(self.weights.len(), self.classifiers.len());
         let n = self.weights.len();
 
         let mut confidence = 0.0;
         for i in 0..n {
-            confidence +=  self.weights[i] * self.classifiers[i].predict(example);
+            confidence +=  self.weights[i] * self.classifiers[i].predict(data);
         }
 
 
