@@ -8,6 +8,12 @@ use crate::base_learner::core::Classifier;
 use crate::base_learner::core::BaseLearner;
 
 
+
+/// Struct `AdaBoost` has 3 parameters.
+/// `dist` is the distribution over training examples,
+/// `weights` is the weights over `classifiers` that the AdaBoost obtained up to iteration `t`.
+/// `classifiers` is the classifier that the AdaBoost obtained.
+/// The length of `weights` and `classifiers` must be same.
 pub struct AdaBoost<D, L> {
     pub dist: Vec<f64>,
     pub weights: Vec<f64>,
@@ -15,9 +21,8 @@ pub struct AdaBoost<D, L> {
 }
 
 
-impl AdaBoost<f64, f64> {
-
-    pub fn with_sample(sample: &Sample<f64, f64>) -> AdaBoost<f64, f64> {
+impl<D, L> AdaBoost<D, L> {
+    pub fn with_sample(sample: &Sample<D, L>) -> AdaBoost<D, L> {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
@@ -27,6 +32,8 @@ impl AdaBoost<f64, f64> {
     }
 
 
+    /// `max_loop` returns the maximum iteration of the Adaboost to find a combined hypothesis
+    /// that has error at most `eps`.
     pub fn max_loop(&self, eps: f64) -> usize {
         let m = self.dist.len();
 
@@ -37,8 +44,11 @@ impl AdaBoost<f64, f64> {
 }
 
 
-impl Booster<f64, f64> for AdaBoost<f64, f64> {
-    fn update_params(&mut self, h: Box<dyn Classifier<f64, f64>>, sample: &Sample<f64, f64>) -> Option<()> {
+impl<D> Booster<D, f64> for AdaBoost<D, f64> {
+
+    /// `update_params` updates `self.distribution` and determine the weight on hypothesis
+    /// that the algorithm obtained at current iteration.
+    fn update_params(&mut self, h: Box<dyn Classifier<D, f64>>, sample: &Sample<D, f64>) -> Option<()> {
 
 
         let m = sample.len();
@@ -49,9 +59,11 @@ impl Booster<f64, f64> for AdaBoost<f64, f64> {
             let label = &sample[i].label;
             edge += self.dist[i] * label * h.predict(&data);
         }
+
+
         // This assertion may fail because of the numerical error
-        // assert!(edge >= -1.0);
-        // assert!(edge <=  1.0);
+        assert!(edge >= -1.0);
+        assert!(edge <=  1.0);
 
 
         if edge >= 1.0 {
@@ -101,7 +113,7 @@ impl Booster<f64, f64> for AdaBoost<f64, f64> {
     }
 
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner<f64, f64>>, sample: &Sample<f64, f64>, eps: f64) {
+    fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
         let max_loop = self.max_loop(eps);
         println!("max_loop: {}", max_loop);
     
@@ -115,13 +127,13 @@ impl Booster<f64, f64> for AdaBoost<f64, f64> {
     }
 
 
-    fn predict(&self, data: &Data<f64>) -> Label<f64> {
+    fn predict(&self, data: &Data<D>) -> Label<f64> {
         assert_eq!(self.weights.len(), self.classifiers.len());
         let n = self.weights.len();
 
         let mut confidence = 0.0;
         for i in 0..n {
-            confidence +=  self.weights[i] * self.classifiers[i].predict(data);
+            confidence += self.weights[i] * self.classifiers[i].predict(data);
         }
 
 
