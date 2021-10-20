@@ -45,8 +45,8 @@ fn boosting_test() {
 
     let mut loss = 0.0;
     for i in 0..sample.len() {
-        let p = adaboost.predict(&sample[i].0);
-        if sample[i].1 != p { loss += 1.0; }
+        let p = adaboost.predict(&sample[i].data);
+        if sample[i].label != p { loss += 1.0; }
     }
 
     loss /= sample.len() as f64;

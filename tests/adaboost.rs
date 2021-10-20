@@ -30,6 +30,6 @@ fn predict_test() {
 
 
     for i in 0..sample.len() {
-        assert_eq!(sample[i].1, adaboost.predict(&sample[i].0));
+        assert_eq!(sample[i].label, adaboost.predict(&sample[i].data));
     }
 }

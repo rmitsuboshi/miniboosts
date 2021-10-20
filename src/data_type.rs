@@ -4,7 +4,7 @@ use std::ops::Index;
 pub type Label<L> = L;
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Data<D> {
     Sparse(HashMap<usize, D>),
     Dense(Vec<D>),
@@ -35,10 +35,18 @@ pub enum DType {
 }
 
 
+pub struct LabeledData<D, L> {
+    pub data: Data<D>,
+    pub label: Label<L>
+}
+
+
 pub struct Sample<D, L> {
-    pub sample: Vec<(Data<D>, Label<L>)>,
+    pub sample: Vec<LabeledData<D, L>>,
     pub dtype: DType
 }
+
+
 
 
 impl<D, L> Sample<D, L> {
@@ -48,10 +56,16 @@ impl<D, L> Sample<D, L> {
 
     pub fn feature_len(&self) -> usize {
         let mut feature_size = 0_usize;
-        let examples = &self.sample;
-        for (data, _) in examples.iter() {
+        for labeled_data in self.sample.iter() {
+            let data = &labeled_data.data;
             feature_size = match data {
-                Data::Sparse(_data) => std::cmp::max(*_data.keys().max().unwrap() + 1_usize, feature_size),
+                Data::Sparse(_data) => {
+                    let l = match _data.keys().max() {
+                        Some(&k) => k,
+                        None => 0
+                    };
+                    std::cmp::max(l + 1_usize, feature_size)
+                },
                 Data::Dense(_data) => std::cmp::max(_data.len(), feature_size)
             }
         }
@@ -61,7 +75,7 @@ impl<D, L> Sample<D, L> {
 
 
 impl<D, L> Index<usize> for Sample<D, L> {
-    type Output = (Data<D>, Label<L>);
+    type Output = LabeledData<D, L>;
     fn index(&self, idx: usize) -> &Self::Output {
         &self.sample[idx]
     }
@@ -76,7 +90,8 @@ pub fn to_sample<D, L>(examples: Vec<Data<D>>, labels: Vec<Label<L>>) -> Sample<
 
     let sample = examples.into_iter()
                          .zip(labels)
-                         .collect::<Vec<(Data<D>, Label<L>)>>();
+                         .map(|(data, label)| LabeledData { data, label })
+                         .collect::<Vec<LabeledData<D, L>>>();
 
     Sample { sample, dtype }
 }
