@@ -65,7 +65,7 @@ impl DStump {
                         let _data = &sample[i].data;
                         let _v = _data.value_at(j);
                         if _v != 0.0 {
-                            _vals.push((_v, j));
+                            _vals.push((_v, i));
                         }
                     }
                     _vals.sort_by(|_a, _b| _a.0.partial_cmp(&_b.0).unwrap());
