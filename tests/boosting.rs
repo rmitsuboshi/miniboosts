@@ -10,6 +10,8 @@ use boost::booster::core::Booster;
 use boost::booster::adaboost::AdaBoost;
 use boost::base_learner::dstump::DStump;
 
+use boost::data_reader::read_libsvm;
+
 
 #[test]
 fn boosting_test() {
@@ -35,8 +37,40 @@ fn boosting_test() {
 
     let sample = to_sample(examples, labels);
 
-    let mut adaboost = AdaBoost::with_sample(&sample);
-    let dstump = DStump::with_sample(&sample);
+    let mut adaboost = AdaBoost::init(&sample);
+    let dstump = DStump::init(&sample);
+    let dstump = Box::new(dstump);
+
+
+    adaboost.run(dstump, &sample, 0.1);
+
+
+    let mut loss = 0.0;
+    for i in 0..sample.len() {
+        let p = adaboost.predict(&sample[i].data);
+        if sample[i].label != p { loss += 1.0; }
+    }
+
+    loss /= sample.len() as f64;
+    println!("Loss: {}", loss);
+    assert!(true);
+}
+
+
+#[test]
+fn boosting_with_libsvm() {
+    let mut path = env::current_dir().unwrap();
+    println!("path: {:?}", path);
+    path.push("tests/colon-cancer.txt");
+    todo!();
+    // We need to add a small libsvm file
+    let sample = read_libsvm(path).unwrap();
+    println!("sample.len() is: {:?}", sample.len());
+    println!("sample.feature_len() is: {:?}", sample.feature_len());
+
+
+    let mut adaboost = AdaBoost::init(&sample);
+    let dstump = DStump::init(&sample);
     let dstump = Box::new(dstump);
 
 
