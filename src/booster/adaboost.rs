@@ -1,8 +1,4 @@
-// We first implement adaboost only.
-// then we generalize it to boosting framework.
-//
 use crate::data_type::{Data, Label, Sample};
-
 use crate::booster::core::Booster;
 use crate::base_learner::core::Classifier;
 use crate::base_learner::core::BaseLearner;
@@ -22,7 +18,7 @@ pub struct AdaBoost<D, L> {
 
 
 impl<D, L> AdaBoost<D, L> {
-    pub fn with_sample(sample: &Sample<D, L>) -> AdaBoost<D, L> {
+    pub fn init(sample: &Sample<D, L>) -> AdaBoost<D, L> {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
@@ -115,7 +111,7 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
     fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
         let max_loop = self.max_loop(eps);
-        println!("max_loop: {}", max_loop);
+        dbg!("max_loop: {}", max_loop);
     
         for _t in 1..max_loop {
             let h = base_learner.best_hypothesis(sample, &self.dist);
