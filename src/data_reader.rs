@@ -8,6 +8,8 @@ use std::fs::File;
 
 
 /// The function `read_libsvm` reads file with LIBSVM format.
+/// Note that since the LIBSVM format is 1-indexed,
+/// we subtract `1_usize` to become 0-indexed
 pub fn read_libsvm<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
     where P: AsRef<Path>,
           D: FromStr,
@@ -36,7 +38,7 @@ pub fn read_libsvm<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
             let mut _t = s.split(':');
             let _idx = _t.next().unwrap().parse::<usize>().unwrap();
             let _val = _t.next().unwrap().parse::<D>().unwrap();
-            (_idx, _val)
+            (_idx - 1_usize, _val)
         }).collect::<HashMap<usize, D>>();
 
         examples.push(_example);
