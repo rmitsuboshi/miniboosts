@@ -18,7 +18,7 @@ fn dstump_new() {
 
 
 #[test]
-fn dstump_with_sample() {
+fn dstump_init() {
     let examples = vec![
         Data::Dense(vec![  1.2, 0.5, -1.0,  2.0]),
         Data::Dense(vec![  0.1, 0.2,  0.3, -9.0]),
@@ -28,7 +28,7 @@ fn dstump_with_sample() {
 
 
     let sample = to_sample(examples, labels);
-    let dstump = DStump::with_sample(&sample);
+    let dstump = DStump::init(&sample);
 
 
     let ans = vec![
@@ -58,7 +58,7 @@ fn best_hypothesis() {
     let sample = to_sample(examples, labels);
 
 
-    let dstump = DStump::with_sample(&sample);
+    let dstump = DStump::init(&sample);
 
     let distribution = vec![1.0/3.0; 3];
     let h = dstump.best_hypothesis(&sample, &distribution);
@@ -94,7 +94,7 @@ fn best_hypothesis_sparse() {
     let sample = to_sample(examples, labels);
 
 
-    let dstump = DStump::with_sample(&sample);
+    let dstump = DStump::init(&sample);
 
     assert_eq!(dstump.sample_size, 10);
     assert_eq!(dstump.feature_size, 1);

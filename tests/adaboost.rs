@@ -21,7 +21,7 @@ fn predict_test() {
 
     let h = Box::new(DStumpClassifier::new());
 
-    let mut adaboost = AdaBoost::with_sample(&sample);
+    let mut adaboost = AdaBoost::init(&sample);
 
     adaboost.update_params(h, &sample);
 
