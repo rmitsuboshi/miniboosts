@@ -51,7 +51,7 @@ impl DStump {
     }
 
 
-    pub fn with_sample(sample: &Sample<f64, f64>) -> DStump {
+    pub fn init(sample: &Sample<f64, f64>) -> DStump {
         let sample_size = sample.len();
         let feature_size = sample.feature_len();
 
