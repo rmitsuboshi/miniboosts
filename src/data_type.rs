@@ -61,10 +61,10 @@ impl<D, L> Sample<D, L> {
             feature_size = match data {
                 Data::Sparse(_data) => {
                     let l = match _data.keys().max() {
-                        Some(&k) => k,
+                        Some(&k) => k + 1,
                         None => 0
                     };
-                    std::cmp::max(l + 1_usize, feature_size)
+                    std::cmp::max(l, feature_size)
                 },
                 Data::Dense(_data) => std::cmp::max(_data.len(), feature_size)
             }
