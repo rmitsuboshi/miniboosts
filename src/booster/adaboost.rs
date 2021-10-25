@@ -53,13 +53,14 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
         for i in 0..m {
             let data  = &sample[i].data;
             let label = &sample[i].label;
-            edge += self.dist[i] * label * h.predict(&data);
+            edge += self.dist[i] * label * h.predict(data);
         }
 
 
         // This assertion may fail because of the numerical error
-        assert!(edge >= -1.0);
-        assert!(edge <=  1.0);
+        // dbg!(edge);
+        // assert!(edge >= -1.0);
+        // assert!(edge <=  1.0);
 
 
         if edge >= 1.0 {
@@ -111,7 +112,7 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
     fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
         let max_loop = self.max_loop(eps);
-        dbg!("max_loop: {}", max_loop);
+        dbg!(format!("max_loop: {}", max_loop));
     
         for _t in 1..max_loop {
             let h = base_learner.best_hypothesis(sample, &self.dist);
