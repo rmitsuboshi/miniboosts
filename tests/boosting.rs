@@ -61,9 +61,7 @@ fn boosting_test() {
 fn boosting_with_libsvm() {
     let mut path = env::current_dir().unwrap();
     println!("path: {:?}", path);
-    path.push("tests/colon-cancer.txt");
-    todo!();
-    // We need to add a small libsvm file
+    path.push("tests/small_toy_example_libsvm.txt");
     let sample = read_libsvm(path).unwrap();
     println!("sample.len() is: {:?}", sample.len());
     println!("sample.feature_len() is: {:?}", sample.feature_len());
