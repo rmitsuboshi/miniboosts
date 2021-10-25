@@ -64,15 +64,15 @@ impl<D> Booster<D, f64> for AdaBoostV<D, f64> {
 
 
         // This assertion may fail because of the numerical error
-        assert!(edge >= -1.0);
-        assert!(edge <=  1.0);
+        // assert!(edge >= -1.0);
+        // assert!(edge <=  1.0);
 
 
         if edge.abs() >= 1.0 {
             self.weights.clear();
             self.classifiers.clear();
 
-            let sgn = if edge > 0.0 { 1.0 } else { -1.0 };
+            let sgn = edge.signum();
             self.weights.push(sgn);
             self.classifiers.push(h);
 
