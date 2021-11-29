@@ -99,9 +99,10 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
             normalizer = a + (1.0 + (b - a).exp()).ln();
         }
 
-        for i in 0..m {
-            self.dist[i] = (self.dist[i] - normalizer).exp();
+        for d in self.dist.iter_mut() {
+            *d = (*d - normalizer).exp();
         }
+
 
         self.classifiers.push(h);
         self.weights.push(weight_of_h);
@@ -126,12 +127,15 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
     fn predict(&self, data: &Data<D>) -> Label<f64> {
         assert_eq!(self.weights.len(), self.classifiers.len());
-        let n = self.weights.len();
+        // let n = self.weights.len();
 
         let mut confidence = 0.0;
-        for i in 0..n {
-            confidence += self.weights[i] * self.classifiers[i].predict(data);
+        for (w, h) in self.weights.iter().zip(self.classifiers.iter()) {
+            confidence += w * h.predict(data);
         }
+        // for i in 0..n {
+        //     confidence += self.weights[i] * self.classifiers[i].predict(data);
+        // }
 
 
         confidence.signum()
