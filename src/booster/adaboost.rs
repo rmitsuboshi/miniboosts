@@ -49,12 +49,13 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
         let m = sample.len();
 
-        let mut edge = 0.0;
-        for i in 0..m {
-            let data  = &sample[i].data;
-            let label = &sample[i].label;
-            edge += self.dist[i] * label * h.predict(data);
-        }
+
+        let edge = self.dist.iter()
+            .zip(sample.iter())
+            .fold(0.0_f64, |mut acc, (d, example)| {
+                acc += d * example.label * h.predict(&example.data);
+                acc
+            });
 
 
         // This assertion may fail because of the numerical error
@@ -74,24 +75,23 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
         }
 
 
-        let weight_of_h = ((1.0 + edge) / (1.0 - edge)).ln() / 2.0;
+        let weight = ((1.0 + edge) / (1.0 - edge)).ln() / 2.0;
 
 
         // To prevent overflow, take the logarithm.
-        for i in 0..m {
-            let data  = &sample[i].data;
-            let label = &sample[i].label;
-            self.dist[i] = self.dist[i].ln() - weight_of_h * label * h.predict(&data);
+        for (d, example) in self.dist.iter_mut().zip(sample.iter()) {
+            *d = d.ln() - weight * example.label * h.predict(&example.data);
         }
+
 
         let mut indices = (0..m).collect::<Vec<usize>>();
         indices.sort_unstable_by(|&i, &j| self.dist[i].partial_cmp(&self.dist[j]).unwrap());
 
 
         let mut normalizer = self.dist[indices[0]];
-        for i in 1..m {
+        for i in indices {
             let mut a = normalizer;
-            let mut b = self.dist[indices[i]];
+            let mut b = self.dist[i];
             if a < b {
                 std::mem::swap(&mut a, &mut b);
             }
@@ -105,7 +105,7 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
 
         self.classifiers.push(h);
-        self.weights.push(weight_of_h);
+        self.weights.push(weight);
 
         Some(())
     }
@@ -127,15 +127,11 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
     fn predict(&self, data: &Data<D>) -> Label<f64> {
         assert_eq!(self.weights.len(), self.classifiers.len());
-        // let n = self.weights.len();
 
         let mut confidence = 0.0;
         for (w, h) in self.weights.iter().zip(self.classifiers.iter()) {
             confidence += w * h.predict(data);
         }
-        // for i in 0..n {
-        //     confidence += self.weights[i] * self.classifiers[i].predict(data);
-        // }
 
 
         confidence.signum()

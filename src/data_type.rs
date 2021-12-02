@@ -96,3 +96,33 @@ pub fn to_sample<D, L>(examples: Vec<Data<D>>, labels: Vec<Label<L>>) -> Sample<
     Sample { sample, dtype }
 }
 
+
+
+pub struct SampleIter<'a, D, L> {
+    sample: &'a [LabeledData<D, L>]
+}
+
+impl<D, L> Sample<D, L> {
+    pub fn iter(&self) -> SampleIter<'_, D, L> {
+        SampleIter { sample: &self.sample[..] }
+    }
+}
+
+
+impl<'a, D, L> Iterator for SampleIter<'a, D, L> {
+    type Item = &'a LabeledData<D, L>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.sample.get(0) {
+            Some(labeled_data) => {
+                self.sample = &self.sample[1..];
+
+                Some(labeled_data)
+            },
+            None => None
+        }
+    }
+}
+
+
+
