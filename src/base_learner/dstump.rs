@@ -78,14 +78,9 @@ impl DStump {
 
             DType::Dense => {
                 for j in 0..feature_size {
-                    let vals = {
-                        let mut _vals = vec![0.0; sample_size];
-                        for i in 0..sample_size {
-                            let _data = &sample[i].data;
-                            _vals[i] = _data.value_at(j);
-                        }
-                        _vals
-                    };
+                    let vals = sample.iter()
+                        .map(|example| example.data.value_at(j))
+                        .collect::<Vec<f64>>();
 
                     let mut _index = (0..sample_size).collect::<Vec<usize>>();
                     _index.sort_unstable_by(|&ii, &jj| vals[ii].partial_cmp(&vals[jj]).unwrap());
@@ -102,14 +97,12 @@ impl DStump {
 
 impl BaseLearner<f64, f64> for DStump {
     fn best_hypothesis(&self, sample: &Sample<f64, f64>, distribution: &[f64]) -> Box<dyn Classifier<f64, f64>> {
-        let init_edge = {
-            let mut _edge = 0.0;
-            for i in 0..self.sample_size {
-                let label = sample[i].label;
-                _edge += distribution[i] * label;
-            }
-            _edge
-        };
+        let init_edge = distribution.iter()
+            .zip(sample.iter())
+            .fold(0.0, |mut acc, (d, example)| {
+                acc += d * example.label;
+                acc
+            });
 
         let mut best_edge = init_edge;
 
