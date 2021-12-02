@@ -89,7 +89,7 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
 
         let mut normalizer = self.dist[indices[0]];
-        for i in indices {
+        for i in indices.into_iter().skip(1) {
             let mut a = normalizer;
             let mut b = self.dist[i];
             if a < b {
@@ -115,7 +115,7 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
         let max_loop = self.max_loop(eps);
         dbg!(format!("max_loop: {}", max_loop));
     
-        for _t in 1..max_loop {
+        for _t in 1..=max_loop {
             let h = base_learner.best_hypothesis(sample, &self.dist);
             if let None = self.update_params(h, sample) {
                 println!("Break loop at: {}", _t);
