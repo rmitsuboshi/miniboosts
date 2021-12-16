@@ -30,10 +30,10 @@ impl<D, L> AdaBoost<D, L> {
 
     /// `max_loop` returns the maximum iteration of the Adaboost to find a combined hypothesis
     /// that has error at most `eps`.
-    pub fn max_loop(&self, eps: f64) -> usize {
+    pub fn max_loop(&self, eps: f64) -> u64 {
         let m = self.dist.len();
 
-        ((m as f64).ln() / (eps * eps)) as usize
+        ((m as f64).ln() / (eps * eps)) as u64
     }
 
 
