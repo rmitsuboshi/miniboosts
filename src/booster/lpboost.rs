@@ -19,9 +19,11 @@ pub struct LPBoost<D, L> {
     pub dist: Vec<f64>,
     pub weights: Vec<f64>,
     pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
-    pub gamma_hat: f64,
 
+    // These are the parameters used in the `update_param(..)`
+    gamma_hat: f64,
     eps: f64,
+    // Variables for the Gurobi optimizer
     grb_model: Model,
     grb_vars: Vec<Var>,
     grb_gamma: Var,
@@ -34,11 +36,16 @@ impl<D, L> LPBoost<D, L> {
         let m = sample.len();
         assert!(m != 0);
 
+        // Set GRBEnv
         let mut env = Env::new("").unwrap();
-
         env.set(param::OutputFlag, 0).unwrap();
+
+
+        // Set GRBModel
         let mut grb_model = Model::with_env("", env).unwrap();
 
+
+        // Set GRBVars
         let mut grb_vars = Vec::with_capacity(m);
         for i in 0..m {
             let name = format!("grb_vars[{}]", i);
@@ -47,6 +54,8 @@ impl<D, L> LPBoost<D, L> {
         }
         let grb_gamma = add_ctsvar!(grb_model, name: &"gamma", bounds: ..).unwrap();
 
+
+        // Set a constraint
         let constr = grb_model.add_constr(
             &"sum_is_1", c!(grb_vars.iter().grb_sum() == 1.0)
         ).unwrap();
@@ -54,8 +63,11 @@ impl<D, L> LPBoost<D, L> {
         let grb_constrs = vec![constr];
 
 
+        // Set objective function
         grb_model.set_objective(grb_gamma, Minimize).unwrap();
 
+
+        // Update the model
         grb_model.update().unwrap();
 
 
@@ -68,6 +80,8 @@ impl<D, L> LPBoost<D, L> {
 
 
     /// This method updates the capping parameter.
+    /// Once the capping parameter changed,
+    /// we need to update the `model` of the Gurobi.
     pub fn capping(mut self, capping_param: f64) -> Self {
         assert!(1.0 <= capping_param && capping_param <= self.grb_vars.len() as f64);
         let ub = 1.0 / capping_param;
@@ -92,22 +106,15 @@ impl<D, L> LPBoost<D, L> {
         self.grb_model.set_objective(self.grb_gamma, Minimize).unwrap();
         self.grb_model.update().unwrap();
 
+
         self
     }
 
 
-    pub fn precision(mut self, eps: f64) -> Self {
+    fn precision(&mut self, eps: f64) {
         self.eps = eps;
-        self
     }
 
-
-    fn make_expr(&self, sample: &Sample<D, f64>, h: &Box<dyn Classifier<D, f64>>) -> Expr {
-        sample.iter()
-            .zip(self.grb_vars.iter())
-            .map(|(example, var)| *var * example.label * h.predict(&example.data))
-            .grb_sum()
-    }
 }
 
 
@@ -132,7 +139,10 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
 
 
         // Add a new constraint
-        let expr = self.make_expr(sample, &h);
+        let expr = sample.iter()
+            .zip(self.grb_vars.iter())
+            .map(|(ex, v)| *v * ex.label * h.predict(&ex.data))
+            .grb_sum();
         let constr = self.grb_model.add_constr(&"", c!(expr <= self.grb_gamma)).unwrap();
         self.grb_model.update().unwrap();
 
@@ -149,6 +159,7 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
             println!("Status is not optimal. something wrong.");
             return None;
         }
+
 
         // At this point, the status of the optimization problem is `Status::Optimal`
         // therefore, we append a new hypothesis to `self.classifiers`
@@ -178,10 +189,12 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
 
     fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
         if self.eps != eps {
-            self.eps = eps;
+            self.precision(eps);
         }
 
 
+        // Since the LPBoost does not have non-trivial iteration,
+        // we run this until the stopping criterion is satisfied.
         loop {
             let h = base_learner.best_hypothesis(sample, &self.dist);
             if let None = self.update_params(h, sample) {
