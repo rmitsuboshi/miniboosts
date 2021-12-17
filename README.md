@@ -3,9 +3,11 @@ A collection of boosting algorithms written in Rust
 
 ## What I wrote:
 
-- Booster
+- Boosters
     - [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub)
     - [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html)
+    - [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf)
+    - [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf)
 
 
 - Base Learner
