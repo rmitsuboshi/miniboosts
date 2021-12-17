@@ -16,8 +16,8 @@ A collection of boosting algorithms written in Rust
 ## What I will write:
 
 - Booster
-  - LPBoost
-  - ERLPBoost
+  - SoftBoost
+  - TotalBoost
 
 - Base Learner
   - Decision tree
@@ -35,9 +35,9 @@ Here is a sample code:
 extern crate boost;
 
 // `run()` and `predict()` are the methods of Booster trait
-use boost::booster::core::Booster;
-use boost::booster::adaboost::AdaBoost;
-use boost::base_learner::dstump::DStump;
+use boost::booster::Booster;
+use boost::booster::AdaBoost;
+use boost::base_learner::DStump;
 
 // This function reads a file with LIBSVM format
 use boost::data_reader::read_libsvm;
