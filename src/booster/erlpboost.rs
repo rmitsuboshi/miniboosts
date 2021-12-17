@@ -10,10 +10,10 @@ use grb::prelude::*;
 
 
 
-/// Struct `ERLPBoost` has 3 parameters.
-/// `dist` is the distribution over training examples,
-/// `weights` is the weights over `classifiers` that the ERLPBoost obtained up to iteration `t`.
-/// `classifiers` is the classifier that the ERLPBoost obtained.
+/// Struct `ERLPBoost` has 3 main parameters.
+///     - `dist` is the distribution over training examples,
+///     - `weights` is the weights over `classifiers` that the ERLPBoost obtained up to iteration `t`.
+///     - `classifiers` is the classifier that the ERLPBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct ERLPBoost<D, L> {
     pub dist: Vec<f64>,
@@ -198,7 +198,6 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
                 acc += d * example.label * h.predict(&example.data);
                 acc
             });
-        dbg!(edge);
 
         if self.gamma_hat > edge {
             self.gamma_hat = edge;
