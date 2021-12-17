@@ -1,29 +1,42 @@
 # boost
 A collection of boosting algorithms written in Rust
 
+
+In this code, I use the [Gurobi optimizer](https://www.gurobi.com).
+You need to acquire the license if you want to use TotalBoost, LPBoost, ERLPBoost, and SoftBoost.
+I'm planning to write code that solves linear and quadratic programming.
+
 ## What I wrote:
 
 - Boosters
-    - [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub)
-    - [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html)
-    - [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf)
-    - [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf)
+    - Empirical Risk Minimization
+        - [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub)
+        - [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html)
+    - Hard Margin Maximization
+        - [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970)
+    - Soft Margin Maximization
+        - [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf)
+        - [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf)
+        - [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf)
 
 
 - Base Learner
-    - Decision stump
+    - Decision stump class
 
 ## What I will write:
 
 - Booster
-  - SoftBoost
-  - TotalBoost
+    - LogitBoost
+    - [Corrective ERLPBoost](https://core.ac.uk/download/pdf/207934763.pdf)
 
 - Base Learner
   - Decision tree
   - Bag of words
 
-I'm planning to implement the other boosting algorithms in the future.
+
+- Some test code for `TotalBoost`, `SoftBoost`.
+
+I'm also planning to implement the other boosting algorithms in the future.
 
 
 ## How to use
@@ -62,12 +75,21 @@ fn main() {
     adaboost.run(dstump, &sample, accuracy);
 
 
-    for i in 0..sample.len() {
-        let data  = &sample[i].data;
-        let label = sample[i].label;
+    for example in sample.iter() {
+        let data  = &example.data;
+        let label =  example.label;
 
         // Check the predictions
         assert_eq!(adaboost.predict(data), label);
     }
 }
 ```
+
+
+If you use soft margin maximizing boosting, initialize booster like this:
+```rust
+let capping_param = sample.len() as f64 * 0.2;
+let lpboost = LPBoost::init(&sample).capping(capping_param)
+```
+
+Note that the capping parameter satisfies `0 <= capping_param && capping_param <= m`.
