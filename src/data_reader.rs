@@ -46,12 +46,62 @@ pub fn read_libsvm<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
 
 
     let sample = examples.into_iter()
-                         .map(|data| Data::Sparse(data))
-                         .zip(labels)
-                         .map(|(data, label)| LabeledData {data, label})
-                         .collect::<Vec<LabeledData<D, L>>>();
+        .map(|data| Data::Sparse(data))
+        .zip(labels)
+        .map(|(data, label)| LabeledData {data, label})
+        .collect::<Vec<LabeledData<D, L>>>();
 
     let dtype  = DType::Sparse;
+
+    let sample = Sample { sample, dtype };
+
+    Ok(sample)
+}
+
+
+
+/// The function `read_csv` reads file with CSV format.
+/// Each row (data) must have the following form:
+///     label,feature_1,feature_2,...,feature_d
+pub fn read_csv<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
+    where P: AsRef<Path>,
+          D: FromStr,
+          <D as FromStr>::Err: std::fmt::Debug,
+          L: FromStr,
+          <L as FromStr>::Err: std::fmt::Debug
+{
+    let path = path_arg.as_ref();
+
+    let mut file = File::open(path)?;
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    let mut labels: Vec<L> = Vec::new();
+    let mut examples: Vec<Vec<D>> = Vec::new();
+
+    for line in contents.lines() {
+        let mut line = line.split(",");
+
+        labels.push(
+            line.next().unwrap().trim().parse::<L>().unwrap()
+        );
+
+        let _example = line.map(|s| -> D {
+            s.trim().parse::<_>().unwrap()
+        }).collect::<Vec<_>>();
+
+        examples.push(_example);
+    }
+
+
+    let sample = examples.into_iter()
+        .map(|data| Data::Dense(data))
+        .zip(labels)
+        .map(|(data, label)| LabeledData {data, label})
+        .collect::<Vec<LabeledData<D, L>>>();
+
+    let dtype  = DType::Dense;
 
     let sample = Sample { sample, dtype };
 

@@ -13,6 +13,6 @@ pub trait Classifier<D, L> {
 
 
 pub trait BaseLearner<D, L> {
-    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64]) -> Box<dyn Classifier<D,L>>;
+    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64]) -> Box<dyn Classifier<D, L>>;
 }
 

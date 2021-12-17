@@ -39,12 +39,35 @@ impl<D, L> ERLPBoost<D, L> {
 
         env.set(param::OutputFlag, 0).unwrap();
 
-        // TODO: find a proper initial value for `self.gamma_hat`
+        // Set uni as an uniform weight
         let uni = 1.0 / m as f64;
-        let gamma_hat = 1.0 + (m as f64).ln();
+
+        // Compute $\ln(m)$ in advance
+        let ln_m = (m as f64).ln();
+
+
+        // Set eps, sub_eps
+        let eps = uni;
+        let sub_eps = uni / 10.0;
+
+
+        // Set regularization parameter
+        let mut eta = 1.0 / 2.0;
+        let temp = 2.0 * ln_m / eps;
+
+        if eta < temp {
+            eta = temp;
+        }
+
+        // Set gamma_hat
+        let gamma_hat = 1.0 + (ln_m / eta);
+        let gamma_star = 0.0;
+
+
         ERLPBoost {
-            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(), gamma_hat, gamma_star: 0.0, eps: 1.0, sub_eps: 1.0,
-            eta: 1.0, capping_param: 1.0, grb_env: env
+            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(),
+            gamma_hat, gamma_star, eps, sub_eps,
+            eta, capping_param: 1.0, grb_env: env
         }
     }
 
@@ -57,24 +80,24 @@ impl<D, L> ERLPBoost<D, L> {
         self
     }
 
-    pub fn precision(mut self, eps: f64) -> Self {
+
+    fn precision(&mut self, eps: f64) {
         self.eps = eps;
         self.sub_eps = eps / 10.0;
-        self.regularization_param()
+        self.regularization_param();
     }
 
 
-    fn regularization_param(mut self) -> Self {
-        let m = self.dist.len() as f64;
+    fn regularization_param(&mut self) {
+        let ln_m = (self.dist.len() as f64).ln();
         self.eta = 1.0 / 2.0;
-        let temp = 2.0 * m.ln() / self.eps;
+        let temp = 2.0 * ln_m / self.eps;
 
         if self.eta < temp {
             self.eta = temp;
         }
 
-        self.gamma_hat = 1.0 + (m.ln() / self.eta);
-        self
+        self.gamma_hat = 1.0 + (ln_m / self.eta);
     }
 
 
@@ -83,7 +106,7 @@ impl<D, L> ERLPBoost<D, L> {
     /// that has error at most `eps`.
     pub fn max_loop(&mut self, eps: f64) -> u64 {
         if self.eps != eps {
-            self.eps = eps;
+            self.precision(eps);
         }
 
         let m = self.dist.len();
@@ -99,6 +122,7 @@ impl<D, L> ERLPBoost<D, L> {
         max_iter.ceil() as u64
     }
 }
+
 
 impl<D> ERLPBoost<D, f64> {
     fn set_weights(&mut self, sample: &Sample<D, f64>) -> Result<(), grb::Error> {
@@ -130,12 +154,12 @@ impl<D> ERLPBoost<D, f64> {
         model.add_constr(
             &"sum_is_1", c!(ws.iter().grb_sum() == 1.0)
         )?;
-
         model.update()?;
 
 
         // Set the objective function
-        model.set_objective(rho, Maximize)?;
+        let objective = rho - (1.0 / self.capping_param) * xi.iter().grb_sum();
+        model.set_objective(objective, Maximize)?;
         model.update()?;
 
 
@@ -174,6 +198,8 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
                 acc += d * example.label * h.predict(&example.data);
                 acc
             });
+        dbg!(edge);
+
         if self.gamma_hat > edge {
             self.gamma_hat = edge;
         }
@@ -212,7 +238,7 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
                 let expr = sample.iter()
                     .zip(self.dist.iter())
                     .zip(vars.iter())
-                    .map(|((ex, d), v)| ex.label * h.predict(&ex.data) * (*d * *v))
+                    .map(|((ex, d), v)| ex.label * h.predict(&ex.data) * (*d + *v))
                     .grb_sum();
 
                 model.add_constr(&"", c!(expr <= gamma)).unwrap();
@@ -260,9 +286,9 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
             let l2 = l2.sqrt();
 
             if l2 < self.sub_eps {
+                self.gamma_star = model.get_attr(attr::ObjVal).unwrap();
                 break;
             }
-
         }
 
 

@@ -113,12 +113,12 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
     fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
         let max_loop = self.max_loop(eps);
-        dbg!(format!("max_loop: {}", max_loop));
-    
+        println!("max_loop: {}", max_loop);
+
         for _t in 1..=max_loop {
             let h = base_learner.best_hypothesis(sample, &self.dist);
             if let None = self.update_params(h, sample) {
-                println!("Break loop at: {}", _t);
+                println!("Break loop after: {} iterations", _t);
                 break;
             }
         }
