@@ -10,10 +10,10 @@ use grb::prelude::*;
 
 
 
-/// Struct `LPBoost` has 3 parameters.
-/// `dist` is the distribution over training examples,
-/// `weights` is the weights over `classifiers` that the LPBoost obtained up to iteration `t`.
-/// `classifiers` is the classifier that the LPBoost obtained.
+/// Struct `LPBoost` has 3 main parameters.
+///     - `dist` is the distribution over training examples,
+///     - `weights` is the weights over `classifiers` that the LPBoost obtained up to iteration `t`.
+///     - `classifiers` is the classifier that the LPBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct LPBoost<D, L> {
     pub dist: Vec<f64>,
@@ -87,22 +87,27 @@ impl<D, L> LPBoost<D, L> {
         let ub = 1.0 / capping_param;
         let m = self.grb_vars.len();
 
+        // Initialize GRBModel
         let mut env = Env::new("").unwrap();
-
         env.set(param::OutputFlag, 0).unwrap();
         let mut grb_model = Model::with_env("", env).unwrap();
 
+        // Initialize GRBVars
+        self.grb_gamma = add_ctsvar!(grb_model, name: &"gamma", bounds: ..).unwrap();
         self.grb_vars = (0..m).into_iter()
             .map(|i| add_ctsvar!(grb_model, name: &format!("grb_vars[{}]", i), bounds: 0.0..ub).unwrap())
             .collect::<Vec<Var>>();
         self.grb_model = grb_model;
 
+
+        // Set GRBConstraint
         let constr = self.grb_model.add_constr(
             &"sum_is_1", c!(self.grb_vars.iter().grb_sum() == 1.0)
         ).unwrap();
-
         self.grb_constrs[0] = constr;
 
+
+        // Set objective
         self.grb_model.set_objective(self.grb_gamma, Minimize).unwrap();
         self.grb_model.update().unwrap();
 
