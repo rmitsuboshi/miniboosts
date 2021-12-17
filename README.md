@@ -88,7 +88,8 @@ fn main() {
 
 If you use soft margin maximizing boosting, initialize booster like this:
 ```rust
-let capping_param = sample.len() as f64 * 0.2;
+let m = sample.len() as f64;
+let capping_param = m * 0.2;
 let lpboost = LPBoost::init(&sample).capping(capping_param)
 ```
 
