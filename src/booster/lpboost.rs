@@ -61,7 +61,7 @@ impl<D, L> LPBoost<D, L> {
 
         let uni = 1.0 / m as f64;
         LPBoost {
-            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(), gamma_hat: 1.0, eps: 1.0,
+            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(), gamma_hat: 1.0, eps: uni,
             grb_model, grb_vars, grb_gamma, grb_constrs
         }
     }
@@ -94,6 +94,7 @@ impl<D, L> LPBoost<D, L> {
 
         self
     }
+
 
     pub fn precision(mut self, eps: f64) -> Self {
         self.eps = eps;
@@ -157,7 +158,7 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
 
         // Check the stopping criterion.
         let gamma_star = self.grb_model.get_obj_attr(attr::X, &self.grb_gamma).unwrap();
-        if self.gamma_hat >= gamma_star - self.eps {
+        if gamma_star >= self.gamma_hat - self.eps {
             self.weights = self.grb_constrs[1..].iter()
                 .map(|constr| self.grb_model.get_obj_attr(attr::Pi, constr).unwrap().abs())
                 .collect::<Vec<f64>>();
