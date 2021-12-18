@@ -1,11 +1,13 @@
 use crate::data_type::{DType, Data, Label, Sample};
 use crate::base_learner::core::BaseLearner;
 use crate::base_learner::core::Classifier;
+
+use std::hash::{Hash, Hasher};
 use std::collections::HashSet;
 
 
 
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 enum PositiveSide { RHS, LHS }
 
 
@@ -13,11 +15,38 @@ enum PositiveSide { RHS, LHS }
 /// Given a point over the `d`-dimensional space,
 /// A classifier predicts its label as
 /// sgn(x[i] - b), where b is the some intercept.
-#[derive(PartialEq, Clone)]
+#[derive(Clone)]
 pub struct DStumpClassifier {
     threshold: f64,
     feature_index: usize,
     positive_side: PositiveSide
+}
+
+
+impl PartialEq for DStumpClassifier {
+    fn eq(&self, other: &Self) -> bool {
+        if self.positive_side == other.positive_side {
+            return false;
+        }
+
+        if self.feature_index == other.feature_index {
+            return false;
+        }
+
+        return self.threshold.to_string() == other.threshold.to_string();
+    }
+}
+
+
+impl Eq for DStumpClassifier {}
+
+
+impl Hash for DStumpClassifier {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.threshold.to_string().hash(state);
+        self.feature_index.hash(state);
+        self.positive_side.hash(state);
+    }
 }
 
 
