@@ -5,4 +5,4 @@ pub mod base_learner;
 
 
 // Export functions that reads file with some format.
-pub use data_type::{read_csv, read_libsvm};
+pub use data_reader::{read_csv, read_libsvm};
