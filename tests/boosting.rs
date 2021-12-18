@@ -6,7 +6,7 @@ use boost::booster::Booster;
 use boost::booster::{AdaBoost, LPBoost, ERLPBoost, SoftBoost};
 use boost::base_learner::DStump;
 
-use boost::data_reader::{read_libsvm, read_csv};
+use boost:::{read_libsvm, read_csv};
 
 
 /// Tests for `AdaBoost`.
