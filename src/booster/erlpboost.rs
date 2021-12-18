@@ -89,7 +89,7 @@ impl<D, L> ERLPBoost<D, L> {
 
 
     fn regularization_param(&mut self) {
-        let ln_m = (self.dist.len() as f64).ln();
+        let ln_m = (self.dist.len() as f64 / self.capping_param).ln();
         self.eta = 1.0 / 2.0;
         let temp = 2.0 * ln_m / self.eps;
 

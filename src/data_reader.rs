@@ -8,6 +8,8 @@ use std::fs::File;
 
 
 /// The function `read_libsvm` reads file with LIBSVM format.
+/// The format must has the following form:
+///     label index1:value1 index2:value2 ...
 /// Note that since the LIBSVM format is 1-indexed,
 /// we subtract `1_usize` to become 0-indexed
 pub fn read_libsvm<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
@@ -62,7 +64,7 @@ pub fn read_libsvm<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
 
 /// The function `read_csv` reads file with CSV format.
 /// Each row (data) must have the following form:
-///     label,feature_1,feature_2,...,feature_d
+///     label,feature_1,feature_2, ...
 pub fn read_csv<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
     where P: AsRef<Path>,
           D: FromStr,
@@ -107,3 +109,6 @@ pub fn read_csv<P, D, L>(path_arg: P) -> io::Result<Sample<D, L>>
 
     Ok(sample)
 }
+
+
+

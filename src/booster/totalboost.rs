@@ -10,7 +10,7 @@ use crate::base_learner::core::BaseLearner;
 use super::softboost::SoftBoost;
 
 
-/// Since we can regard TotalBoost as a special case of SoftBoost (capping param is 1.0),
+/// Since we can regard TotalBoost as a special case of SoftBoost (with capping param is 1.0),
 /// so that we use it.
 pub struct TotalBoost<D, L> {
     softboost: SoftBoost<D, L>

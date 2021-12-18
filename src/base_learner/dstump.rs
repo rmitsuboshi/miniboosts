@@ -5,11 +5,15 @@ use std::collections::HashSet;
 
 
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Clone)]
 enum PositiveSide { RHS, LHS }
 
 
-#[derive(PartialEq)]
+/// The struct `DStumpClassifier` defines the decision stump class.
+/// Given a point over the `d`-dimensional space,
+/// A classifier predicts its label as
+/// sgn(x[i] - b), where b is the some intercept.
+#[derive(PartialEq, Clone)]
 pub struct DStumpClassifier {
     threshold: f64,
     feature_index: usize,
@@ -35,9 +39,11 @@ impl Classifier<f64, f64> for DStumpClassifier {
 }
 
 
+/// For clarity, we define an alias.
 type FeatureIndex = Vec<usize>;
 
-
+/// The struct `DStump` generates a `DStumpClassifier`
+/// for each call of `self.best_hypothesis(..)`.
 pub struct DStump {
     pub sample_size: usize,  // Number of training examples
     pub feature_size: usize, // Number of features per example

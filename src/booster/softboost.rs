@@ -13,7 +13,7 @@ use grb::prelude::*;
 /// Struct `SoftBoost` has 3 main parameters.
 ///     - `dist` is the distribution over training examples,
 ///     - `weights` is the weights over `classifiers` that the SoftBoost obtained up to iteration `t`.
-///     - `classifiers` is the classifier that the SoftBoost obtained.
+///     - `classifiers` is the classifiers that the SoftBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct SoftBoost<D, L> {
     pub dist: Vec<f64>,
