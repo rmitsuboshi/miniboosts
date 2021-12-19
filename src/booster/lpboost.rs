@@ -21,7 +21,7 @@ pub struct LPBoost<D, L> {
     pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
 
     // These are the parameters used in the `update_param(..)`
-    gamma_hat: f64,
+    pub gamma_hat: f64,
     eps: f64,
     // Variables for the Gurobi optimizer
     grb_model: Model,

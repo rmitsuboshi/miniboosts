@@ -19,7 +19,7 @@ pub struct ERLPBoost<D, L> {
     pub dist: Vec<f64>,
     pub weights: Vec<f64>,
     pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
-    gamma_hat: f64,  // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
+    pub gamma_hat: f64,  // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
     gamma_star: f64, // `gamma_star` corresponds to $P^{t-1} (d^{t-1})
     eta: f64, // `eta` is the regularization parameter defined in the paper
 

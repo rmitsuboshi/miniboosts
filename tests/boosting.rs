@@ -6,7 +6,7 @@ use boost::booster::Booster;
 use boost::booster::{AdaBoost, LPBoost, ERLPBoost, SoftBoost};
 use boost::base_learner::DStump;
 
-use boost:::{read_libsvm, read_csv};
+use boost::{read_libsvm, read_csv};
 
 
 /// Tests for `AdaBoost`.
@@ -158,6 +158,24 @@ pub mod lpboost_tests {
         loss /= sample.len() as f64;
         println!("Loss: {}", loss);
         assert!((1.0 - lpboost.weights.iter().sum::<f64>().abs()) < 1e-9);
+    }
+
+
+    #[test]
+    fn run_with_libsvm_german() {
+        let path = "/Users/ryotaroMitsuboshi/Documents/Datasets/german.libsvm";
+        let sample = read_libsvm(path).unwrap();
+        println!("sample.len() is: {:?}, sample.feature_len() is: {:?}", sample.len(), sample.feature_len());
+
+
+        let cap = sample.len() as f64 * 0.8;
+        let mut lpboost = LPBoost::init(&sample).capping(cap);
+        let dstump = DStump::init(&sample);
+        let dstump = Box::new(dstump);
+
+
+        lpboost.run(dstump, &sample, 0.01);
+        println!("Optimal value: {}", lpboost.gamma_hat);
     }
 }
 

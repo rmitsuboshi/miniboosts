@@ -2,12 +2,11 @@ use crate::data_type::{DType, Data, Label, Sample};
 use crate::base_learner::core::BaseLearner;
 use crate::base_learner::core::Classifier;
 
-use std::hash::{Hash, Hasher};
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 
-
-#[derive(Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 enum PositiveSide { RHS, LHS }
 
 
@@ -15,35 +14,29 @@ enum PositiveSide { RHS, LHS }
 /// Given a point over the `d`-dimensional space,
 /// A classifier predicts its label as
 /// sgn(x[i] - b), where b is the some intercept.
-#[derive(Clone)]
 pub struct DStumpClassifier {
-    threshold: f64,
-    feature_index: usize,
-    positive_side: PositiveSide
+    pub(self) threshold: f64,
+    pub(self) feature_index: usize,
+    pub(self) positive_side: PositiveSide
 }
 
 
 impl PartialEq for DStumpClassifier {
     fn eq(&self, other: &Self) -> bool {
-        if self.positive_side == other.positive_side {
-            return false;
-        }
+        let v1: u64 = unsafe { std::mem::transmute( self.threshold) };
+        let v2: u64 = unsafe { std::mem::transmute(other.threshold) };
 
-        if self.feature_index == other.feature_index {
-            return false;
-        }
-
-        return self.threshold.to_string() == other.threshold.to_string();
+        v1 == v2 && self.feature_index == other.feature_index && self.positive_side == other.positive_side
     }
 }
 
 
 impl Eq for DStumpClassifier {}
 
-
 impl Hash for DStumpClassifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.threshold.to_string().hash(state);
+        let v: u64 = unsafe { std::mem::transmute(self.threshold) };
+        v.hash(state);
         self.feature_index.hash(state);
         self.positive_side.hash(state);
     }
@@ -268,5 +261,47 @@ impl BaseLearner<f64, f64> for DStump {
     }
 }
 
+// /// Since struct `DStumpClassifier` has an element that does not implement the `Eq` trait,
+// /// We cannot use `DStumpClassifier` as a key of `HashMap`.
+// /// `HashableDStumpClassifier` is the struct that separates `threshold` into
+// /// the fractional and integral part.
 
-
+// type Mantissa = u64;
+// type Exponent = i16;
+// type Sign     = i8;
+// 
+// #[derive(Debug, PartialEq, Eq, Hash)]
+// struct HashableDStumpClassifier {
+//     mantissa_exp:  (u64, i16, i8),
+//     feature_index: usize,
+//     positive_side: PositiveSide
+// }
+// 
+// 
+// use std::convert::From;
+// 
+// /// Convert `DStumpClassifier` to `HashableDStumpClassifier`
+// impl From<DStumpClassifier> for HashableDStumpClassifier {
+//     fn from(dstump: DStumpClassifier) -> Self {
+//         let mantissa_exp = integer_decode(dstump.threshold);
+//         HashableDStumpClassifier {
+//             mantissa_exp, feature_index: dstump.feature_index, positive_side: dstump.positive_side
+//         }
+//     }
+// }
+// 
+// 
+// fn integer_decode(val: f64) -> (Mantissa, Exponent, Sign) {
+//     use std::mem;
+//     let bits: u64 = unsafe { mem::transmute(val) };
+//     let sign: i8 = if bits >> 63 == 0 { 1 } else { -1 };
+//     let mut exponent: i16 = ((bits >> 52) & 0x7ff) as i16;
+//     let mantissa = if exponent == 0 {
+//         (bits & 0xfffffffffffff) << 1
+//     } else {
+//         (bits & 0xfffffffffffff) | 0x10000000000000
+//     };
+// 
+//     exponent -= 1023 + 52;
+//     (mantissa, exponent, sign)
+// }
