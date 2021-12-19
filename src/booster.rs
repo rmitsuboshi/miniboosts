@@ -2,6 +2,7 @@ pub mod core;
 pub mod adaboost;
 pub mod adaboostv;
 pub mod lpboost;
+// pub mod cerlpboost;
 pub mod erlpboost;
 pub mod softboost;
 pub mod totalboost;

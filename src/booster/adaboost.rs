@@ -4,7 +4,6 @@ use crate::base_learner::core::Classifier;
 use crate::base_learner::core::BaseLearner;
 
 
-
 /// Struct `AdaBoost` has 3 parameters.
 /// `dist` is the distribution over training examples,
 /// `weights` is the weights over `classifiers` that the AdaBoost obtained up to iteration `t`.
