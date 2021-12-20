@@ -1,4 +1,4 @@
-# boost
+# Lycaon
 A collection of boosting algorithms written in Rust
 
 

@@ -1,6 +1,6 @@
-extern crate boost;
+extern crate lycaon;
 
-use boost::data_type::*;
+use lycaon::data_type::*;
 
 
 #[test]

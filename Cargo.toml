@@ -1,5 +1,5 @@
 [package]
-name = "boost"
+name = "lycaon"
 version = "0.1.0"
 authors = ["rmitsuboshi <>"]
 edition = "2021"

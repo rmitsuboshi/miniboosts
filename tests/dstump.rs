@@ -1,11 +1,11 @@
-extern crate boost;
+extern crate lycaon;
 
 use std::collections::HashMap;
 
-use boost::data_type::*;
+use lycaon::data_type::*;
 
-use boost::base_learner::core::BaseLearner;
-use boost::base_learner::dstump::DStump;
+use lycaon::base_learner::core::BaseLearner;
+use lycaon::base_learner::dstump::DStump;
 
 
 #[test]
