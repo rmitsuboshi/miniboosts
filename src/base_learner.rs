@@ -4,4 +4,4 @@ pub mod dstump;
 // pub mod ltf;
 
 pub use self::core::{BaseLearner, Classifier};
-pub use self::dstump::{DStump, DStumpClassifier};
+pub use dstump::{DStump, DStumpClassifier};
