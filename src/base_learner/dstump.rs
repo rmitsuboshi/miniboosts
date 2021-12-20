@@ -15,9 +15,9 @@ pub enum PositiveSide { RHS, LHS }
 /// A classifier predicts its label as
 /// sgn(x[i] - b), where b is the some intercept.
 pub struct DStumpClassifier {
-    pub(self) threshold: f64,
-    pub(self) feature_index: usize,
-    pub(self) positive_side: PositiveSide
+    pub threshold: f64,
+    pub feature_index: usize,
+    pub positive_side: PositiveSide
 }
 
 
