@@ -28,7 +28,7 @@ impl<D: Clone + Default> Data<D> {
 }
 
 
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DType {
     Sparse,
     Dense
