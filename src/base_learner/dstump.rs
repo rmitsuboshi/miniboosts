@@ -7,7 +7,7 @@ use std::hash::{Hash, Hasher};
 
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
-enum PositiveSide { RHS, LHS }
+pub enum PositiveSide { RHS, LHS }
 
 
 /// The struct `DStumpClassifier` defines the decision stump class.
