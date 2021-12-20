@@ -30,6 +30,9 @@ fn test() {
     assert_eq!(sample[2].data.value_at(1), 9.0);
     assert_eq!(sample[3].data.value_at(1), 6.0);
 
+
+    assert!(sample.dtype == DType::Dense);
+
     // let expected = vec![
     //     (Data::Dense(vec![0.0, 1.0]),  1.0),
     //     (Data::Dense(vec![2.0, 1.0]), -1.0),
