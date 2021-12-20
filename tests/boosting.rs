@@ -1,12 +1,12 @@
-extern crate boost;
+extern crate lycaon;
 
 use std::env;
 
-use boost::booster::Booster;
-use boost::booster::{AdaBoost, LPBoost, ERLPBoost, SoftBoost};
-use boost::base_learner::DStump;
+use lycaon::booster::Booster;
+use lycaon::booster::{AdaBoost, LPBoost, ERLPBoost, SoftBoost};
+use lycaon::base_learner::DStump;
 
-use boost::{read_libsvm, read_csv};
+use lycaon::{read_libsvm, read_csv};
 
 
 /// Tests for `AdaBoost`.
