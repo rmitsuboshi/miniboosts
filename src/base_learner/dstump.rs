@@ -227,7 +227,7 @@ impl BaseLearner<f64, f64> for DStump {
                             sample[i].data.value_at(j)
                         };
 
-                        if left * right < 0.0 {
+                        if left * right < 0.0 && sample.dtype == DType::Sparse {
                             update_params(&mut best_edge, edge, left / 2.0, j);
 
                             edge -= 2.0 * zero_value;
@@ -236,7 +236,7 @@ impl BaseLearner<f64, f64> for DStump {
                         update_params(&mut best_edge, edge, (left + right) / 2.0, j);
                     },
                     None => {
-                        if left < 0.0 {
+                        if left < 0.0 && sample.dtype == DType::Sparse {
                             update_params(&mut best_edge, edge, left / 2.0, j);
 
                             edge -= 2.0 * zero_value;
