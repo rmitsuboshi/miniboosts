@@ -155,11 +155,18 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
     /// that the algorithm obtained at current iteration.
     fn update_params(&mut self, h: Box<dyn Classifier<D, f64>>, sample: &Sample<D, f64>) -> Option<()> {
 
+        // assert!((1.0 - self.dist.iter().sum::<f64>()).abs() < 1.0 + 1e-9);
+
+        // for &d in self.dist.iter() {
+        //     let cap = 1.0 / self.capping_param;
+        //     assert!(0.0 <= d && d <= cap);
+        // }
+
 
         // update `self.gamma_hat`
         let edge = self.dist.iter()
             .zip(sample.iter())
-            .fold(0.0_f64, |mut acc, (d, example)| {
+            .fold(0.0_f64, |mut acc, (&d, example)| {
                 acc += d * example.label * h.predict(&example.data);
                 acc
             });
@@ -179,22 +186,24 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
 
 
             // Set variables that are used in the optimization problem
-            let ub = 1.0 / self.capping_param;
+            let cap = 1.0 / self.capping_param;
 
             let vars = self.dist.iter()
-                .map(|&d| add_ctsvar!(
-                    model, name: &"", bounds: -d..ub-d
-                ).unwrap())
+                .map(|&d| {
+                    let lb = - d;
+                    let ub = cap - d;
+                    add_ctsvar!(model, name: &"", bounds: lb..ub).unwrap()
+                })
                 .collect::<Vec<Var>>();
-
             model.update().unwrap();
+
 
             // Set constraints
             for h in self.classifiers.iter() {
                 let expr = sample.iter()
                     .zip(self.dist.iter())
                     .zip(vars.iter())
-                    .map(|((ex, d), v)| ex.label * h.predict(&ex.data) * (*d + *v))
+                    .map(|((ex, &d), v)| ex.label * h.predict(&ex.data) * (d + *v))
                     .grb_sum();
 
                 model.add_constr(&"", c!(expr <= self.gamma_hat - self.eps)).unwrap();
@@ -225,7 +234,7 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
             let status = model.status().unwrap();
             // If the status is `Status::Infeasible`,
             // it implies that the `eps`-optimality of the previous solution
-            if status == Status::Infeasible {
+            if status == Status::Infeasible || status == Status::InfOrUnbd {
                 return None;
             }
 
@@ -233,8 +242,7 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
             // At this point, the status is not `Status::Infeasible`.
             // Therefore, if the status is not `Status::Optimal`, then something wrong.
             if status != Status::Optimal {
-                println!("Status is {:?}. something wrong.", status);
-                return None;
+                panic!("Status is {:?}. something wrong.", status);
             }
 
 
