@@ -192,7 +192,8 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
     }
 
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
+    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
         if self.eps != eps {
             self.precision(eps);
         }

@@ -35,6 +35,8 @@ impl Eq for DStumpClassifier {}
 
 impl Hash for DStumpClassifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // TODO FIX BUG in this line
+        // this unsafe does not work as expected.
         let v: u64 = unsafe { std::mem::transmute(self.threshold) };
         v.hash(state);
         self.feature_index.hash(state);
@@ -61,8 +63,10 @@ impl Classifier<f64, f64> for DStumpClassifier {
 }
 
 
-/// For clarity, we define an alias.
-type FeatureIndex = Vec<usize>;
+/// For clarity, we define aliases.
+type IndicesByValue = Vec<usize>;
+type FeatureIndex = Vec<IndicesByValue>;
+// type FeatureIndex = Vec<usize>;
 
 /// The struct `DStump` generates a `DStumpClassifier`
 /// for each call of `self.best_hypothesis(..)`.
@@ -80,42 +84,53 @@ impl DStump {
 
 
     pub fn init(sample: &Sample<f64, f64>) -> DStump {
-        let sample_size = sample.len();
+        let sample_size  = sample.len();
         let feature_size = sample.feature_len();
 
 
-        let mut indices = Vec::with_capacity(feature_size);
-        match sample.dtype {
-            DType::Sparse => {
-                for j in 0..feature_size {
-                    let mut _vals: Vec<(f64, usize)> = Vec::with_capacity(sample_size);
-                    for i in 0..sample_size {
-                        let _data = &sample[i].data;
-                        let _v = _data.value_at(j);
-                        if _v != 0.0 {
-                            _vals.push((_v, i));
-                        }
-                    }
-                    _vals.sort_by(|_a, _b| _a.0.partial_cmp(&_b.0).unwrap());
-                    let _index = _vals.iter()
-                                      .map(|tuple| tuple.1)
-                                      .collect::<Vec<usize>>();
-                    indices.push(_index);
+        let mut indices: Vec<FeatureIndex> = Vec::with_capacity(feature_size);
+        for j in 0..feature_size {
+            let mut vals = match sample.dtype {
+                DType::Sparse => {
+                    sample.iter().enumerate()
+                        .filter_map(|(i, ex)| {
+                                let v = ex.data.value_at(j);
+                                if v != 0.0 { Some((i, v)) } else { None }
+                                })
+                        .collect::<Vec<(usize, f64)>>()
+                },
+                DType::Dense => {
+                    sample.iter()
+                        .enumerate()
+                        .map(|(i, ex)| (i, ex.data.value_at(j)))
+                        .collect::<Vec<(usize, f64)>>()
                 }
-            },
+            };
+            vals.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-            DType::Dense => {
-                for j in 0..feature_size {
-                    let vals = sample.iter()
-                        .map(|example| example.data.value_at(j))
-                        .collect::<Vec<f64>>();
+            let mut vals = vals.into_iter();
 
-                    let mut _index = (0..sample_size).collect::<Vec<usize>>();
-                    _index.sort_unstable_by(|&ii, &jj| vals[ii].partial_cmp(&vals[jj]).unwrap());
-
-                    indices.push(_index);
+            // Group the indices by j'th value
+            let mut temp: Vec<usize>;
+            let mut v;
+            {
+                let (i, _v) = vals.next().unwrap();
+                temp = vec![i];
+                v = _v;
+            }
+            let mut index: Vec<IndicesByValue> = Vec::new();
+            while let Some((i, vv)) = vals.next() {
+                if vv == v {
+                    temp.push(i);
+                } else {
+                    v = vv;
+                    index.push(temp);
+                    temp = vec![i];
                 }
             }
+            index.push(temp);
+
+            indices.push(index);
         }
 
         // Construct DStump
@@ -123,19 +138,20 @@ impl DStump {
     }
 }
 
+
+
 impl BaseLearner<f64, f64> for DStump {
     fn best_hypothesis(&self, sample: &Sample<f64, f64>, distribution: &[f64]) -> Box<dyn Classifier<f64, f64>> {
         let init_edge = distribution.iter()
             .zip(sample.iter())
-            .fold(0.0, |mut acc, (d, example)| {
-                acc += d * example.label;
-                acc
-            });
+            .fold(0.0, |acc, (d, example)| acc + d * example.label);
 
-        let mut best_edge = init_edge;
+        let mut best_edge = f64::MIN;
 
+        // This is the output of this function.
+        // Initialize with some init value.
         let mut dstump_classifier = DStumpClassifier {
-            threshold: sample[self.indices[0][0]].data.value_at(0) - 1.0,
+            threshold: sample[self.indices[0][0][0]].data.value_at(0) - 1.0,
             feature_index: 0_usize,
             positive_side: PositiveSide::RHS
         };
@@ -154,109 +170,86 @@ impl BaseLearner<f64, f64> for DStump {
             }
         };
 
-        match sample.dtype {
+
+        let zero_value = match sample.dtype {
+            DType::Dense => 0.0,
             DType::Sparse => {
-                for j in 0..self.feature_size {
-                    let mut edge = init_edge;
+                let index = &self.indices[0];
+                let idx = index.iter().flatten().collect::<HashSet<_>>();
 
-                    let zero_value = {
-                        let mut _zero_values = 0.0;
-                        let _idx = self.indices[j].iter().collect::<HashSet<&usize>>();
-                        for _i in 0..self.sample_size {
-                            if !_idx.contains(&_i) {
-                                let _label = sample[_i].label;
-                                _zero_values += _label * distribution[_i];
-                            }
-                        }
-                        _zero_values
-                    };
+                sample.iter()
+                    .zip(distribution.iter())
+                    .enumerate()
+                    .fold(0.0, |acc, (i, (ex, &d))| {
+                            if idx.contains(&i) { acc } else { acc + ex.label * d }
+                    })
+            }
+        };
 
+        for (j, index) in self.indices.iter().enumerate() {
+            let mut edge = init_edge;
 
-                    let mut left: f64;
-                    let mut right = sample[self.indices[j][0]].data.value_at(j);
-
-                    let mut idx = self.indices[j].iter().peekable();
-
-                    let mut still_negative = right < 0.0;
-                    while let Some(&i) = idx.next() {
-                        let data  = &sample[i].data;
-                        let label = &sample[i].label;
+            let mut index = index.iter().peekable();
+            let mut right = {
+                let idx = index.peek().unwrap();
+                let i   = idx[0];
+                sample[i].data.value_at(j)
+            };
+            let mut left;
 
 
-                        if still_negative && data.value_at(i) > 0.0 {
-                            still_negative = false;
-                            left = right;
-                            right = 0.0;
+            // All values are non-negative
+            if right > 0.0 {
+                //                          right
+                //          0.0         (first value)
+                //           v                v
+                // ----------|----------------|-------------->
+                //                   ^                       R
+                //              threshold
+
+                edge -= 2.0 * zero_value;
+                update_params(&mut best_edge, edge, right / 2.0, j);
+            }
+
+            while let Some(idx) = index.next() {
+                let temp = idx.iter()
+                    .fold(0.0, |acc, &i| acc + distribution[i] * sample[i].label);
+
+                edge -= 2.0 * temp;
+
+                left = right;
+                match index.peek() {
+                    Some(next_index) => {
+                        right = {
+                            let i = next_index[0];
+                            sample[i].data.value_at(j)
+                        };
+
+                        if left * right < 0.0 {
+                            update_params(&mut best_edge, edge, left / 2.0, j);
 
                             edge -= 2.0 * zero_value;
-
-                            let threshold = (left + right) / 2.0;
-                            update_params(&mut best_edge, edge, threshold, j);
+                            left = 0.0;
                         }
+                        update_params(&mut best_edge, edge, (left + right) / 2.0, j);
+                    },
+                    None => {
+                        if left < 0.0 {
+                            update_params(&mut best_edge, edge, left / 2.0, j);
 
-                        edge -= 2.0 * distribution[i] * label;
-
-
-                        left = right;
-                        if let Some(&&i_next) = idx.peek() {
-                            let next_data = &sample[i_next].data;
-                            if right == next_data.value_at(j) {
-                                continue;
-                            }
-                            right = next_data.value_at(j);
+                            edge -= 2.0 * zero_value;
+                            left  = 0.0;
+                            right = 2.0;
                         } else {
-                            right = data.value_at(j) + 1.0;
+                            right = left + 2.0;
                         }
-
-
-                        let threshold = (left + right) / 2.0;
-                        update_params(&mut best_edge, edge, threshold, j);
-                    }
-
-                    if still_negative {
-                        left = right;
-                        right = 0.0;
-
-                        edge -= 2.0 * zero_value;
-
-                        let threshold = (left + right) / 2.0;
-                        update_params(&mut best_edge, edge, threshold, j);
+                        update_params(&mut best_edge, edge, (left + right) / 2.0, j);
                     }
                 }
-            },
-            DType::Dense => {
-                for j in 0..self.feature_size {
-                    let mut edge = init_edge;
-
-
-                    let mut left;
-                    let mut right = sample[self.indices[j][0]].data.value_at(j);
-
-
-                    let mut idx = self.indices[j].iter().peekable();
-
-                    while let Some(&i) = idx.next() {
-                        let label = &sample[i].label;
-
-                        edge -= 2.0 * distribution[i] * label;
-
-                        left = right;
-                        if let Some(&&i_next) = idx.peek() {
-                            let next_data = &sample[i_next].data;
-                            if right == next_data.value_at(j) {
-                                continue;
-                            }
-                            right = next_data.value_at(j);
-                        } else {
-                            right = sample[i].data.value_at(j) + 1.0;
-                        }
-
-                        let threshold = (left + right) / 2.0;
-                        update_params(&mut best_edge, edge, threshold, j);
-                    }
-                }
-            },
+            }
         }
+
+
         Box::new(dstump_classifier)
     }
 }
