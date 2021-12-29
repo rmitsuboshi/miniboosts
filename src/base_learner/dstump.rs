@@ -157,6 +157,16 @@ impl BaseLearner<f64, f64> for DStump {
             positive_side: PositiveSide::RHS
         };
 
+        {
+            // `self.indidces[i][j][k]` is the `k`th index
+            // of the `j`th block of the `i`th feature
+            let i   = self.indices[0][0][0];
+            let val = sample[i].data.value_at(0);
+            if val > 0.0 {
+                dstump_classifier.threshold = val / 2.0;
+            }
+        }
+
 
         let mut update_params = |best_edge: &mut f64, edge: f64, threshold: f64, j: usize| {
             if *best_edge < edge.abs() {
