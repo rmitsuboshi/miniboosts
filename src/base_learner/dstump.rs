@@ -106,12 +106,12 @@ impl DStump {
                         .collect::<Vec<(usize, f64)>>()
                 }
             };
-            vals.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+            vals.sort_by(|(_, v1), (_, v2)| v1.partial_cmp(&v2).unwrap());
 
             let mut vals = vals.into_iter();
 
             // Group the indices by j'th value
-            let mut temp: Vec<usize>;
+            let mut temp: IndicesByValue;
             let mut v;
             {
                 let (i, _v) = vals.next().unwrap();
@@ -171,23 +171,24 @@ impl BaseLearner<f64, f64> for DStump {
             }
         };
 
-
-        let zero_value = match sample.dtype {
-            DType::Dense => 0.0,
-            DType::Sparse => {
-                let index = &self.indices[0];
-                let idx = index.iter().flatten().collect::<HashSet<_>>();
-
-                sample.iter()
-                    .zip(distribution.iter())
-                    .enumerate()
-                    .fold(0.0, |acc, (i, (ex, &d))| {
-                            if idx.contains(&i) { acc } else { acc + ex.label * d }
-                    })
-            }
-        };
-
         for (j, index) in self.indices.iter().enumerate() {
+
+            // Compute the sum of `sample[i].label * distribution[i]`,
+            // where i is the sample index that has 0 in j'th feature.
+            let zero_value = match sample.dtype {
+                DType::Dense => 0.0,
+                DType::Sparse => {
+                    let idx = index.iter().flatten().collect::<HashSet<_>>();
+
+                    sample.iter()
+                        .zip(distribution.iter())
+                        .enumerate()
+                        .fold(0.0, |acc, (i, (ex, &d))| {
+                                if idx.contains(&&i) { acc } else { acc + ex.label * d }
+                        })
+                }
+            };
+
             let mut edge = init_edge;
 
             let mut index = index.iter().peekable();
