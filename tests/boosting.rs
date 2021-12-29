@@ -24,10 +24,10 @@ pub mod adaboost_tests {
 
         let mut adaboost = AdaBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        adaboost.run(dstump, &sample, 0.1);
+        adaboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -53,10 +53,10 @@ pub mod adaboost_tests {
 
         let mut adaboost = AdaBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        adaboost.run(dstump, &sample, 0.1);
+        adaboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -86,10 +86,10 @@ pub mod lpboost_tests {
 
         let mut lpboost = LPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        lpboost.run(dstump, &sample, 0.1);
+        lpboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -114,10 +114,10 @@ pub mod lpboost_tests {
     
         let mut lpboost = LPBoost::init(&sample).capping(cap);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        lpboost.run(dstump, &sample, 0.1);
+        lpboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -143,10 +143,10 @@ pub mod lpboost_tests {
 
         let mut lpboost = LPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        lpboost.run(dstump, &sample, 0.1);
+        lpboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -171,11 +171,29 @@ pub mod lpboost_tests {
         let cap = sample.len() as f64 * 0.8;
         let mut lpboost = LPBoost::init(&sample).capping(cap);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        lpboost.run(dstump, &sample, 0.01);
-        println!("Optimal value: {}", lpboost.gamma_hat);
+        lpboost.run(&dstump, &sample, 0.001);
+        println!("Optimal value(LIBSVM): {}", lpboost.gamma_hat);
+    }
+
+
+    #[test]
+    fn run_with_csv_german() {
+        let path = "/Users/ryotaroMitsuboshi/Documents/Datasets/german.csv";
+        let sample = read_csv(path).unwrap();
+        println!("sample.len() is: {:?}, sample.feature_len() is: {:?}", sample.len(), sample.feature_len());
+
+
+        let cap = sample.len() as f64 * 0.8;
+        let mut lpboost = LPBoost::init(&sample).capping(cap);
+        let dstump = DStump::init(&sample);
+        // let dstump = Box::new(dstump);
+
+
+        lpboost.run(&dstump, &sample, 0.001);
+        println!("Optimal value(CSV): {}", lpboost.gamma_hat);
     }
 }
 
@@ -194,10 +212,10 @@ pub mod erlpboost_tests {
     
         let mut erlpboost = ERLPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        erlpboost.run(dstump, &sample, 0.1);
+        erlpboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -224,10 +242,10 @@ pub mod erlpboost_tests {
     
         let mut erlpboost = ERLPBoost::init(&sample).capping(cap);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        erlpboost.run(dstump, &sample, 0.1);
+        erlpboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -253,10 +271,10 @@ pub mod erlpboost_tests {
 
         let mut erlpboost = ERLPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        erlpboost.run(dstump, &sample, 0.1);
+        erlpboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -268,6 +286,24 @@ pub mod erlpboost_tests {
         loss /= sample.len() as f64;
         println!("Loss: {}", loss);
         assert!((1.0 - erlpboost.weights.iter().sum::<f64>().abs()) < 1e-9);
+    }
+
+
+    #[test]
+    fn run_with_libsvm_german() {
+        let path = "/Users/ryotaroMitsuboshi/Documents/Datasets/german.libsvm";
+        let sample = read_libsvm(path).unwrap();
+        println!("sample.len() is: {:?}, sample.feature_len() is: {:?}", sample.len(), sample.feature_len());
+
+
+        let cap = sample.len() as f64 * 0.8;
+        let mut erlpboost = ERLPBoost::init(&sample).capping(cap);
+        let dstump = DStump::init(&sample);
+        // let dstump = Box::new(dstump);
+
+
+        erlpboost.run(&dstump, &sample, 0.001);
+        println!("Optimal value: {}", erlpboost.gamma_hat);
     }
 }
 
@@ -289,10 +325,10 @@ pub mod softboost_tests {
     
         let mut softboost = SoftBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        softboost.run(dstump, &sample, 0.1);
+        softboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -319,10 +355,10 @@ pub mod softboost_tests {
     
         let mut softboost = SoftBoost::init(&sample).capping(cap);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        softboost.run(dstump, &sample, 0.1);
+        softboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;
@@ -348,10 +384,10 @@ pub mod softboost_tests {
 
         let mut softboost = SoftBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        let dstump = Box::new(dstump);
+        // let dstump = Box::new(dstump);
 
 
-        softboost.run(dstump, &sample, 0.1);
+        softboost.run(&dstump, &sample, 0.1);
 
 
         let mut loss = 0.0;

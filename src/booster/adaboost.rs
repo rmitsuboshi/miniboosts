@@ -110,7 +110,8 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
     }
 
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
+    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
         let max_loop = self.max_loop(eps);
         println!("max_loop: {}", max_loop);
 

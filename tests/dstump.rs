@@ -32,10 +32,10 @@ fn dstump_init() {
 
 
     let ans = vec![
-        vec![2, 1, 0],
-        vec![1, 0, 2],
-        vec![0, 1, 2],
-        vec![1, 0, 2]
+        vec![vec![2], vec![1], vec![0]],
+        vec![vec![1], vec![0], vec![2]],
+        vec![vec![0], vec![1], vec![2]],
+        vec![vec![1], vec![0], vec![2]]
     ];
 
 

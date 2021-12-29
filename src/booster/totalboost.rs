@@ -31,7 +31,8 @@ impl<D> Booster<D, f64> for TotalBoost<D, f64> {
         self.softboost.update_params(h, sample)
     }
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
         self.softboost.run(base_learner, sample, eps);
     }
 

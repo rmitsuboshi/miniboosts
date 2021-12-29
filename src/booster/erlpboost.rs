@@ -16,17 +16,17 @@ use grb::prelude::*;
 ///     - `classifiers` is the classifier that the ERLPBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct ERLPBoost<D, L> {
-    pub dist: Vec<f64>,
-    pub weights: Vec<f64>,
+    pub dist:        Vec<f64>,
+    pub weights:     Vec<f64>,
     pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
-    pub gamma_hat: f64,  // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
-    gamma_star: f64, // `gamma_star` corresponds to $P^{t-1} (d^{t-1})
-    eta: f64, // `eta` is the regularization parameter defined in the paper
+    pub gamma_hat:   f64,  // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
+    gamma_star:      f64, // `gamma_star` corresponds to $P^{t-1} (d^{t-1})
+    eta:             f64, // `eta` is the regularization parameter defined in the paper
 
-    eps: f64,
-    sub_eps: f64, // an accuracy parameter for the sub-problems
-    capping_param: f64,
-    grb_env: Env,
+    eps:             f64,
+    sub_eps:         f64, // an accuracy parameter for the sub-problems
+    capping_param:   f64,
+    grb_env:         Env,
 }
 
 
@@ -47,27 +47,34 @@ impl<D, L> ERLPBoost<D, L> {
 
 
         // Set eps, sub_eps
-        let eps = uni;
-        let sub_eps = uni / 10.0;
+        let eps     = uni /  2.0;
+        let sub_eps = eps / 10.0;
 
 
         // Set regularization parameter
         let mut eta = 1.0 / 2.0;
-        let temp = 2.0 * ln_m / eps;
+        let temp    = 2.0 * ln_m / eps;
 
         if eta < temp {
             eta = temp;
         }
 
-        // Set gamma_hat
-        let gamma_hat = 1.0 + (ln_m / eta);
-        let gamma_star = 0.0;
+        // Set gamma_hat and gamma_star
+        let gamma_hat  = 1.0 + (ln_m / eta);
+        let gamma_star = f64::MIN;
 
 
         ERLPBoost {
-            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(),
-            gamma_hat, gamma_star, eps, sub_eps,
-            eta, capping_param: 1.0, grb_env: env
+            dist:        vec![uni; m],
+            weights:     Vec::new(),
+            classifiers: Vec::new(),
+            gamma_hat,
+            gamma_star,
+            eps,
+            sub_eps,
+            eta,
+            capping_param: 1.0,
+            grb_env:       env
         }
     }
 
@@ -76,18 +83,21 @@ impl<D, L> ERLPBoost<D, L> {
     pub fn capping(mut self, capping_param: f64) -> Self {
         assert!(1.0 <= capping_param && capping_param <= self.dist.len() as f64);
         self.capping_param = capping_param;
+        self.regularization_param();
 
         self
     }
 
 
+    /// Setter method of `self.eps`
     fn precision(&mut self, eps: f64) {
-        self.eps = eps;
+        self.eps = eps / 2.0;
         self.sub_eps = eps / 10.0;
         self.regularization_param();
     }
 
 
+    /// Setter method of `self.eta`
     fn regularization_param(&mut self) {
         let ln_m = (self.dist.len() as f64 / self.capping_param).ln();
         self.eta = 1.0 / 2.0;
@@ -128,7 +138,7 @@ impl<D> ERLPBoost<D, f64> {
     fn set_weights(&mut self, sample: &Sample<D, f64>) -> Result<(), grb::Error> {
         let mut model = Model::with_env("", &self.grb_env)?;
 
-        let m = self.dist.len();
+        let m = sample.len();
         let t = self.classifiers.len();
 
         // Initialize GRBVars
@@ -158,7 +168,8 @@ impl<D> ERLPBoost<D, f64> {
 
 
         // Set the objective function
-        let objective = rho - (1.0 / self.capping_param) * xi.iter().grb_sum();
+        let temp = 1.0 / self.capping_param;
+        let objective = rho - temp * xi.iter().grb_sum();
         model.set_objective(objective, Maximize)?;
         model.update()?;
 
@@ -169,6 +180,7 @@ impl<D> ERLPBoost<D, f64> {
         let status = model.status()?;
 
         if status != Status::Optimal {
+            println!("Status: {:?}", status);
             panic!("Failed to finding an optimal solution");
         }
 
@@ -295,7 +307,8 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
     }
 
 
-    fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
         let max_iter = self.max_loop(eps);
 
         for t in 1..=max_iter {
