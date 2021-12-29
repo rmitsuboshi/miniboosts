@@ -161,8 +161,7 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
         // This will never happen since the domain is a bounded & closed convex set,
         let status = self.grb_model.status().unwrap();
         if status != Status::Optimal {
-            println!("Status is not optimal. something wrong.");
-            return None;
+            panic!("Status is not optimal. something wrong.");
         }
 
 

@@ -146,7 +146,8 @@ impl BaseLearner<f64, f64> for DStump {
             .zip(sample.iter())
             .fold(0.0, |acc, (d, example)| acc + d * example.label);
 
-        let mut best_edge = f64::MIN;
+        let mut best_edge = init_edge - 1e-2;
+        // let mut best_edge = f64::MIN;
 
         // This is the output of this function.
         // Initialize with some init value.
