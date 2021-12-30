@@ -26,7 +26,11 @@ impl PartialEq for DStumpClassifier {
         let v1: u64 = unsafe { std::mem::transmute( self.threshold) };
         let v2: u64 = unsafe { std::mem::transmute(other.threshold) };
 
-        v1 == v2 && self.feature_index == other.feature_index && self.positive_side == other.positive_side
+        let threshold     = v1 == v2;
+        let feature       = self.feature_check == other.feature_index;
+        let positive_side = self.positive_side == other.positive_side;
+
+        threshold && feature && positive_side
     }
 }
 
@@ -47,7 +51,11 @@ impl Hash for DStumpClassifier {
 
 impl DStumpClassifier {
     pub fn new() -> DStumpClassifier {
-        DStumpClassifier { threshold: 0.0, feature_index: 0, positive_side: PositiveSide::RHS }
+        DStumpClassifier {
+            threshold:     0.0,
+            feature_index: 0,
+            positive_side: PositiveSide::RHS
+        }
     }
 }
 
@@ -66,7 +74,6 @@ impl Classifier<f64, f64> for DStumpClassifier {
 /// For clarity, we define aliases.
 type IndicesByValue = Vec<usize>;
 type FeatureIndex = Vec<IndicesByValue>;
-// type FeatureIndex = Vec<usize>;
 
 /// The struct `DStump` generates a `DStumpClassifier`
 /// for each call of `self.best_hypothesis(..)`.
@@ -94,9 +101,9 @@ impl DStump {
                 DType::Sparse => {
                     sample.iter().enumerate()
                         .filter_map(|(i, ex)| {
-                                let v = ex.data.value_at(j);
-                                if v != 0.0 { Some((i, v)) } else { None }
-                                })
+                            let v = ex.data.value_at(j);
+                            if v != 0.0 { Some((i, v)) } else { None }
+                        })
                         .collect::<Vec<(usize, f64)>>()
                 },
                 DType::Dense => {
@@ -106,6 +113,13 @@ impl DStump {
                         .collect::<Vec<(usize, f64)>>()
                 }
             };
+
+
+            // If all the values in the j'th feature are zero, then skip
+            if vals.is_empty() {
+                continue;
+            }
+
             vals.sort_by(|(_, v1), (_, v2)| v1.partial_cmp(&v2).unwrap());
 
             let mut vals = vals.into_iter();
@@ -114,6 +128,7 @@ impl DStump {
             let mut temp: IndicesByValue;
             let mut v;
             {
+                // Initialize `temp` and `v`
                 let (i, _v) = vals.next().unwrap();
                 temp = vec![i];
                 v = _v;
@@ -141,13 +156,15 @@ impl DStump {
 
 
 impl BaseLearner<f64, f64> for DStump {
-    fn best_hypothesis(&self, sample: &Sample<f64, f64>, distribution: &[f64]) -> Box<dyn Classifier<f64, f64>> {
+    fn best_hypothesis(&self, sample: &Sample<f64, f64>, distribution: &[f64])
+        -> Box<dyn Classifier<f64, f64>>
+    {
         let init_edge = distribution.iter()
             .zip(sample.iter())
             .fold(0.0, |acc, (d, example)| acc + d * example.label);
 
         let mut best_edge = init_edge - 1e-2;
-        // let mut best_edge = f64::MIN;
+
 
         // This is the output of this function.
         // Initialize with some init value.
@@ -170,7 +187,7 @@ impl BaseLearner<f64, f64> for DStump {
 
         let mut update_params = |best_edge: &mut f64, edge: f64, threshold: f64, j: usize| {
             if *best_edge < edge.abs() {
-                dstump_classifier.threshold = threshold;
+                dstump_classifier.threshold     = threshold;
                 dstump_classifier.feature_index = j;
                 *best_edge = edge.abs();
                 if edge > 0.0 {
@@ -194,7 +211,10 @@ impl BaseLearner<f64, f64> for DStump {
                         .zip(distribution.iter())
                         .enumerate()
                         .fold(0.0, |acc, (i, (ex, &d))| {
-                                if idx.contains(&&i) { acc } else { acc + ex.label * d }
+                            if idx.contains(&&i) { acc
+                            } else {
+                                acc + ex.label * d
+                            }
                         })
                 }
             };
@@ -225,7 +245,9 @@ impl BaseLearner<f64, f64> for DStump {
 
             while let Some(idx) = index.next() {
                 let temp = idx.iter()
-                    .fold(0.0, |acc, &i| acc + distribution[i] * sample[i].label);
+                    .fold(0.0, |acc, &i| {
+                        acc + distribution[i] * sample[i].label
+                    });
 
                 edge -= 2.0 * temp;
 
@@ -241,7 +263,7 @@ impl BaseLearner<f64, f64> for DStump {
                             update_params(&mut best_edge, edge, left / 2.0, j);
 
                             edge -= 2.0 * zero_value;
-                            left = 0.0;
+                            left  = 0.0;
                         }
                         update_params(&mut best_edge, edge, (left + right) / 2.0, j);
                     },
