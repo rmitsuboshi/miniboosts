@@ -27,7 +27,7 @@ impl PartialEq for DStumpClassifier {
         let v2: u64 = unsafe { std::mem::transmute(other.threshold) };
 
         let threshold     = v1 == v2;
-        let feature       = self.feature_check == other.feature_index;
+        let feature       = self.feature_index == other.feature_index;
         let positive_side = self.positive_side == other.positive_side;
 
         threshold && feature && positive_side
