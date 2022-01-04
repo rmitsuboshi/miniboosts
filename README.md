@@ -34,8 +34,6 @@ I'm planning to write code that solves linear and quadratic programming.
   - Bag of words
 
 
-- Some test code for `TotalBoost`, `SoftBoost`.
-
 I'm also planning to implement the other boosting algorithms in the future.
 
 
@@ -53,20 +51,20 @@ use boost::booster::AdaBoost;
 use boost::base_learner::DStump;
 
 // This function reads a file with LIBSVM format
-use boost::data_reader::read_libsvm;
+use boost::data_reader::read_csv;
 
 fn main() {
     // Set file name
     let file = "/path/to/input/data";
 
     // Read file
-    let sample = read_libsvm(file).unwrap();
+    let sample = read_csv(file).unwrap();
 
     // Initialize Booster
     let mut adaboost = AdaBoost::init(&sample);
 
     // Initialize Base Learner
-    let dstump = Box::new(DStump::init(&sample));
+    let dstump = DStump::init(&sample);
 
     // Set accuracy parameter
     let accuracy = 0.1;
