@@ -75,7 +75,7 @@ type FeatureIndex = Vec<IndicesByValue>;
 /// for each call of `self.best_hypothesis(..)`.
 pub struct DStump {
     pub sample_size:  usize,  // Number of training examples
-    pub feature_size: usize, // Number of features per example
+    pub feature_size: usize,  // Number of features per example
     pub indices:      Vec<FeatureIndex>,
 }
 
@@ -188,6 +188,8 @@ impl BaseLearner<f64, f64> for DStump {
         {
             // `self.indidces[i][j][k]` is the `k`th index
             // of the `j`th block of the `i`th feature
+            // TODO this line may fail since self.indices[0][0] 
+            // may have no element.
             let i   = self.indices[0][0][0];
             let val = sample[i].data.value_at(0);
             if val > 0.0 {
@@ -233,9 +235,21 @@ impl BaseLearner<f64, f64> for DStump {
                 }
             };
 
+
             let mut edge = init_edge;
 
             let mut index = index.iter().peekable();
+
+
+            // If all the value in the j'th feature are zero,
+            // check the best edge and continue
+            if None == index.peek() {
+                edge -= 2.0 * zero_value;
+                update_params_mut(edge, 1.0, j);
+                continue;
+            }
+
+
             let mut right = {
                 let idx = index.peek().unwrap();
                 let i   = idx[0];
