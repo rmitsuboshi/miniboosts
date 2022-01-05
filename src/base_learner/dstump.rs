@@ -23,10 +23,7 @@ pub struct DStumpClassifier {
 
 impl PartialEq for DStumpClassifier {
     fn eq(&self, other: &Self) -> bool {
-        let v1: u64 = unsafe { std::mem::transmute( self.threshold) };
-        let v2: u64 = unsafe { std::mem::transmute(other.threshold) };
-
-        let threshold     = v1 == v2;
+        let threshold     = self.threshold     == other.threshold;
         let feature       = self.feature_index == other.feature_index;
         let positive_side = self.positive_side == other.positive_side;
 
@@ -39,8 +36,7 @@ impl Eq for DStumpClassifier {}
 
 impl Hash for DStumpClassifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // TODO FIX BUG in this line
-        // this unsafe does not work as expected.
+        // TODO Check whether this hashing works as expected.
         let v: u64 = unsafe { std::mem::transmute(self.threshold) };
         v.hash(state);
         self.feature_index.hash(state);
@@ -78,9 +74,9 @@ type FeatureIndex = Vec<IndicesByValue>;
 /// The struct `DStump` generates a `DStumpClassifier`
 /// for each call of `self.best_hypothesis(..)`.
 pub struct DStump {
-    pub sample_size: usize,  // Number of training examples
+    pub sample_size:  usize,  // Number of training examples
     pub feature_size: usize, // Number of features per example
-    pub indices: Vec<FeatureIndex>,
+    pub indices:      Vec<FeatureIndex>,
 }
 
 
@@ -95,14 +91,21 @@ impl DStump {
         let feature_size = sample.feature_len();
 
 
-        let mut indices: Vec<FeatureIndex> = Vec::with_capacity(feature_size);
+        // indices: Vec<FeatureIndex>
+        // the j'th element of this vector stores
+        // the grouped indices by value.
+        let mut indices: Vec<_> = Vec::with_capacity(feature_size);
         for j in 0..feature_size {
             let mut vals = match sample.dtype {
                 DType::Sparse => {
                     sample.iter().enumerate()
                         .filter_map(|(i, ex)| {
                             let v = ex.data.value_at(j);
-                            if v != 0.0 { Some((i, v)) } else { None }
+                            if v != 0.0 {
+                                Some((i, v))
+                            } else {
+                                None
+                            }
                         })
                         .collect::<Vec<(usize, f64)>>()
                 },
@@ -117,6 +120,9 @@ impl DStump {
 
             // If all the values in the j'th feature are zero, then skip
             if vals.is_empty() {
+                indices.push(
+                    Vec::with_capacity(0_usize)
+                );
                 continue;
             }
 
@@ -125,15 +131,20 @@ impl DStump {
             let mut vals = vals.into_iter();
 
             // Group the indices by j'th value
+            // recall that IndicesByValue = Vec<usize>
             let mut temp: IndicesByValue;
             let mut v;
             {
                 // Initialize `temp` and `v`
                 let (i, _v) = vals.next().unwrap();
                 temp = vec![i];
-                v = _v;
+                v    = _v;
             }
-            let mut index: Vec<IndicesByValue> = Vec::new();
+
+            // recall that
+            // FeatureIndex = Vec<IndicesByValue>
+            //              = Vec<Vec<usize>>
+            let mut index: FeatureIndex = Vec::new();
             while let Some((i, vv)) = vals.next() {
                 if vv == v {
                     temp.push(i);
@@ -168,7 +179,7 @@ impl BaseLearner<f64, f64> for DStump {
 
         // This is the output of this function.
         // Initialize with some init value.
-        let mut dstump_classifier = DStumpClassifier {
+        let mut dstump = DStumpClassifier {
             threshold: sample[self.indices[0][0][0]].data.value_at(0) - 1.0,
             feature_index: 0_usize,
             positive_side: PositiveSide::RHS
@@ -180,20 +191,20 @@ impl BaseLearner<f64, f64> for DStump {
             let i   = self.indices[0][0][0];
             let val = sample[i].data.value_at(0);
             if val > 0.0 {
-                dstump_classifier.threshold = val / 2.0;
+                dstump.threshold = val / 2.0;
             }
         }
 
 
-        let mut update_params = |best_edge: &mut f64, edge: f64, threshold: f64, j: usize| {
-            if *best_edge < edge.abs() {
-                dstump_classifier.threshold     = threshold;
-                dstump_classifier.feature_index = j;
-                *best_edge = edge.abs();
+        let mut update_params_mut = |edge: f64, threshold: f64, j: usize| {
+            if best_edge < edge.abs() {
+                dstump.threshold     = threshold;
+                dstump.feature_index = j;
+                best_edge = edge.abs();
                 if edge > 0.0 {
-                    dstump_classifier.positive_side = PositiveSide::RHS;
+                    dstump.positive_side = PositiveSide::RHS;
                 } else {
-                    dstump_classifier.positive_side = PositiveSide::LHS;
+                    dstump.positive_side = PositiveSide::LHS;
                 }
             }
         };
@@ -203,15 +214,18 @@ impl BaseLearner<f64, f64> for DStump {
             // Compute the sum of `sample[i].label * distribution[i]`,
             // where i is the sample index that has 0 in j'th feature.
             let zero_value = match sample.dtype {
-                DType::Dense => 0.0,
+                DType::Dense  => 0.0,
                 DType::Sparse => {
-                    let idx = index.iter().flatten().collect::<HashSet<_>>();
+                    let idx = index.iter()
+                        .flatten()
+                        .collect::<HashSet<_>>();
 
                     sample.iter()
                         .zip(distribution.iter())
                         .enumerate()
                         .fold(0.0, |acc, (i, (ex, &d))| {
-                            if idx.contains(&&i) { acc
+                            if idx.contains(&&i) {
+                                acc
                             } else {
                                 acc + ex.label * d
                             }
@@ -240,7 +254,7 @@ impl BaseLearner<f64, f64> for DStump {
                 //              threshold
 
                 edge -= 2.0 * zero_value;
-                update_params(&mut best_edge, edge, right / 2.0, j);
+                update_params_mut(edge, right / 2.0, j);
             }
 
             while let Some(idx) = index.next() {
@@ -260,16 +274,16 @@ impl BaseLearner<f64, f64> for DStump {
                         };
 
                         if left * right < 0.0 && sample.dtype == DType::Sparse {
-                            update_params(&mut best_edge, edge, left / 2.0, j);
+                            update_params_mut(edge, left / 2.0, j);
 
                             edge -= 2.0 * zero_value;
                             left  = 0.0;
                         }
-                        update_params(&mut best_edge, edge, (left + right) / 2.0, j);
+                        update_params_mut(edge, (left + right) / 2.0, j);
                     },
                     None => {
                         if left < 0.0 && sample.dtype == DType::Sparse {
-                            update_params(&mut best_edge, edge, left / 2.0, j);
+                            update_params_mut(edge, left / 2.0, j);
 
                             edge -= 2.0 * zero_value;
                             left  = 0.0;
@@ -277,14 +291,14 @@ impl BaseLearner<f64, f64> for DStump {
                         } else {
                             right = left + 2.0;
                         }
-                        update_params(&mut best_edge, edge, (left + right) / 2.0, j);
+                        update_params_mut(edge, (left + right) / 2.0, j);
                     }
                 }
             }
         }
 
 
-        Box::new(dstump_classifier)
+        Box::new(dstump)
     }
 }
 
