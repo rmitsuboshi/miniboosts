@@ -12,16 +12,21 @@ use grb::prelude::*;
 
 /// Struct `ERLPBoost` has 3 main parameters.
 ///     - `dist` is the distribution over training examples,
-///     - `weights` is the weights over `classifiers` that the ERLPBoost obtained up to iteration `t`.
+///     - `weights` is the weights over `classifiers`
+///       that the ERLPBoost obtained up to iteration `t`.
 ///     - `classifiers` is the classifier that the ERLPBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct ERLPBoost<D, L> {
     pub dist:        Vec<f64>,
     pub weights:     Vec<f64>,
     pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
-    pub gamma_hat:   f64,  // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
-    gamma_star:      f64, // `gamma_star` corresponds to $P^{t-1} (d^{t-1})
-    eta:             f64, // `eta` is the regularization parameter defined in the paper
+
+    // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
+    pub gamma_hat:   f64,
+    // `gamma_star` corresponds to $P^{t-1} (d^{t-1})
+    gamma_star:      f64,
+    // `eta` is the regularization parameter defined in the paper
+    eta:             f64,
 
     eps:             f64,
     sub_eps:         f64, // an accuracy parameter for the sub-problems
@@ -81,7 +86,11 @@ impl<D, L> ERLPBoost<D, L> {
 
     /// This method updates the capping parameter.
     pub fn capping(mut self, capping_param: f64) -> Self {
-        assert!(1.0 <= capping_param && capping_param <= self.dist.len() as f64);
+        assert!(
+            1.0 <= capping_param
+            &&
+            capping_param <= self.dist.len() as f64
+        );
         self.capping_param = capping_param;
         self.regularization_param();
 
@@ -112,7 +121,8 @@ impl<D, L> ERLPBoost<D, L> {
 
 
 
-    /// `max_loop` returns the maximum iteration of the Adaboost to find a combined hypothesis
+    /// `max_loop` returns the maximum iteration
+    /// of the Adaboost to find a combined hypothesis
     /// that has error at most `eps`.
     pub fn max_loop(&mut self, eps: f64) -> u64 {
         if self.eps != eps {
@@ -123,7 +133,8 @@ impl<D, L> ERLPBoost<D, L> {
 
         let mut max_iter = 8.0 / self.eps;
 
-        let temp = 32.0 * (m as f64 / self.capping_param).ln() / (self.eps * self.eps);
+        let temp = (m as f64 / self.capping_param).ln();
+        let temp = 32.0 * temp / (self.eps * self.eps);
 
         if max_iter < temp {
             max_iter = temp;
@@ -135,19 +146,23 @@ impl<D, L> ERLPBoost<D, L> {
 
 
 impl<D> ERLPBoost<D, f64> {
-    fn set_weights(&mut self, sample: &Sample<D, f64>) -> Result<(), grb::Error> {
+    fn set_weights(&mut self, sample: &Sample<D, f64>)
+        -> Result<(), grb::Error>
+    {
         let mut model = Model::with_env("", &self.grb_env)?;
 
         let m = sample.len();
         let t = self.classifiers.len();
 
         // Initialize GRBVars
-        let ws = vec![
-            add_ctsvar!(model, name: &"", bounds: 0.0..1.0)?; t
-        ];
-        let xi = vec![
-            add_ctsvar!(model, name: &"", bounds: 0.0..)?; m
-        ];
+        let ws = (0..t).map(|i| {
+                let name = format!("w{}", i);
+                add_ctsvar!(model, name: &name, bounds: 0.0..1.0).unwrap()
+            }).collect::<Vec<_>>();
+        let xi = (0..m).map(|i| {
+                let name = format!("w{}", i);
+                add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
+            }).collect::<Vec<_>>();
         let rho = add_ctsvar!(model, name: &"rho", bounds: ..)?;
 
 
@@ -186,10 +201,9 @@ impl<D> ERLPBoost<D, f64> {
 
 
         // Assign weights over the hypotheses
-        self.weights = vec![0.0; t];
-        for (w, grb_w) in self.weights.iter_mut().zip(ws.into_iter()) {
-            *w = model.get_obj_attr(attr::X, &grb_w)?;
-        }
+        self.weights = ws.into_iter()
+            .map(|w| model.get_obj_attr(attr::X, &w).unwrap())
+            .collect::<Vec<_>>();
 
         Ok(())
     }
@@ -200,7 +214,11 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
 
     /// `update_params` updates `self.distribution` and determine the weight on hypothesis
     /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self, h: Box<dyn Classifier<D, f64>>, sample: &Sample<D, f64>) -> Option<()> {
+    fn update_params(&mut self,
+                     h: Box<dyn Classifier<D, f64>>,
+                     sample: &Sample<D, f64>)
+        -> Option<()>
+    {
 
 
         // update `self.gamma_hat`
@@ -237,10 +255,12 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
             let ub = 1.0 / self.capping_param;
 
             let vars = self.dist.iter()
-                .map(|&d| add_ctsvar!(
-                    model, name: &"", bounds: -d..ub-d
-                ).unwrap())
-                .collect::<Vec<Var>>();
+                .enumerate()
+                .map(|(i, &d)| {
+                    let name = format!("v{}", i);
+                    add_ctsvar!(model, name: &name, bounds: -d..ub-d)
+                        .unwrap()
+                }).collect::<Vec<Var>>();
 
             model.update().unwrap();
 
@@ -249,12 +269,15 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
                 let expr = sample.iter()
                     .zip(self.dist.iter())
                     .zip(vars.iter())
-                    .map(|((ex, d), v)| ex.label * h.predict(&ex.data) * (*d + *v))
+                    .map(|((ex, &d), &v)| {
+                        ex.label * h.predict(&ex.data) * (d + v)
+                    })
                     .grb_sum();
 
                 model.add_constr(&"", c!(expr <= gamma)).unwrap();
             }
-            model.add_constr(&"sum_is_1", c!(vars.iter().grb_sum() == 0.0)).unwrap();
+            model.add_constr(&"sum_is_1", c!(vars.iter().grb_sum() == 0.0))
+                .unwrap();
             model.update().unwrap();
 
 
@@ -277,8 +300,10 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
             model.optimize().unwrap();
 
 
-            // Check the status. If not `Status::Optimal`, then terminate immediately.
-            // This will never happen since the domain is a bounded & closed convex set,
+            // Check the status.
+            // If not `Status::Optimal`, terminate immediately.
+            // This will never happen
+            // since the domain is a bounded & closed convex set,
             let status = model.status().unwrap();
             if status != Status::Optimal {
                 println!("Status is {:?}. something wrong.", status);
@@ -307,8 +332,11 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
     }
 
 
-    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
-    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self,
+           base_learner: &dyn BaseLearner<D, f64>,
+           sample: &Sample<D, f64>,
+           eps: f64)
+    {
         let max_iter = self.max_loop(eps);
 
         for t in 1..=max_iter {

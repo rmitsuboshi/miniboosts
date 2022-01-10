@@ -12,21 +12,23 @@ use grb::prelude::*;
 
 /// Struct `LPBoost` has 3 main parameters.
 ///     - `dist` is the distribution over training examples,
-///     - `weights` is the weights over `classifiers` that the LPBoost obtained up to iteration `t`.
+///     - `weights` is the weights over `classifiers`
+///       that the LPBoost obtained up to iteration `t`.
 ///     - `classifiers` is the classifier that the LPBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct LPBoost<D, L> {
-    pub dist: Vec<f64>,
-    pub weights: Vec<f64>,
+    pub dist:        Vec<f64>,
+    pub weights:     Vec<f64>,
     pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
 
     // These are the parameters used in the `update_param(..)`
     pub gamma_hat: f64,
-    eps: f64,
+    eps:           f64,
+
     // Variables for the Gurobi optimizer
-    grb_model: Model,
-    grb_vars: Vec<Var>,
-    grb_gamma: Var,
+    grb_model:   Model,
+    grb_vars:    Vec<Var>,
+    grb_gamma:   Var,
     grb_constrs: Vec<Constr>
 }
 
@@ -46,13 +48,19 @@ impl<D, L> LPBoost<D, L> {
 
 
         // Set GRBVars
-        let mut grb_vars = Vec::with_capacity(m);
-        for i in 0..m {
-            let name = format!("grb_vars[{}]", i);
-            let var = add_ctsvar!(grb_model, name: &name, bounds: 0.0..).unwrap();
-            grb_vars.push(var);
-        }
-        let grb_gamma = add_ctsvar!(grb_model, name: &"gamma", bounds: ..).unwrap();
+        let grb_vars = (0..m).map(|i| {
+                let name = format!("w{}", i);
+                add_ctsvar!(grb_model, name: &name, bounds: 0.0..).unwrap()
+            }).collect::<Vec<_>>();
+        // let mut grb_vars = Vec::with_capacity(m);
+        // for i in 0..m {
+        //     let name = format!("grb_vars[{}]", i);
+        //     let var = add_ctsvar!(grb_model, name: &name, bounds: 0.0..)
+        //         .unwrap();
+        //     grb_vars.push(var);
+        // }
+        let grb_gamma = add_ctsvar!(grb_model, name: &"gamma", bounds: ..)
+            .unwrap();
 
 
         // Set a constraint
@@ -73,8 +81,15 @@ impl<D, L> LPBoost<D, L> {
 
         let uni = 1.0 / m as f64;
         LPBoost {
-            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(), gamma_hat: 1.0, eps: uni,
-            grb_model, grb_vars, grb_gamma, grb_constrs
+            dist:        vec![uni; m],
+            weights:     Vec::new(),
+            classifiers: Vec::new(),
+            gamma_hat:   1.0,
+            eps: uni,
+            grb_model,
+            grb_vars,
+            grb_gamma,
+            grb_constrs
         }
     }
 
@@ -83,7 +98,12 @@ impl<D, L> LPBoost<D, L> {
     /// Once the capping parameter changed,
     /// we need to update the `model` of the Gurobi.
     pub fn capping(mut self, capping_param: f64) -> Self {
-        assert!(1.0 <= capping_param && capping_param <= self.grb_vars.len() as f64);
+        assert!(
+            1.0 <= capping_param
+            &&
+            capping_param <= self.grb_vars.len() as f64
+        );
+
         let ub = 1.0 / capping_param;
         let m = self.grb_vars.len();
 
@@ -93,10 +113,14 @@ impl<D, L> LPBoost<D, L> {
         let mut grb_model = Model::with_env("", env).unwrap();
 
         // Initialize GRBVars
-        self.grb_gamma = add_ctsvar!(grb_model, name: &"gamma", bounds: ..).unwrap();
+        self.grb_gamma = add_ctsvar!(grb_model, name: &"gamma", bounds: ..)
+            .unwrap();
         self.grb_vars = (0..m).into_iter()
-            .map(|i| add_ctsvar!(grb_model, name: &format!("grb_vars[{}]", i), bounds: 0.0..ub).unwrap())
-            .collect::<Vec<Var>>();
+            .map(|i| {
+                let name = format!("w{}", i);
+                add_ctsvar!(grb_model, name: &name, bounds: 0.0..ub)
+                    .unwrap()
+            }).collect::<Vec<Var>>();
         self.grb_model = grb_model;
 
 
@@ -127,7 +151,11 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
 
     /// `update_params` updates `self.distribution` and determine the weight on hypothesis
     /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self, h: Box<dyn Classifier<D, f64>>, sample: &Sample<D, f64>) -> Option<()> {
+    fn update_params(&mut self,
+                     h: Box<dyn Classifier<D, f64>>,
+                     sample: &Sample<D, f64>)
+        -> Option<()>
+    {
 
 
         // update `self.gamma_hat`
@@ -148,7 +176,9 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
             .zip(self.grb_vars.iter())
             .map(|(ex, v)| *v * ex.label * h.predict(&ex.data))
             .grb_sum();
-        let constr = self.grb_model.add_constr(&"", c!(expr <= self.grb_gamma)).unwrap();
+        let constr = self.grb_model
+            .add_constr(&"", c!(expr <= self.grb_gamma))
+            .unwrap();
         self.grb_model.update().unwrap();
 
 
@@ -157,26 +187,33 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
         self.grb_model.optimize().unwrap();
 
 
-        // Check the status. If not `Status::Optimal`, then terminate immediately.
-        // This will never happen since the domain is a bounded & closed convex set,
+        // Check the status. If not `Status::Optimal`, terminate immediately.
+        // This will never happen
+        // since the domain is a bounded & closed convex set,
         let status = self.grb_model.status().unwrap();
         if status != Status::Optimal {
             panic!("Status is not optimal. something wrong.");
         }
 
 
-        // At this point, the status of the optimization problem is `Status::Optimal`
-        // therefore, we append a new hypothesis to `self.classifiers`
+        // At this point,
+        // the status of the optimization problem is `Status::Optimal`
+        // Therefore, we append a new hypothesis to `self.classifiers`
         self.classifiers.push(h);
         self.grb_constrs.push(constr);
 
 
         // Check the stopping criterion.
-        let gamma_star = self.grb_model.get_obj_attr(attr::X, &self.grb_gamma).unwrap();
+        let gamma_star = self.grb_model
+            .get_obj_attr(attr::X, &self.grb_gamma)
+            .unwrap();
         if gamma_star >= self.gamma_hat - self.eps {
             self.weights = self.grb_constrs[1..].iter()
-                .map(|constr| self.grb_model.get_obj_attr(attr::Pi, constr).unwrap().abs())
-                .collect::<Vec<f64>>();
+                .map(|constr| {
+                    self.grb_model.get_obj_attr(attr::Pi, constr)
+                        .unwrap()
+                        .abs()
+                }).collect::<Vec<f64>>();
 
             return None;
         }
@@ -191,8 +228,11 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
     }
 
 
-    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
-    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self,
+           base_learner: &dyn BaseLearner<D, f64>,
+           sample: &Sample<D, f64>,
+           eps: f64)
+    {
         if self.eps != eps {
             self.precision(eps);
         }
