@@ -1,3 +1,5 @@
+//! Provides some boosting algorithms.
+
 pub mod core;
 pub mod adaboost;
 pub mod adaboostv;
@@ -17,6 +19,7 @@ pub use self::core::Booster;
 pub use adaboost::AdaBoost;
 
 /// Hard Margin Maximization
+pub use adaboostv::AdaBoostV;
 pub use totalboost::TotalBoost;
 
 /// Soft Margin Maximization

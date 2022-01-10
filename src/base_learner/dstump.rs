@@ -1,3 +1,4 @@
+//! Provides the decision stump class.
 use crate::data_type::{DType, Data, Label, Sample};
 use crate::base_learner::core::BaseLearner;
 use crate::base_learner::core::Classifier;
@@ -6,17 +7,26 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 
+/// Defines the ray that are predicted as +1.0.
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub enum PositiveSide { RHS, LHS }
+pub enum PositiveSide {
+    /// The right-hand-side ray is predicted as +1.0
+    RHS,
+    /// The left-hand-side ray is predicted as +1.0
+    LHS
+}
 
 
 /// The struct `DStumpClassifier` defines the decision stump class.
 /// Given a point over the `d`-dimensional space,
 /// A classifier predicts its label as
-/// sgn(x[i] - b), where b is the some intercept.
+/// `sgn(x[i] - b)`, where `b` is the some intercept.
 pub struct DStumpClassifier {
+    /// The intercept of the stump
     pub threshold: f64,
+    /// The index of the feature used in prediction.
     pub feature_index: usize,
+    /// A ray to be predicted as +1.0
     pub positive_side: PositiveSide
 }
 
@@ -46,6 +56,7 @@ impl Hash for DStumpClassifier {
 
 
 impl DStumpClassifier {
+    /// Produce an empty `DStumpClassifier`.
     pub fn new() -> DStumpClassifier {
         DStumpClassifier {
             threshold:     0.0,
@@ -67,27 +78,26 @@ impl Classifier<f64, f64> for DStumpClassifier {
 }
 
 
-/// For clarity, we define aliases.
-type IndicesByValue = Vec<usize>;
-type FeatureIndex = Vec<IndicesByValue>;
+pub(self) type IndicesByValue = Vec<usize>;
+pub(self) type FeatureIndex   = Vec<IndicesByValue>;
+
 
 /// The struct `DStump` generates a `DStumpClassifier`
 /// for each call of `self.best_hypothesis(..)`.
 pub struct DStump {
-    pub sample_size:  usize,  // Number of training examples
-    pub feature_size: usize,  // Number of features per example
-    pub indices:      Vec<FeatureIndex>,
+    pub(crate) indices: Vec<FeatureIndex>,
 }
 
 
 impl DStump {
+    /// Construct an empty Decision Stump class.
     pub fn new() -> DStump {
-        DStump { sample_size: 0, feature_size: 0, indices: Vec::new() }
+        DStump { indices: Vec::new() }
     }
 
 
+    /// Initializes and produce an instance of `DStump`.
     pub fn init(sample: &Sample<f64, f64>) -> DStump {
-        let sample_size  = sample.len();
         let feature_size = sample.feature_len();
 
 
@@ -160,7 +170,7 @@ impl DStump {
         }
 
         // Construct DStump
-        DStump { sample_size, feature_size, indices }
+        DStump { indices }
     }
 }
 
@@ -287,7 +297,9 @@ impl BaseLearner<f64, f64> for DStump {
                             sample[i].data.value_at(j)
                         };
 
-                        if left * right < 0.0 && sample.dtype == DType::Sparse {
+                        if left * right < 0.0
+                            && sample.dtype == DType::Sparse
+                        {
                             update_params_mut(edge, left / 2.0, j);
 
                             edge -= 2.0 * zero_value;
@@ -316,47 +328,3 @@ impl BaseLearner<f64, f64> for DStump {
     }
 }
 
-// /// Since struct `DStumpClassifier` has an element that does not implement the `Eq` trait,
-// /// We cannot use `DStumpClassifier` as a key of `HashMap`.
-// /// `HashableDStumpClassifier` is the struct that separates `threshold` into
-// /// the fractional and integral part.
-
-// type Mantissa = u64;
-// type Exponent = i16;
-// type Sign     = i8;
-// 
-// #[derive(Debug, PartialEq, Eq, Hash)]
-// struct HashableDStumpClassifier {
-//     mantissa_exp:  (u64, i16, i8),
-//     feature_index: usize,
-//     positive_side: PositiveSide
-// }
-// 
-// 
-// use std::convert::From;
-// 
-// /// Convert `DStumpClassifier` to `HashableDStumpClassifier`
-// impl From<DStumpClassifier> for HashableDStumpClassifier {
-//     fn from(dstump: DStumpClassifier) -> Self {
-//         let mantissa_exp = integer_decode(dstump.threshold);
-//         HashableDStumpClassifier {
-//             mantissa_exp, feature_index: dstump.feature_index, positive_side: dstump.positive_side
-//         }
-//     }
-// }
-// 
-// 
-// fn integer_decode(val: f64) -> (Mantissa, Exponent, Sign) {
-//     use std::mem;
-//     let bits: u64 = unsafe { mem::transmute(val) };
-//     let sign: i8 = if bits >> 63 == 0 { 1 } else { -1 };
-//     let mut exponent: i16 = ((bits >> 52) & 0x7ff) as i16;
-//     let mantissa = if exponent == 0 {
-//         (bits & 0xfffffffffffff) << 1
-//     } else {
-//         (bits & 0xfffffffffffff) | 0x10000000000000
-//     };
-// 
-//     exponent -= 1023 + 52;
-//     (mantissa, exponent, sign)
-// }

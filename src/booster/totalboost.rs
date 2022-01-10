@@ -1,7 +1,7 @@
-/// This file defines `TotalBoost` based on the paper
-/// "Totally Corrective Boosting Algorithms that Maximize the Margin"
-/// by Warmuth et al.
-/// 
+//! This file defines `TotalBoost` based on the paper
+//! "Totally Corrective Boosting Algorithms that Maximize the Margin"
+//! by Warmuth et al.
+//! 
 use crate::data_type::{Data, Label, Sample};
 use crate::booster::core::Booster;
 use crate::base_learner::core::Classifier;
@@ -19,6 +19,7 @@ pub struct TotalBoost<D, L> {
 
 
 impl<D, L> TotalBoost<D, L> {
+    /// initialize the `TotalBoost<D, L>`.
     pub fn init(sample: &Sample<D, L>) -> TotalBoost<D, L> {
         let softboost = SoftBoost::init(sample);
 
