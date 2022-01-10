@@ -12,7 +12,8 @@ use grb::prelude::*;
 
 /// Struct `SoftBoost` has 3 main parameters.
 ///     - `dist` is the distribution over training examples,
-///     - `weights` is the weights over `classifiers` that the SoftBoost obtained up to iteration `t`.
+///     - `weights` is the weights over `classifiers`
+///       that the SoftBoost obtained up to iteration `t`.
 ///     - `classifiers` is the classifiers that the SoftBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct SoftBoost<D, L> {
@@ -20,11 +21,13 @@ pub struct SoftBoost<D, L> {
     pub weights: Vec<f64>,
     pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
 
-
-    gamma_hat: f64,  // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
-    eps: f64,
-    sub_eps: f64, // an accuracy parameter for the sub-problems
+    // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})
+    gamma_hat:     f64,
+    eps:           f64,
+    // an accuracy parameter for the sub-problems
+    sub_eps:       f64,
     capping_param: f64,
+
     grb_env: Env,
 }
 
@@ -52,15 +55,25 @@ impl<D, L> SoftBoost<D, L> {
 
 
         SoftBoost {
-            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new(),
-            gamma_hat, eps, sub_eps, capping_param: 1.0, grb_env: env
+            dist:        vec![uni; m],
+            weights:     Vec::new(),
+            classifiers: Vec::new(),
+            gamma_hat,
+            eps,
+            sub_eps,
+            capping_param: 1.0,
+            grb_env: env
         }
     }
 
 
     /// This method updates the capping parameter.
     pub fn capping(mut self, capping_param: f64) -> Self {
-        assert!(1.0 <= capping_param && capping_param <= self.dist.len() as f64);
+        assert!(
+            1.0 <= capping_param
+            &&
+            capping_param <= self.dist.len() as f64
+        );
         self.capping_param = capping_param;
 
         self
@@ -73,7 +86,8 @@ impl<D, L> SoftBoost<D, L> {
     }
 
 
-    /// `max_loop` returns the maximum iteration of the Adaboost to find a combined hypothesis
+    /// `max_loop` returns the maximum iteration
+    /// of the Adaboost to find a combined hypothesis
     /// that has error at most `eps`.
     pub fn max_loop(&mut self, eps: f64) -> u64 {
         if self.eps != eps {
@@ -82,7 +96,8 @@ impl<D, L> SoftBoost<D, L> {
 
         let m = self.dist.len() as f64;
 
-        let max_iter = 2.0 * (m / self.capping_param).ln() / (self.eps * self.eps);
+        let temp = (m / self.capping_param).ln();
+        let max_iter = 2.0 * temp / (self.eps * self.eps);
 
         max_iter.ceil() as u64
     }
@@ -90,19 +105,23 @@ impl<D, L> SoftBoost<D, L> {
 
 
 impl<D> SoftBoost<D, f64> {
-    fn set_weights(&mut self, sample: &Sample<D, f64>) -> Result<(), grb::Error> {
+    fn set_weights(&mut self, sample: &Sample<D, f64>)
+        -> Result<(), grb::Error>
+    {
         let mut model = Model::with_env("", &self.grb_env)?;
 
         let m = self.dist.len();
         let t = self.classifiers.len();
 
         // Initialize GRBVars
-        let ws = vec![
-            add_ctsvar!(model, name: &"", bounds: 0.0..1.0)?; t
-        ];
-        let xi = vec![
-            add_ctsvar!(model, name: &"", bounds: 0.0..)?; m
-        ];
+        let ws = (0..t).map(|i| {
+                let name = format!("w{}", i);
+                add_ctsvar!(model, name: &name, bounds: 0.0..1.0).unwrap()
+            }).collect::<Vec<_>>();
+        let xi = (0..m).map(|i| {
+                let name = format!("w{}", i);
+                add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
+            }).collect::<Vec<_>>();
         let rho = add_ctsvar!(model, name: &"rho", bounds: ..)?;
 
 
@@ -153,16 +172,11 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
 
     /// `update_params` updates `self.distribution` and determine the weight on hypothesis
     /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self, h: Box<dyn Classifier<D, f64>>, sample: &Sample<D, f64>) -> Option<()> {
-
-        // assert!((1.0 - self.dist.iter().sum::<f64>()).abs() < 1.0 + 1e-9);
-
-        // for &d in self.dist.iter() {
-        //     let cap = 1.0 / self.capping_param;
-        //     assert!(0.0 <= d && d <= cap);
-        // }
-
-
+    fn update_params(&mut self,
+                     h: Box<dyn Classifier<D, f64>>,
+                     sample: &Sample<D, f64>)
+        -> Option<()>
+    {
         // update `self.gamma_hat`
         let edge = self.dist.iter()
             .zip(sample.iter())
@@ -203,12 +217,15 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
                 let expr = sample.iter()
                     .zip(self.dist.iter())
                     .zip(vars.iter())
-                    .map(|((ex, &d), v)| ex.label * h.predict(&ex.data) * (d + *v))
-                    .grb_sum();
+                    .map(|((ex, &d), &v)| {
+                        ex.label * h.predict(&ex.data) * (d + v)
+                    }).grb_sum();
 
-                model.add_constr(&"", c!(expr <= self.gamma_hat - self.eps)).unwrap();
+                model.add_constr(&"", c!(expr <= self.gamma_hat - self.eps))
+                    .unwrap();
             }
-            model.add_constr(&"sum_is_1", c!(vars.iter().grb_sum() == 0.0)).unwrap();
+            model.add_constr(&"sum_is_1", c!(vars.iter().grb_sum() == 0.0))
+                .unwrap();
             model.update().unwrap();
 
 
@@ -240,7 +257,7 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
 
 
             // At this point, the status is not `Status::Infeasible`.
-            // Therefore, if the status is not `Status::Optimal`, then something wrong.
+            // If the status is not `Status::Optimal`, something wrong.
             if status != Status::Optimal {
                 panic!("Status is {:?}. something wrong.", status);
             }
@@ -271,8 +288,11 @@ impl<D> Booster<D, f64> for SoftBoost<D, f64> {
     }
 
 
-    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
-    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self,
+           base_learner: &dyn BaseLearner<D, f64>,
+           sample: &Sample<D, f64>,
+           eps: f64)
+    {
         let max_iter = self.max_loop(eps);
 
         for t in 1..=max_iter {
