@@ -1,3 +1,4 @@
+//! Provides some base learning algorithms.
 pub mod core;
 pub mod dstump;
 // pub mod dtree;

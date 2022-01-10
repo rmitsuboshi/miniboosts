@@ -1,7 +1,7 @@
-/// This file defines `SoftBoost` based on the paper
-/// "Boosting Algorithms for Maximizing the Soft Margin"
-/// by Warmuth et al.
-/// 
+//! This file defines `SoftBoost` based on the paper
+//! "Boosting Algorithms for Maximizing the Soft Margin"
+//! by Warmuth et al.
+//! 
 use crate::data_type::{Data, Label, Sample};
 use crate::booster::core::Booster;
 use crate::base_learner::core::Classifier;
@@ -11,15 +11,16 @@ use grb::prelude::*;
 
 
 /// Struct `SoftBoost` has 3 main parameters.
-///     - `dist` is the distribution over training examples,
-///     - `weights` is the weights over `classifiers`
-///       that the SoftBoost obtained up to iteration `t`.
-///     - `classifiers` is the classifiers that the SoftBoost obtained.
+/// 
+/// - `dist` is the distribution over training examples,
+/// - `weights` is the weights over `classifiers`
+///   that the SoftBoost obtained up to iteration `t`.
+/// - `classifiers` is the classifiers that the SoftBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct SoftBoost<D, L> {
-    pub dist: Vec<f64>,
-    pub weights: Vec<f64>,
-    pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
+    pub(crate) dist: Vec<f64>,
+    pub(crate) weights: Vec<f64>,
+    pub(crate) classifiers: Vec<Box<dyn Classifier<D, L>>>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})
     gamma_hat:     f64,
@@ -33,6 +34,7 @@ pub struct SoftBoost<D, L> {
 
 
 impl<D, L> SoftBoost<D, L> {
+    /// Initialize the `SoftBoost<D, L>`.
     pub fn init(sample: &Sample<D, L>) -> SoftBoost<D, L> {
         let m = sample.len();
         assert!(m != 0);
@@ -80,6 +82,7 @@ impl<D, L> SoftBoost<D, L> {
     }
 
 
+    /// Set the tolerance parameter.
     fn precision(&mut self, eps: f64) {
         self.eps = eps;
         self.sub_eps = eps / 10.0;
@@ -105,6 +108,8 @@ impl<D, L> SoftBoost<D, L> {
 
 
 impl<D> SoftBoost<D, f64> {
+    /// Set the weight on the classifiers.
+    /// This function is called at the end of the boosting.
     fn set_weights(&mut self, sample: &Sample<D, f64>)
         -> Result<(), grb::Error>
     {
@@ -170,7 +175,8 @@ impl<D> SoftBoost<D, f64> {
 
 impl<D> Booster<D, f64> for SoftBoost<D, f64> {
 
-    /// `update_params` updates `self.distribution` and determine the weight on hypothesis
+    /// `update_params` updates `self.distribution`
+    /// and determine the weight on hypothesis
     /// that the algorithm obtained at current iteration.
     fn update_params(&mut self,
                      h: Box<dyn Classifier<D, f64>>,

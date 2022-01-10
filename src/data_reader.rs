@@ -1,3 +1,5 @@
+//! Provides some function that reads `Sample<D, L>`
+//! from CSV or LIBSVM file.
 use crate::data_type::{DType, Data, LabeledData, Sample};
 use std::str::FromStr;
 use std::collections::HashMap;

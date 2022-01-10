@@ -1,3 +1,4 @@
+//! Provides the `AdaBoost` by Freund & Schapire, 1995.
 use crate::data_type::{Data, Label, Sample};
 use crate::booster::core::Booster;
 use crate::base_learner::core::Classifier;
@@ -5,29 +6,35 @@ use crate::base_learner::core::BaseLearner;
 
 
 /// Struct `AdaBoost` has 3 parameters.
-/// `dist` is the distribution over training examples,
-/// `weights` is the weights over `classifiers` that the AdaBoost obtained up to iteration `t`.
-/// `classifiers` is the classifier that the AdaBoost obtained.
+/// 
+/// - `dist` is the distribution over training examples,
+/// - `weights` is the weights over `classifiers`
+///   that the AdaBoost obtained up to iteration `t`.
+/// - `classifiers` is the classifier that the AdaBoost obtained.
 /// The length of `weights` and `classifiers` must be same.
 pub struct AdaBoost<D, L> {
-    pub dist: Vec<f64>,
-    pub weights: Vec<f64>,
-    pub classifiers: Vec<Box<dyn Classifier<D, L>>>,
+    pub(crate) dist: Vec<f64>,
+    pub(crate) weights: Vec<f64>,
+    pub(crate) classifiers: Vec<Box<dyn Classifier<D, L>>>,
 }
 
 
 impl<D, L> AdaBoost<D, L> {
+    /// Initialize the `AdaBoost<D, L>`.
     pub fn init(sample: &Sample<D, L>) -> AdaBoost<D, L> {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
         AdaBoost {
-            dist: vec![uni; m], weights: Vec::new(), classifiers: Vec::new()
+            dist:        vec![uni; m],
+            weights:     Vec::new(),
+            classifiers: Vec::new()
         }
     }
 
 
-    /// `max_loop` returns the maximum iteration of the Adaboost to find a combined hypothesis
+    /// `max_loop` returns the maximum iteration
+    /// of the Adaboost to find a combined hypothesis
     /// that has error at most `eps`.
     pub fn max_loop(&self, eps: f64) -> u64 {
         let m = self.dist.len();
@@ -41,9 +48,14 @@ impl<D, L> AdaBoost<D, L> {
 
 impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
-    /// `update_params` updates `self.distribution` and determine the weight on hypothesis
+    /// `update_params` updates `self.distribution`
+    /// and determine the weight on hypothesis
     /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self, h: Box<dyn Classifier<D, f64>>, sample: &Sample<D, f64>) -> Option<()> {
+    fn update_params(&mut self,
+                     h: Box<dyn Classifier<D, f64>>,
+                     sample: &Sample<D, f64>)
+        -> Option<()>
+    {
 
 
         let m = sample.len();
@@ -84,7 +96,9 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
 
 
         let mut indices = (0..m).collect::<Vec<usize>>();
-        indices.sort_unstable_by(|&i, &j| self.dist[i].partial_cmp(&self.dist[j]).unwrap());
+        indices.sort_unstable_by(|&i, &j| {
+            self.dist[i].partial_cmp(&self.dist[j]).unwrap()
+        });
 
 
         let mut normalizer = self.dist[indices[0]];
@@ -110,8 +124,11 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
     }
 
 
-    fn run(&mut self, base_learner: &dyn BaseLearner<D, f64>, sample: &Sample<D, f64>, eps: f64) {
-    // fn run(&mut self, base_learner: Box<dyn BaseLearner<D, f64>>, sample: &Sample<D, f64>, eps: f64) {
+    fn run(&mut self,
+           base_learner: &dyn BaseLearner<D, f64>,
+           sample: &Sample<D, f64>,
+           eps: f64)
+    {
         let max_loop = self.max_loop(eps);
         println!("max_loop: {}", max_loop);
 
