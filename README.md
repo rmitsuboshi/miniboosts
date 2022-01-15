@@ -45,10 +45,18 @@ Here is a sample code:
 
 extern crate boost;
 
-// `run()` and `predict()` are the methods of Booster trait
-use boost::booster::Booster;
-use boost::booster::AdaBoost;
-use boost::base_learner::DStump;
+// `run()` and is the method of Booster trait
+use lycaon::Booster;
+
+// `predict(&data)` is the method of Classifier trait
+use lycaon::Classifier;
+
+// In this example, we use AdaBoost as the booster
+use lycaon::AdaBoost;
+
+// In this example,
+// we use Decision stump (Decision Tree of depth 1) as the base learner
+use lycaon::DStump;
 
 // This function reads a file with LIBSVM format
 use boost::data_reader::read_csv;
