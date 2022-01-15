@@ -55,7 +55,7 @@ use boost::data_reader::read_csv;
 
 fn main() {
     // Set file name
-    let file = "/path/to/input/data";
+    let file = "/path/to/input/data.csv";
 
     // Read file
     let sample = read_csv(file).unwrap();
@@ -66,11 +66,11 @@ fn main() {
     // Initialize Base Learner
     let dstump = DStump::init(&sample);
 
-    // Set accuracy parameter
-    let accuracy = 0.1;
+    // Set tolerance parameter
+    let tolerance = 0.1;
 
     // Run boosting algorithm
-    adaboost.run(dstump, &sample, accuracy);
+    let f = adaboost.run(dstump, &sample, tolerance);
 
 
     for example in sample.iter() {
@@ -78,7 +78,7 @@ fn main() {
         let label =  example.label;
 
         // Check the predictions
-        assert_eq!(adaboost.predict(data), label);
+        assert_eq!(f.predict(data), label);
     }
 }
 ```
@@ -88,7 +88,7 @@ If you use soft margin maximizing boosting, initialize booster like this:
 ```rust
 let m = sample.len() as f64;
 let capping_param = m * 0.2;
-let lpboost = LPBoost::init(&sample).capping(capping_param)
+let lpboost = LPBoost::init(&sample).capping(capping_param);
 ```
 
-Note that the capping parameter satisfies `0 <= capping_param && capping_param <= m`.
+Note that the capping parameter satisfies `1 <= capping_param && capping_param <= m`.
