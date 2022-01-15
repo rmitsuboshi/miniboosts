@@ -78,7 +78,7 @@ fn main() {
     let tolerance = 0.1;
 
     // Run boosting algorithm
-    let f = adaboost.run(dstump, &sample, tolerance);
+    let f = adaboost.run(&dstump, &sample, tolerance);
 
 
     for example in sample.iter() {
