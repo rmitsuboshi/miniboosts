@@ -67,8 +67,8 @@ impl DStumpClassifier {
 }
 
 
-impl Classifier<f64, f64> for DStumpClassifier {
-    fn predict(&self, data: &Data<f64>) -> Label<f64> {
+impl Classifier for DStumpClassifier {
+    fn predict(&self, data: &Data) -> Label {
         let val = data.value_at(self.feature_index);
         match self.positive_side {
             PositiveSide::RHS => (val - self.threshold).signum(),
@@ -97,7 +97,7 @@ impl DStump {
 
 
     /// Initializes and produce an instance of `DStump`.
-    pub fn init(sample: &Sample<f64, f64>) -> DStump {
+    pub fn init(sample: &Sample) -> DStump {
         let feature_size = sample.feature_len();
 
 
@@ -176,9 +176,10 @@ impl DStump {
 
 
 
-impl BaseLearner<f64, f64> for DStump {
-    fn best_hypothesis(&self, sample: &Sample<f64, f64>, distribution: &[f64])
-        -> Box<dyn Classifier<f64, f64>>
+impl BaseLearner for DStump {
+    type Clf = DStumpClassifier;
+    fn best_hypothesis(&self, sample: &Sample, distribution: &[f64])
+        -> Self::Clf
     {
         let init_edge = distribution.iter()
             .zip(sample.iter())
@@ -324,7 +325,7 @@ impl BaseLearner<f64, f64> for DStump {
         }
 
 
-        Box::new(dstump)
+        dstump
     }
 }
 

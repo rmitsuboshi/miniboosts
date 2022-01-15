@@ -2,43 +2,38 @@
 //! "Entropy Regularized LPBoost"
 //! by Warmuth et al.
 //! 
-use crate::data_type::{Data, Label, Sample};
+use crate::data_type::Sample;
 use crate::booster::core::Booster;
-use crate::base_learner::core::Classifier;
+use crate::base_learner::core::{Classifier, CombinedClassifier};
 use crate::base_learner::core::BaseLearner;
 use grb::prelude::*;
 
 
 
 /// Struct `ERLPBoost` has 3 main parameters.
-///     - `dist` is the distribution over training examples,
-///     - `weights` is the weights over `classifiers`
-///       that the ERLPBoost obtained up to iteration `t`.
-///     - `classifiers` is the classifier that the ERLPBoost obtained.
-/// The length of `weights` and `classifiers` must be same.
-pub struct ERLPBoost<D, L> {
-    pub(crate) dist:        Vec<f64>,
-    pub(crate) weights:     Vec<f64>,
-    pub(crate) classifiers: Vec<Box<dyn Classifier<D, L>>>,
+/// - `dist` is the distribution over training examples,
+pub struct ERLPBoost {
+    pub(crate) dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
-    pub(crate) gamma_hat:   f64,
+    gamma_hat: f64,
 
-    // `gamma_star` corresponds to $P^{t-1} (d^{t-1})
-    gamma_star:      f64,
-    // `eta` is the regularization parameter defined in the paper
-    eta:             f64,
+    // `gamma_star` corresponds to $P^{t-1} (d^{t-1})$
+    gamma_star: f64,
+    // regularization parameter defined in the paper
+    eta:           f64,
 
-    eps:             f64,
-    sub_eps:         f64, // an accuracy parameter for the sub-problems
-    capping_param:   f64,
-    grb_env:         Env,
+    tolerance:     f64,
+    // an accuracy parameter for the sub-problems
+    sub_tolerance: f64,
+    capping_param: f64,
+    env:           Env,
 }
 
 
-impl<D, L> ERLPBoost<D, L> {
-    /// Initialize the `ERLPBoost<D, L>`.
-    pub fn init(sample: &Sample<D, L>) -> ERLPBoost<D, L> {
+impl ERLPBoost {
+    /// Initialize the `ERLPBoost`.
+    pub fn init(sample: &Sample) -> ERLPBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -53,14 +48,14 @@ impl<D, L> ERLPBoost<D, L> {
         let ln_m = (m as f64).ln();
 
 
-        // Set eps, sub_eps
-        let eps     = uni /  2.0;
-        let sub_eps = eps / 10.0;
+        // Set tolerance, sub_tolerance
+        let tolerance     = uni / 2.0;
+        let sub_tolerance = tolerance / 10.0;
 
 
         // Set regularization parameter
         let mut eta = 1.0 / 2.0;
-        let temp    = 2.0 * ln_m / eps;
+        let temp    = 2.0 * ln_m / tolerance;
 
         if eta < temp {
             eta = temp;
@@ -72,16 +67,14 @@ impl<D, L> ERLPBoost<D, L> {
 
 
         ERLPBoost {
-            dist:        vec![uni; m],
-            weights:     Vec::new(),
-            classifiers: Vec::new(),
+            dist:          vec![uni; m],
             gamma_hat,
             gamma_star,
-            eps,
-            sub_eps,
             eta,
+            tolerance,
+            sub_tolerance,
             capping_param: 1.0,
-            grb_env:       env
+            env:           env
         }
     }
 
@@ -100,19 +93,21 @@ impl<D, L> ERLPBoost<D, L> {
     }
 
 
-    /// Setter method of `self.eps`
-    fn precision(&mut self, eps: f64) {
-        self.eps = eps / 2.0;
-        self.sub_eps = eps / 10.0;
+    /// Setter method of `self.tolerance`
+    #[inline(always)]
+    fn set_tolerance(&mut self, tolerance: f64) {
+        self.tolerance = tolerance / 2.0;
+        self.sub_tolerance = tolerance / 10.0;
         self.regularization_param();
     }
 
 
     /// Setter method of `self.eta`
+    #[inline(always)]
     fn regularization_param(&mut self) {
         let ln_m = (self.dist.len() as f64 / self.capping_param).ln();
         self.eta = 1.0 / 2.0;
-        let temp = 2.0 * ln_m / self.eps;
+        let temp = 2.0 * ln_m / self.tolerance;
 
         if self.eta < temp {
             self.eta = temp;
@@ -122,21 +117,27 @@ impl<D, L> ERLPBoost<D, L> {
     }
 
 
+    /// Returns a optimal value of the optimization problem LPBoost solves
+    pub fn opt_val(&self) -> f64 {
+        self.gamma_hat
+    }
+
+
 
     /// `max_loop` returns the maximum iteration
     /// of the Adaboost to find a combined hypothesis
-    /// that has error at most `eps`.
-    pub fn max_loop(&mut self, eps: f64) -> u64 {
-        if self.eps != eps {
-            self.precision(eps);
+    /// that has error at most `tolerance`.
+    pub fn max_loop(&mut self, tolerance: f64) -> u64 {
+        if self.tolerance * 2.0 != tolerance {
+            self.set_tolerance(tolerance);
         }
 
         let m = self.dist.len();
 
-        let mut max_iter = 8.0 / self.eps;
+        let mut max_iter = 8.0 / self.tolerance;
 
         let temp = (m as f64 / self.capping_param).ln();
-        let temp = 32.0 * temp / (self.eps * self.eps);
+        let temp = 32.0 * temp / (self.tolerance * self.tolerance);
 
         if max_iter < temp {
             max_iter = temp;
@@ -147,46 +148,48 @@ impl<D, L> ERLPBoost<D, L> {
 }
 
 
-impl<D> ERLPBoost<D, f64> {
-    fn set_weights(&mut self, sample: &Sample<D, f64>)
-        -> Result<(), grb::Error>
+impl ERLPBoost {
+    /// Compute the weight on hypotheses
+    fn set_weights<C>(&mut self, sample: &Sample, clfs: &[C])
+        -> Result<Vec<f64>, grb::Error>
+        where C: Classifier
     {
-        let mut model = Model::with_env("", &self.grb_env)?;
+        let mut model = Model::with_env("", &self.env)?;
 
         let m = sample.len();
-        let t = self.classifiers.len();
+        let t = clfs.len();
 
         // Initialize GRBVars
-        let ws = (0..t).map(|i| {
+        let wt_vec = (0..t).map(|i| {
                 let name = format!("w{}", i);
                 add_ctsvar!(model, name: &name, bounds: 0.0..1.0).unwrap()
             }).collect::<Vec<_>>();
-        let xi = (0..m).map(|i| {
-                let name = format!("w{}", i);
+        let xi_vec = (0..m).map(|i| {
+                let name = format!("xi{}", i);
                 add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
             }).collect::<Vec<_>>();
         let rho = add_ctsvar!(model, name: &"rho", bounds: ..)?;
 
 
         // Set constraints
-        for (ex, &x) in sample.iter().zip(xi.iter()) {
-            let expr = ws.iter()
-                .zip(self.classifiers.iter())
+        for (ex, &xi) in sample.iter().zip(xi_vec.iter()) {
+            let expr = wt_vec.iter()
+                .zip(clfs.iter())
                 .map(|(&w, h)| ex.label * h.predict(&ex.data) * w)
                 .grb_sum();
 
-            model.add_constr(&"", c!(expr >= rho - x))?;
+            model.add_constr(&"", c!(expr >= rho - xi))?;
         }
 
         model.add_constr(
-            &"sum_is_1", c!(ws.iter().grb_sum() == 1.0)
+            &"sum_is_1", c!(wt_vec.iter().grb_sum() == 1.0)
         )?;
         model.update()?;
 
 
         // Set the objective function
         let temp = 1.0 / self.capping_param;
-        let objective = rho - temp * xi.iter().grb_sum();
+        let objective = rho - temp * xi_vec.iter().grb_sum();
         model.set_objective(objective, Maximize)?;
         model.update()?;
 
@@ -197,77 +200,54 @@ impl<D> ERLPBoost<D, f64> {
         let status = model.status()?;
 
         if status != Status::Optimal {
-            println!("Status: {:?}", status);
-            panic!("Failed to finding an optimal solution");
+            let message = format!(
+                "Failed to finding an optimal solution. Status: {:?}",
+                status
+            );
+            panic!("{message}");
         }
 
 
         // Assign weights over the hypotheses
-        self.weights = ws.into_iter()
+        let weights = wt_vec.into_iter()
             .map(|w| model.get_obj_attr(attr::X, &w).unwrap())
             .collect::<Vec<_>>();
 
-        Ok(())
+        Ok(weights)
     }
-}
 
 
-impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
-
-    /// `update_params` updates `self.distribution` and determine the weight on hypothesis
-    /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self,
-                     h: Box<dyn Classifier<D, f64>>,
-                     sample: &Sample<D, f64>)
-        -> Option<()>
+    /// Updates `self.distribution`
+    fn update_params_mut<C>(&mut self, clfs: &[C], sample:  &Sample)
+        where C: Classifier
     {
 
 
-        // update `self.gamma_hat`
-        let edge = self.dist.iter()
-            .zip(sample.iter())
-            .fold(0.0_f64, |mut acc, (d, example)| {
-                acc += d * example.label * h.predict(&example.data);
-                acc
-            });
-
-        if self.gamma_hat > edge {
-            self.gamma_hat = edge;
-        }
-
-
-        // Check the stopping criterion
-        let delta = self.gamma_hat - self.gamma_star;
-        if delta <= self.eps / 2.0 {
-            return None;
-        }
-
-        // At this point, the stopping criterion is not satisfied.
-        // Append a new hypothesis to `self.classifiers`.
-        self.classifiers.push(h);
         loop {
             // Initialize GRBModel
-            let mut model = Model::with_env("", &self.grb_env).unwrap();
+            let mut model = Model::with_env("", &self.env).unwrap();
             let gamma = add_ctsvar!(
                 model, name: &"gamma", bounds: ..
             ).unwrap();
 
 
             // Set variables that are used in the optimization problem
-            let ub = 1.0 / self.capping_param;
+            let upper_bound = 1.0 / self.capping_param;
 
             let vars = self.dist.iter()
                 .enumerate()
                 .map(|(i, &d)| {
                     let name = format!("v{}", i);
-                    add_ctsvar!(model, name: &name, bounds: -d..ub-d)
-                        .unwrap()
+                    // define the i'th lb & ub
+                    let lb = -d;
+                    let ub = upper_bound - d;
+                    add_ctsvar!(model, name: &name, bounds: lb..ub).unwrap()
                 }).collect::<Vec<Var>>();
 
             model.update().unwrap();
 
             // Set constraints
-            for h in self.classifiers.iter() {
+            for h in clfs.iter() {
                 let expr = sample.iter()
                     .zip(self.dist.iter())
                     .zip(vars.iter())
@@ -278,8 +258,10 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
 
                 model.add_constr(&"", c!(expr <= gamma)).unwrap();
             }
-            model.add_constr(&"sum_is_1", c!(vars.iter().grb_sum() == 0.0))
-                .unwrap();
+            model.add_constr(
+                &"zero_sum",
+                c!(vars.iter().grb_sum() == 0.0_f64)
+            ).unwrap();
             model.update().unwrap();
 
 
@@ -308,8 +290,10 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
             // since the domain is a bounded & closed convex set,
             let status = model.status().unwrap();
             if status != Status::Optimal {
-                println!("Status is {:?}. something wrong.", status);
-                return None;
+                let message = format!(
+                    "Status is {:?}. something wrong.", status
+                );
+                panic!("{message}");
             }
 
 
@@ -323,50 +307,74 @@ impl<D> Booster<D, f64> for ERLPBoost<D, f64> {
             }
             let l2 = l2.sqrt();
 
-            if l2 < self.sub_eps {
+            if l2 < self.sub_tolerance {
                 self.gamma_star = model.get_attr(attr::ObjVal).unwrap();
                 break;
             }
         }
-
-
-        Some(())
     }
+}
 
 
-    fn run(&mut self,
-           base_learner: &dyn BaseLearner<D, f64>,
-           sample: &Sample<D, f64>,
-           eps: f64)
+impl<C> Booster<C> for ERLPBoost
+    where C: Classifier + Eq + PartialEq
+{
+    fn run<B>(&mut self, base_learner: &B, sample: &Sample, tolerance: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>
     {
-        let max_iter = self.max_loop(eps);
+        let max_iter = self.max_loop(tolerance);
+
+        let mut clfs = Vec::new();
 
         for t in 1..=max_iter {
             // Receive a hypothesis from the base learner
             let h = base_learner.best_hypothesis(sample, &self.dist);
 
-            // Update the parameters
-            if let None = self.update_params(h, sample) {
-                println!("Break loop at: {}", t);
+
+            // update `self.gamma_hat`
+            let edge = self.dist.iter()
+                .zip(sample.iter())
+                .fold(0.0_f64, |mut acc, (d, example)| {
+                    acc += d * example.label * h.predict(&example.data);
+                    acc
+                });
+
+            if self.gamma_hat > edge {
+                self.gamma_hat = edge;
+            }
+
+
+            // Check the stopping criterion
+            let delta = self.gamma_hat - self.gamma_star;
+            if delta <= self.tolerance / 2.0 {
+                println!("Break loop at: {t}");
                 break;
             }
+
+            // At this point, the stopping criterion is not satisfied.
+            // Append a new hypothesis to `clfs`.
+            clfs.push(h);
+
+            // Update the parameters
+            self.update_params_mut(&clfs, sample);
         }
 
         // Set the weights on the hypotheses
         // by solving a linear program
-        self.set_weights(&sample).unwrap();
-    }
+        let weighted_classifier = match self.set_weights(&sample, &clfs) {
+            Err(e) => {
+                panic!("{e}");
+            },
+            Ok(weights) => {
+                weights.into_iter()
+                    .zip(clfs.into_iter())
+                    .collect::<Vec<_>>()
+            }
+        };
 
-
-    fn predict(&self, data: &Data<D>) -> Label<f64> {
-        assert_eq!(self.weights.len(), self.classifiers.len());
-
-        let mut confidence = 0.0;
-        for (w, h) in self.weights.iter().zip(self.classifiers.iter()) {
-            confidence += w * h.predict(data);
-        }
-
-
-        confidence.signum()
+        CombinedClassifier { weighted_classifier }
     }
 }
+
+

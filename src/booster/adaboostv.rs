@@ -1,7 +1,7 @@
 //! Provides the `AdaBoost*` by Rätsch & Warmuth, 2005.
-use crate::data_type::{Data, Label, Sample};
+use crate::data_type::Sample;
 use crate::booster::core::Booster;
-use crate::base_learner::core::Classifier;
+use crate::base_learner::core::{Classifier, CombinedClassifier};
 use crate::base_learner::core::BaseLearner;
 
 
@@ -9,26 +9,20 @@ use crate::base_learner::core::BaseLearner;
 /// Struct `AdaBoostV` has 4 parameters.
 /// 
 /// - `tolerance` is the gap parameter,
-/// - `rho` is the guess of the optimal margin,
+/// - `rho` is a guess of the optimal margin,
 /// - `gamma` is the minimum edge over the past edges,
 /// - `dist` is the distribution over training examples,
-/// - `weights` is the weights over `classifiers`
-///   that the AdaBoostV obtained up to iteration `t`.
-/// - `classifiers` is the classifier that the AdaBoostV obtained.
-/// The length of `weights` and `classifiers` must be same.
-pub struct AdaBoostV<D, L> {
-    pub(crate) tolerance:   f64,
-    pub(crate) rho:         f64,
-    pub(crate) gamma:       f64,
-    pub(crate) dist:        Vec<f64>,
-    pub(crate) weights:     Vec<f64>,
-    pub(crate) classifiers: Vec<Box<dyn Classifier<D, L>>>,
+pub struct AdaBoostV {
+    pub(crate) tolerance: f64,
+    pub(crate) rho:       f64,
+    pub(crate) gamma:     f64,
+    pub(crate) dist:      Vec<f64>,
 }
 
 
-impl<D, L> AdaBoostV<D, L> {
+impl AdaBoostV {
     /// Initialize the `AdaBoostV<D, L>`.
-    pub fn init(sample: &Sample<D, L>) -> AdaBoostV<D, L> {
+    pub fn init(sample: &Sample) -> AdaBoostV {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
@@ -37,8 +31,6 @@ impl<D, L> AdaBoostV<D, L> {
             rho:         1.0,
             gamma:       1.0,
             dist:        vec![uni; m],
-            weights:     Vec::new(),
-            classifiers: Vec::new()
         }
     }
 
@@ -52,66 +44,32 @@ impl<D, L> AdaBoostV<D, L> {
         2 * ((m as f64).ln() / (eps * eps)) as usize
     }
 
-
-}
-
-
-impl<D> Booster<D, f64> for AdaBoostV<D, f64> {
-
     /// `update_params` updates `self.distribution`
     /// and determine the weight on hypothesis
     /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self,
-                     h: Box<dyn Classifier<D, f64>>,
-                     sample: &Sample<D, f64>)
-        -> Option<()>
-    {
+    fn update_params(&mut self, predictions: Vec<f64>, edge: f64) -> f64 {
 
 
-        let m = sample.len();
-
-        let edge = self.dist.iter()
-            .zip(sample.iter())
-            .fold(0.0_f64, |mut acc, (d, example)| {
-                acc += d * example.label * h.predict(&example.data);
-                acc
-            });
-
-
-        // This assertion may fail because of the numerical error
-        // assert!(edge >= -1.0);
-        // assert!(edge <=  1.0);
-
-
-        if edge.abs() >= 1.0 {
-            self.weights.clear();
-            self.classifiers.clear();
-
-            let sgn = edge.signum();
-            self.weights.push(sgn);
-            self.classifiers.push(h);
-
-            return None;
-        }
-
+        // Update edge & margin estimation parameters
         self.gamma = edge.min(self.gamma);
-
-        self.rho = self.gamma - self.tolerance;
+        self.rho   = self.gamma - self.tolerance;
 
 
         let weight = {
-            let _first  = ((1.0 + edge) / (1.0 - edge)).ln() / 2.0;
-            let _second = ((1.0 + self.rho) / (1.0 - self.rho)).ln() / 2.0;
+            let e = ((1.0 + edge) / (1.0 - edge)).ln() / 2.0;
+            let m = ((1.0 + self.rho) / (1.0 - self.rho)).ln() / 2.0;
 
-            _first - _second
+            e - m
         };
 
 
         // To prevent overflow, take the logarithm.
-        for (d, example) in self.dist.iter_mut().zip(sample.iter()) {
-            *d = d.ln() - weight * example.label * h.predict(&example.data);
+        for (d, yh) in self.dist.iter_mut().zip(predictions.iter()) {
+            *d = d.ln() - weight * yh;
         }
 
+
+        let m = self.dist.len();
         let mut indices = (0..m).collect::<Vec<usize>>();
         indices.sort_unstable_by(|&i, &j| {
             self.dist[i].partial_cmp(&self.dist[j]).unwrap()
@@ -133,41 +91,68 @@ impl<D> Booster<D, f64> for AdaBoostV<D, f64> {
             *d = (*d - normalizer).exp();
         }
 
-        self.classifiers.push(h);
-        self.weights.push(weight);
-
-        Some(())
-    }
-
-
-    fn run(&mut self,
-           base_learner: &dyn BaseLearner<D, f64>,
-           sample: &Sample<D, f64>,
-           eps: f64)
-    {
-        self.tolerance = eps;
-        let max_loop = self.max_loop(eps);
-        dbg!("max_loop: {}", max_loop);
-
-        for _t in 1..=max_loop {
-            let h = base_learner.best_hypothesis(sample, &self.dist);
-            if let None = self.update_params(h, sample) {
-                println!("Break loop at: {}", _t);
-                break;
-            }
-        }
-    }
-
-
-    fn predict(&self, data: &Data<D>) -> Label<f64> {
-        assert_eq!(self.weights.len(), self.classifiers.len());
-
-        let mut confidence = 0.0;
-        for (w, h) in self.weights.iter().zip(self.classifiers.iter()) {
-            confidence += w * h.predict(data);
-        }
-
-
-        confidence.signum()
+        weight
     }
 }
+
+
+impl<C> Booster<C> for AdaBoostV
+    where C: Classifier + Eq + PartialEq
+{
+
+
+    fn run<B>(&mut self, base_learner: &B, sample: &Sample, eps: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>,
+    {
+        // Initialize parameters
+        let m   = sample.len();
+        self.dist      = vec![1.0 / m as f64; m];
+        self.tolerance = eps;
+
+        let mut weighted_classifier = Vec::new();
+
+
+        let max_loop = self.max_loop(eps);
+        println!("max_loop: {max_loop}");
+
+        for _t in 1..=max_loop {
+            // Get a new hypothesis
+            let h = base_learner.best_hypothesis(sample, &self.dist);
+
+
+            // Each element in `predictions` is the product of
+            // the predicted vector and the correct vector
+            let predictions = sample.iter()
+                .map(|ex| ex.label * h.predict(&ex.data))
+                .collect::<Vec<f64>>();
+
+
+            let edge = predictions.iter()
+                .zip(self.dist.iter())
+                .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
+
+
+            // If `h` predicted all the examples in `sample` correctly,
+            // use it as the combined classifier.
+            if edge.abs() >= 1.0 {
+                let sgn = edge.signum();
+                weighted_classifier = vec![(sgn, h)];
+                println!("Break loop after: {_t} iterations");
+                break;
+            }
+
+
+            // Compute the weight on the new hypothesis
+            let weight = self.update_params(predictions, edge);
+            weighted_classifier.push(
+                (weight, h)
+            );
+        }
+
+        CombinedClassifier {
+            weighted_classifier
+        }
+    }
+}
+

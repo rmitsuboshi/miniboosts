@@ -2,26 +2,27 @@
 use std::collections::HashMap;
 use std::ops::Index;
 
-/// Generic label type.
-pub type Label<L> = L;
-
 
 /// Enum of the sparse and dense data.
-/// A sparse data is represented by a `HashMap<usize, D>`,
-/// and a dense data is represented by a `Vec<D>`.
+/// A sparse data is represented by a `HashMap<usize, f64>`,
+/// and a dense data is represented by a `Vec<f64>`.
 #[derive(Clone, Debug)]
-pub enum Data<D> {
-    /// Sparse data
-    Sparse(HashMap<usize, D>),
-    /// Dense data
-    Dense(Vec<D>),
+pub enum Data {
+    /// Sparse(..) holds the pair of (index, value), where the
+    /// value has non-zero value.
+    Sparse(HashMap<usize, f64>),
+    /// Dense holds the entire data.
+    Dense(Vec<f64>),
 }
 
+/// Introduce the `Label` for clarity.
+pub type Label = f64;
 
-impl<D: Clone + Default> Data<D> {
-    /// Returns the `index`-th value of the `Data<D>`.
-    /// If the `Data<D>` is the sparse data, returns the default value.
-    pub fn value_at(&self, index: usize) -> D {
+
+impl Data {
+    /// Returns the `index`-th value of the `Data`.
+    /// If the `Data` is the sparse data, returns the default value.
+    pub fn value_at(&self, index: usize) -> f64 {
         match self {
             Data::Sparse(_data) => {
                 match _data.get(&index) {
@@ -48,27 +49,25 @@ pub enum DType {
 
 
 /// A pair of the instance and its label.
-pub struct LabeledData<D, L> {
+pub struct LabeledData {
     /// Instance
-    pub data: Data<D>,
+    pub data:  Data,
     /// Label
-    pub label: Label<L>
+    pub label: Label,
 }
 
 
-/// A sequence of the `LabeledData<D, L>`.
+/// A sequence of the `LabeledData`.
 /// We assume that all the example in `sample` has the same format.
-pub struct Sample<D, L> {
-    /// Vector of the `LabeledData<D, L>`
-    pub sample: Vec<LabeledData<D, L>>,
+pub struct Sample {
+    /// Vector of the `LabeledData`
+    pub sample: Vec<LabeledData>,
     /// Type of the sample
-    pub dtype: DType
+    pub dtype:  DType,
 }
 
 
-
-
-impl<D, L> Sample<D, L> {
+impl Sample {
 
     /// Returns the number of training examples.
     pub fn len(&self) -> usize {
@@ -96,17 +95,17 @@ impl<D, L> Sample<D, L> {
 }
 
 
-impl<D, L> Index<usize> for Sample<D, L> {
-    type Output = LabeledData<D, L>;
+impl Index<usize> for Sample {
+    type Output = LabeledData;
     fn index(&self, idx: usize) -> &Self::Output {
         &self.sample[idx]
     }
 }
 
 
-/// Converts the sequence of `Data<D>` and `Label<L>` to `Sample<D, L>`
-pub fn to_sample<D, L>(examples: Vec<Data<D>>, labels: Vec<Label<L>>)
-    -> Sample<D, L>
+/// Converts the sequence of `Data` and `Label` to `Sample`
+pub fn to_sample(examples: Vec<Data>, labels: Vec<Label>)
+    -> Sample
 {
     let dtype = match &examples[0] {
         &Data::Sparse(_) => DType::Sparse,
@@ -116,29 +115,29 @@ pub fn to_sample<D, L>(examples: Vec<Data<D>>, labels: Vec<Label<L>>)
     let sample = examples.into_iter()
         .zip(labels)
         .map(|(data, label)| LabeledData { data, label })
-        .collect::<Vec<LabeledData<D, L>>>();
+        .collect::<Vec<_>>();
 
     Sample { sample, dtype }
 }
 
 
 
-/// A struct for implementing the iterator over `Sample<D, L>`.
-pub struct SampleIter<'a, D, L> {
-    sample: &'a [LabeledData<D, L>]
+/// A struct for implementing the iterator over `Sample`.
+pub struct SampleIter<'a> {
+    sample: &'a [LabeledData]
 }
 
 
-impl<D, L> Sample<D, L> {
-    /// Iterator for `Sample<D, L>`
-    pub fn iter(&self) -> SampleIter<'_, D, L> {
+impl Sample {
+    /// Iterator for `Sample`
+    pub fn iter(&self) -> SampleIter<'_> {
         SampleIter { sample: &self.sample[..] }
     }
 }
 
 
-impl<'a, D, L> Iterator for SampleIter<'a, D, L> {
-    type Item = &'a LabeledData<D, L>;
+impl<'a> Iterator for SampleIter<'a> {
+    type Item = &'a LabeledData;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.sample.get(0) {
@@ -151,6 +150,5 @@ impl<'a, D, L> Iterator for SampleIter<'a, D, L> {
         }
     }
 }
-
 
 
