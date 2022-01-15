@@ -2,31 +2,26 @@
 //! "Boosting algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use crate::data_type::{Data, Label, Sample};
+use crate::data_type::Sample;
 use crate::booster::core::Booster;
-use crate::base_learner::core::Classifier;
+use crate::base_learner::core::{Classifier, CombinedClassifier};
 use crate::base_learner::core::BaseLearner;
 use grb::prelude::*;
 
 
 
-/// Struct `LPBoost` has 3 main parameters.
+/// Struct `LPBoost` has one parameter.
 /// 
 /// - `dist` is the distribution over training examples,
-/// - `weights` is the weights over `classifiers`
-///   that the LPBoost obtained up to iteration `t`.
-/// - `classifiers` is the classifier that the LPBoost obtained.
-/// The length of `weights` and `classifiers` must be same.
-pub struct LPBoost<D, L> {
-    pub(crate) dist:        Vec<f64>,
-    pub(crate) weights:     Vec<f64>,
-    pub(crate) classifiers: Vec<Box<dyn Classifier<D, L>>>,
+/// 
+pub struct LPBoost {
+    pub(crate) dist: Vec<f64>,
 
-    // These are the parameters used in the `update_param(..)`
-    pub(crate) gamma_hat: f64,
+    // min-max edge of the new hypothesis
+    gamma_hat: f64,
 
     // Tolerance parameter
-    eps: f64,
+    tolerance: f64,
 
     // Variables for the Gurobi optimizer
     model:   Model,
@@ -36,9 +31,9 @@ pub struct LPBoost<D, L> {
 }
 
 
-impl<D, L> LPBoost<D, L> {
-    /// Initialize the `LPBoost<D, L>`.
-    pub fn init(sample: &Sample<D, L>) -> LPBoost<D, L> {
+impl LPBoost {
+    /// Initialize the `LPBoost`.
+    pub fn init(sample: &Sample) -> LPBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -79,11 +74,9 @@ impl<D, L> LPBoost<D, L> {
 
         let uni = 1.0 / m as f64;
         LPBoost {
-            dist:        vec![uni; m],
-            weights:     Vec::new(),
-            classifiers: Vec::new(),
-            gamma_hat:   1.0,
-            eps:         uni,
+            dist:      vec![uni; m],
+            gamma_hat: 1.0,
+            tolerance: uni,
             model,
             vars,
             gamma,
@@ -126,7 +119,7 @@ impl<D, L> LPBoost<D, L> {
         let constr = self.model.add_constr(
             &"sum_is_1", c!(self.vars.iter().grb_sum() == 1.0)
         ).unwrap();
-        self.constrs[0] = constr;
+        self.constrs = vec![constr];
 
 
         // Set objective
@@ -139,31 +132,22 @@ impl<D, L> LPBoost<D, L> {
 
 
     #[inline(always)]
-    fn precision(&mut self, eps: f64) {
-        self.eps = eps;
+    fn set_tolerance(&mut self, tolerance: f64) {
+        self.tolerance = tolerance;
     }
 
-}
+
+    /// Returns a optimal value of the optimization problem LPBoost solves
+    pub fn opt_val(&self) -> f64 {
+        self.gamma_hat
+    }
 
 
-impl<D> Booster<D, f64> for LPBoost<D, f64> {
-
-    /// `update_params` updates `self.distribution` and determine the weight on hypothesis
-    /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self,
-                     h: Box<dyn Classifier<D, f64>>,
-                     sample: &Sample<D, f64>)
-        -> Option<()>
-    {
-
-
+    /// `update_params` updates `self.distribution` and `self.gamma_hat`
+    /// by solving a linear program
+    #[inline(always)]
+    fn update_params(&mut self, predictions: Vec<f64>, edge: f64) -> f64 {
         // update `self.gamma_hat`
-        let edge = self.dist.iter()
-            .zip(sample.iter())
-            .fold(0.0_f64, |mut acc, (d, example)| {
-                acc += d * example.label * h.predict(&example.data);
-                acc
-            });
         if self.gamma_hat > edge {
             self.gamma_hat = edge;
         }
@@ -171,10 +155,11 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
 
 
         // Add a new constraint
-        let expr = sample.iter()
+        let expr = predictions.iter()
             .zip(self.vars.iter())
-            .map(|(ex, v)| *v * ex.label * h.predict(&ex.data))
+            .map(|(&yh, &v)| v * yh)
             .grb_sum();
+
         let constr = self.model
             .add_constr(&"", c!(expr <= self.gamma))
             .unwrap();
@@ -198,7 +183,6 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
         // At this point,
         // the status of the optimization problem is `Status::Optimal`
         // Therefore, we append a new hypothesis to `self.classifiers`
-        self.classifiers.push(h);
         self.constrs.push(constr);
 
 
@@ -206,58 +190,73 @@ impl<D> Booster<D, f64> for LPBoost<D, f64> {
         let gamma_star = self.model
             .get_obj_attr(attr::X, &self.gamma)
             .unwrap();
-        if gamma_star >= self.gamma_hat - self.eps {
-            self.weights = self.constrs[1..].iter()
-                .map(|constr| {
-                    self.model.get_obj_attr(attr::Pi, constr)
-                        .unwrap()
-                        .abs()
-                }).collect::<Vec<f64>>();
 
-            return None;
-        }
-
-
-        // Update the distribution over the training examples.
-        self.dist = self.vars.iter()
-            .map(|var| self.model.get_obj_attr(attr::X, var).unwrap())
-            .collect::<Vec<f64>>();
-
-        Some(())
+        gamma_star
     }
+}
 
 
-    fn run(&mut self,
-           base_learner: &dyn BaseLearner<D, f64>,
-           sample: &Sample<D, f64>,
-           eps: f64)
+impl<C> Booster<C> for LPBoost
+    where C: Classifier + Eq + PartialEq
+{
+
+
+    fn run<B>(&mut self, base_learner: &B, sample: &Sample, tolerance: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>
     {
-        if self.eps != eps {
-            self.precision(eps);
+        if self.tolerance != tolerance {
+            self.set_tolerance(tolerance);
         }
 
+        let mut clfs = Vec::new();
 
         // Since the LPBoost does not have non-trivial iteration,
         // we run this until the stopping criterion is satisfied.
         loop {
             let h = base_learner.best_hypothesis(sample, &self.dist);
-            if let None = self.update_params(h, sample) {
-                println!("Break loop at: {}", self.classifiers.len());
+
+            // Each element in `predictions` is the product of
+            // the predicted vector and the correct vector
+            let predictions = sample.iter()
+                .map(|ex| ex.label * h.predict(&ex.data))
+                .collect::<Vec<f64>>();
+
+
+            let edge = predictions.iter()
+                .zip(self.dist.iter())
+                .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
+
+
+            let gamma_star = self.update_params(predictions, edge);
+
+            clfs.push(h);
+
+            if gamma_star >= self.gamma_hat - self.tolerance {
+                println!("Break loop at: {t}", t = clfs.len());
                 break;
             }
-        }
-    }
 
-
-    fn predict(&self, data: &Data<D>) -> Label<f64> {
-        assert_eq!(self.weights.len(), self.classifiers.len());
-
-        let mut confidence = 0.0;
-        for (w, h) in self.weights.iter().zip(self.classifiers.iter()) {
-            confidence += w * h.predict(data);
+            // Update the distribution over the training examples.
+            self.dist = self.vars.iter()
+                .map(|var| self.model.get_obj_attr(attr::X, var).unwrap())
+                .collect::<Vec<f64>>();
         }
 
 
-        confidence.signum()
+        let weighted_classifier = self.constrs[1..].iter()
+            .map(|constr| {
+                self.model.get_obj_attr(attr::Pi, constr)
+                    .unwrap()
+                    .abs()
+            })
+            .zip(clfs.into_iter())
+            .collect::<Vec<_>>();
+
+        CombinedClassifier {
+            weighted_classifier
+        }
     }
 }
+
+

@@ -21,7 +21,7 @@ pub use adaboost::AdaBoost;
 /// Hard Margin Maximization
 pub use adaboostv::AdaBoostV;
 pub use totalboost::TotalBoost;
-
+// 
 /// Soft Margin Maximization
 pub use lpboost::LPBoost;
 pub use erlpboost::ERLPBoost;

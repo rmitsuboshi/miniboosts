@@ -1,34 +1,26 @@
 //! Provides the `AdaBoost` by Freund & Schapire, 1995.
-use crate::data_type::{Data, Label, Sample};
+use crate::data_type::Sample;
 use crate::booster::core::Booster;
-use crate::base_learner::core::Classifier;
+use crate::base_learner::core::{Classifier, CombinedClassifier};
 use crate::base_learner::core::BaseLearner;
 
 
-/// Struct `AdaBoost` has 3 parameters.
+/// Struct `AdaBoost` has one parameter.
 /// 
 /// - `dist` is the distribution over training examples,
-/// - `weights` is the weights over `classifiers`
-///   that the AdaBoost obtained up to iteration `t`.
-/// - `classifiers` is the classifier that the AdaBoost obtained.
-/// The length of `weights` and `classifiers` must be same.
-pub struct AdaBoost<D, L> {
+pub struct AdaBoost {
     pub(crate) dist: Vec<f64>,
-    pub(crate) weights: Vec<f64>,
-    pub(crate) classifiers: Vec<Box<dyn Classifier<D, L>>>,
 }
 
 
-impl<D, L> AdaBoost<D, L> {
-    /// Initialize the `AdaBoost<D, L>`.
-    pub fn init(sample: &Sample<D, L>) -> AdaBoost<D, L> {
+impl AdaBoost {
+    /// Initialize the `AdaBoost`.
+    pub fn init(sample: &Sample) -> AdaBoost {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
         AdaBoost {
-            dist:        vec![uni; m],
-            weights:     Vec::new(),
-            classifiers: Vec::new()
+            dist: vec![uni; m],
         }
     }
 
@@ -43,58 +35,25 @@ impl<D, L> AdaBoost<D, L> {
     }
 
 
-}
-
-
-impl<D> Booster<D, f64> for AdaBoost<D, f64> {
-
     /// `update_params` updates `self.distribution`
     /// and determine the weight on hypothesis
     /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self,
-                     h: Box<dyn Classifier<D, f64>>,
-                     sample: &Sample<D, f64>)
-        -> Option<()>
-    {
+    fn update_params(&mut self, predictions: Vec<f64>, edge: f64) -> f64 {
+        let m = self.dist.len();
 
 
-        let m = sample.len();
-
-
-        let edge = self.dist.iter()
-            .zip(sample.iter())
-            .fold(0.0_f64, |mut acc, (d, example)| {
-                acc += d * example.label * h.predict(&example.data);
-                acc
-            });
-
-
-        // This assertion may fail because of the numerical error
-        // dbg!(edge);
-        // assert!(edge >= -1.0);
-        // assert!(edge <=  1.0);
-
-
-        if edge >= 1.0 {
-            self.weights.clear();
-            self.classifiers.clear();
-
-            self.weights.push(1.0);
-            self.classifiers.push(h);
-
-            return None;
-        }
-
-
+        // Compute the weight on new hypothesis.
+        // This is the returned value of this function.
         let weight = ((1.0 + edge) / (1.0 - edge)).ln() / 2.0;
 
 
         // To prevent overflow, take the logarithm.
-        for (d, example) in self.dist.iter_mut().zip(sample.iter()) {
-            *d = d.ln() - weight * example.label * h.predict(&example.data);
+        for (d, p) in self.dist.iter_mut().zip(predictions.iter()) {
+            *d = d.ln() - weight * p;
         }
 
 
+        // Sort indices by ascending order
         let mut indices = (0..m).collect::<Vec<usize>>();
         indices.sort_unstable_by(|&i, &j| {
             self.dist[i].partial_cmp(&self.dist[j]).unwrap()
@@ -112,45 +71,72 @@ impl<D> Booster<D, f64> for AdaBoost<D, f64> {
             normalizer = a + (1.0 + (b - a).exp()).ln();
         }
 
+
+        // Update the distribution
         for d in self.dist.iter_mut() {
             *d = (*d - normalizer).exp();
         }
 
 
-        self.classifiers.push(h);
-        self.weights.push(weight);
-
-        Some(())
-    }
-
-
-    fn run(&mut self,
-           base_learner: &dyn BaseLearner<D, f64>,
-           sample: &Sample<D, f64>,
-           eps: f64)
-    {
-        let max_loop = self.max_loop(eps);
-        println!("max_loop: {}", max_loop);
-
-        for _t in 1..=max_loop {
-            let h = base_learner.best_hypothesis(sample, &self.dist);
-            if let None = self.update_params(h, sample) {
-                println!("Break loop after: {} iterations", _t);
-                break;
-            }
-        }
-    }
-
-
-    fn predict(&self, data: &Data<D>) -> Label<f64> {
-        assert_eq!(self.weights.len(), self.classifiers.len());
-
-        let mut confidence = 0.0;
-        for (w, h) in self.weights.iter().zip(self.classifiers.iter()) {
-            confidence += w * h.predict(data);
-        }
-
-
-        confidence.signum()
+        weight
     }
 }
+
+
+impl<C> Booster<C> for AdaBoost
+    where C: Classifier + Eq + PartialEq
+{
+    fn run<B>(&mut self, base_learner: &B, sample: &Sample, eps: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>,
+    {
+        // Initialize parameters
+        let m   = sample.len();
+        let uni = 1.0 / m as f64;
+        self.dist = vec![uni; m];
+
+        let mut weighted_classifier = Vec::new();
+
+
+        let max_loop = self.max_loop(eps);
+        println!("max_loop: {max_loop}");
+
+        for _t in 1..=max_loop {
+            // Get a new hypothesis
+            let h = base_learner.best_hypothesis(sample, &self.dist);
+
+
+            // Each element in `predictions` is the product of
+            // the predicted vector and the correct vector
+            let predictions = sample.iter()
+                .map(|ex| ex.label * h.predict(&ex.data))
+                .collect::<Vec<f64>>();
+
+
+            let edge = predictions.iter()
+                .zip(self.dist.iter())
+                .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
+
+
+            // If `h` predicted all the examples in `sample` correctly,
+            // use it as the combined classifier.
+            if edge >= 1.0 {
+                weighted_classifier = vec![(1.0, h)];
+                println!("Break loop after: {_t} iterations");
+                break;
+            }
+
+
+            // Compute the weight on the new hypothesis
+            let weight = self.update_params(predictions, edge);
+            weighted_classifier.push(
+                (weight, h)
+            );
+        }
+
+        CombinedClassifier {
+            weighted_classifier
+        }
+    }
+}
+

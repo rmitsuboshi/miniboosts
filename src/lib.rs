@@ -34,9 +34,11 @@ pub mod base_learner;
 pub use data_reader::{read_csv, read_libsvm};
 
 pub use booster::Booster;
-pub use booster::{AdaBoost, AdaBoostV};
-pub use booster::{LPBoost, ERLPBoost, SoftBoost, TotalBoost};
+pub use booster::AdaBoost;
+pub use booster::{AdaBoostV, TotalBoost};
+pub use booster::{LPBoost, ERLPBoost, SoftBoost};
 
 
 pub use base_learner::BaseLearner;
-pub use base_learner::DStump;
+pub use base_learner::{DStump, DStumpClassifier};
+pub use base_learner::{Classifier, CombinedClassifier};
