@@ -33,12 +33,30 @@ pub mod base_learner;
 // Export functions that reads file with some format.
 pub use data_reader::{read_csv, read_libsvm};
 
+// Export the `Booster` trait.
 pub use booster::Booster;
+
+// Export the boosting algorithms that minimizes the empirical loss.
 pub use booster::AdaBoost;
+
+// Export the boosting algorithms that maximizes the hard margin.
 pub use booster::{AdaBoostV, TotalBoost};
-pub use booster::{LPBoost, ERLPBoost, SoftBoost};
+
+// Export the boosting algorithms that maximizes the soft margin.
+pub use booster::{LPBoost, ERLPBoost, SoftBoost, CERLPBoost};
 
 
+// Export the `BaseLearner` trait.
 pub use base_learner::BaseLearner;
-pub use base_learner::{DStump, DStumpClassifier};
-pub use base_learner::{Classifier, CombinedClassifier};
+
+// Export the instances of the `BaseLearner` trait.
+pub use base_learner::DStump;
+
+// Export the `Classifier` trait.
+pub use base_learner::Classifier ;
+
+// Export the instances of the `Classifier` trait.
+// The `CombinedClassifier` is the output of the `Boosting::run(..)`.
+pub use base_learner::{DStumpClassifier, CombinedClassifier};
+
+
