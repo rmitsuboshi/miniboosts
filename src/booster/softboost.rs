@@ -2,10 +2,10 @@
 //! "Boosting Algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use crate::data_type::Sample;
-use crate::booster::core::Booster;
-use crate::base_learner::core::{Classifier, CombinedClassifier};
-use crate::base_learner::core::BaseLearner;
+use crate::Sample;
+use crate::{Classifier, CombinedClassifier};
+use crate::BaseLearner;
+use crate::Booster;
 use grb::prelude::*;
 
 

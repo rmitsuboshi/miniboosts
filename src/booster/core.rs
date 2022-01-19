@@ -1,7 +1,7 @@
-//! Provides the trait `Booster<D, L>`.
-use crate::data_type::Sample;
-use crate::base_learner::core::{Classifier, CombinedClassifier};
-use crate::base_learner::core::BaseLearner;
+//! Provides the trait `Booster<C>`.
+use crate::Sample;
+use crate::{Classifier, CombinedClassifier};
+use crate::BaseLearner;
 
 /// The trait `Booster` defines the standard framework of Boosting.
 /// 

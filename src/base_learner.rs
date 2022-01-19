@@ -4,5 +4,5 @@ pub mod dstump;
 // pub mod dtree;
 // pub mod ltf;
 
-pub use self::core::{BaseLearner, Classifier, CombinedClassifier};
-pub use dstump::{DStump, DStumpClassifier};
+pub use self::core::BaseLearner;
+pub use self::dstump::{DStump, DStumpClassifier};
