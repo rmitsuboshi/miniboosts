@@ -1,14 +1,18 @@
 //! Provides the decision stump class.
-use crate::data_type::{DType, Data, Label, Sample};
-use crate::base_learner::core::BaseLearner;
-use crate::base_learner::core::Classifier;
+use crate::{DType, Data, Label, Sample};
+use crate::BaseLearner;
+use crate::Classifier;
+
+use serde::{Serialize, Deserialize};
 
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 
+
+
 /// Defines the ray that are predicted as +1.0.
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash, Serialize, Deserialize)]
 pub enum PositiveSide {
     /// The right-hand-side ray is predicted as +1.0
     RHS,
@@ -21,6 +25,7 @@ pub enum PositiveSide {
 /// Given a point over the `d`-dimensional space,
 /// A classifier predicts its label as
 /// `sgn(x[i] - b)`, where `b` is the some intercept.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DStumpClassifier {
     /// The intercept of the stump
     pub threshold: f64,

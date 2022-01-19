@@ -14,29 +14,7 @@
 //! 
 //! I'm planning to implement the code for the general base learner setting.
 //! 
-use crate::data_type::{Data, Label, Sample};
-
-
-
-
-
-/// A trait that defines the function used in the combined classifier
-/// of the boosting algorithms.
-pub trait Classifier {
-
-    /// Predicts the label of the given example.
-    fn predict(&self, example: &Data) -> Label;
-
-
-    /// Predicts the labels of the given examples.
-    fn predict_all(&self, examples: &[Data]) -> Vec<Label> {
-        examples.iter()
-                .map(|example| self.predict(&example))
-                .collect()
-    }
-}
-
-
+use crate::Sample;
 
 
 /// An interface that returns a function that implements 
@@ -51,26 +29,4 @@ pub trait BaseLearner {
     fn best_hypothesis(&self, sample: &Sample, distribution: &[f64])
         -> Self::Clf;
 }
-
-
-
-
-/// A struct that the boosting algorithms in this library return.
-/// You can read/write this struct by `serde` trait.
-/// TODO USE SERDE TRAIT
-pub struct CombinedClassifier<C: Classifier> {
-    /// Each element is the pair of hypothesis and its weight
-    pub weighted_classifier: Vec<(f64, C)>
-}
-
-
-impl<C: Classifier> Classifier for CombinedClassifier<C> {
-    fn predict(&self, example: &Data) -> Label {
-        self.weighted_classifier
-            .iter()
-            .fold(0.0, |acc, (w, h)| acc + *w * h.predict(&example))
-            .signum()
-    }
-}
-
 

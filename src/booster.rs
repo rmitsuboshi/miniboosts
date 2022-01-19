@@ -16,14 +16,14 @@ pub mod totalboost;
 pub use self::core::Booster;
 
 /// Empirical Risk Minimization
-pub use adaboost::AdaBoost;
+pub use self::adaboost::AdaBoost;
 
 /// Hard Margin Maximization
-pub use adaboostv::AdaBoostV;
-pub use totalboost::TotalBoost;
+pub use self::adaboostv::AdaBoostV;
+pub use self::totalboost::TotalBoost;
 // 
 /// Soft Margin Maximization
-pub use lpboost::LPBoost;
-pub use erlpboost::ERLPBoost;
-pub use softboost::SoftBoost;
-pub use cerlpboost::CERLPBoost;
+pub use self::lpboost::LPBoost;
+pub use self::erlpboost::ERLPBoost;
+pub use self::softboost::SoftBoost;
+pub use self::cerlpboost::CERLPBoost;

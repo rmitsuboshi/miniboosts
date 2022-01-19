@@ -6,10 +6,10 @@
 //! since it is referred as `the Corrective version of CERLPBoost`
 //! in "Entropy Regularized LPBoost" by Warmuth et al.
 //! 
-use crate::data_type::Sample;
-use crate::booster::core::Booster;
-use crate::base_learner::core::{Classifier, CombinedClassifier};
-use crate::base_learner::core::BaseLearner;
+use crate::Sample;
+use crate::{Classifier, CombinedClassifier};
+use crate::BaseLearner;
+use crate::Booster;
 use std::collections::HashMap;
 use std::hash::Hash;
 

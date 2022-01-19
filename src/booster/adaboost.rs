@@ -1,8 +1,8 @@
 //! Provides the `AdaBoost` by Freund & Schapire, 1995.
-use crate::data_type::Sample;
-use crate::booster::core::Booster;
-use crate::base_learner::core::{Classifier, CombinedClassifier};
-use crate::base_learner::core::BaseLearner;
+use crate::Sample;
+use crate::{Classifier, CombinedClassifier};
+use crate::BaseLearner;
+use crate::Booster;
 
 
 /// Struct `AdaBoost` has one parameter.
