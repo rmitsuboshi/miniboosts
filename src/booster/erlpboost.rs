@@ -369,6 +369,7 @@ impl<C> Booster<C> for ERLPBoost
             Ok(weights) => {
                 weights.into_iter()
                     .zip(clfs.into_iter())
+                    .filter(|(w, _)| *w != 0.0)
                     .collect::<Vec<_>>()
             }
         };

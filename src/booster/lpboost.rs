@@ -246,13 +246,19 @@ impl<C> Booster<C> for LPBoost
 
 
         let weighted_classifier = self.constrs[1..].iter()
-            .map(|constr| {
-                self.model.get_obj_attr(attr::Pi, constr)
-                    .unwrap()
-                    .abs()
-            })
             .zip(clfs.into_iter())
-            .collect::<Vec<_>>();
+            .filter_map(|(constr, clf)| {
+                let weight = self.model.get_obj_attr(attr::Pi, constr)
+                    .unwrap()
+                    .abs();
+                if weight != 0.0 {
+                    Some((weight, clf))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<(f64, C)>>();
+
 
         CombinedClassifier {
             weighted_classifier
