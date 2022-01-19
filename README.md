@@ -1,12 +1,17 @@
 # Lycaon
-A collection of boosting algorithms written in Rust
+A collection of boosting algorithms written in Rust.
+This library provides some boosting algorithms for the binary classification.
+
+You can implement your original boosting algorithm by implementing the `Booster` trait.
+You can also implement your original base learning algorithm by implementing the `BaseLearner` trait.
 
 
 In this code, I use the [Gurobi optimizer](https://www.gurobi.com).
 You need to acquire the license if you want to use TotalBoost, LPBoost, ERLPBoost, and SoftBoost.
 I'm planning to write code that solves linear and quadratic programming.
 
-## What I wrote:
+## Implemented:
+You can combine the following boosting algorithms and base learner arbitrary.
 
 - Boosters
     - Empirical Risk Minimization
@@ -17,24 +22,25 @@ I'm planning to write code that solves linear and quadratic programming.
     - Soft Margin Maximization
         - [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf)
         - [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf)
+        - [Corrective ERLPBoost](https://core.ac.uk/download/pdf/207934763.pdf)
         - [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf)
 
 
 - Base Learner
     - Decision stump class
 
-## What I will write:
+## What I will implement:
 
 - Booster
     - LogitBoost
-    - [Corrective ERLPBoost](https://core.ac.uk/download/pdf/207934763.pdf)
 
 - Base Learner
   - Decision tree
   - Bag of words
+  - Two Layer Neural Network
 
 
-I'm also planning to implement the other boosting algorithms in the future.
+I'm also planning to implement the other booster/base learner in the future.
 
 
 ## How to use
