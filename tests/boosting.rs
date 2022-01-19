@@ -2,10 +2,10 @@ extern crate lycaon;
 
 use std::env;
 
-use lycaon::booster::Booster;
-use lycaon::booster::AdaBoost;
-use lycaon::booster::{LPBoost, ERLPBoost, SoftBoost};
-use lycaon::base_learner::{Classifier, DStump};
+use lycaon::Booster;
+use lycaon::AdaBoost;
+use lycaon::{LPBoost, ERLPBoost, SoftBoost};
+use lycaon::{Classifier, DStump};
 
 use lycaon::{read_libsvm, read_csv};
 
@@ -25,7 +25,6 @@ pub mod adaboost_tests {
 
         let mut adaboost = AdaBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = adaboost.run(&dstump, &sample, 0.1);
@@ -57,7 +56,6 @@ pub mod adaboost_tests {
 
         let mut adaboost = AdaBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = adaboost.run(&dstump, &sample, 0.1);
@@ -90,7 +88,6 @@ pub mod lpboost_tests {
 
         let mut lpboost = LPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = lpboost.run(&dstump, &sample, 0.1);
@@ -148,7 +145,6 @@ pub mod lpboost_tests {
 
         let mut lpboost = LPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = lpboost.run(&dstump, &sample, 0.1);
@@ -181,7 +177,6 @@ pub mod erlpboost_tests {
     
         let mut erlpboost = ERLPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = erlpboost.run(&dstump, &sample, 0.1);
@@ -211,7 +206,6 @@ pub mod erlpboost_tests {
     
         let mut erlpboost = ERLPBoost::init(&sample).capping(cap);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = erlpboost.run(&dstump, &sample, 0.1);
@@ -243,7 +237,6 @@ pub mod erlpboost_tests {
 
         let mut erlpboost = ERLPBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = erlpboost.run(&dstump, &sample, 0.1);
@@ -279,7 +272,6 @@ pub mod softboost_tests {
     
         let mut softboost = SoftBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = softboost.run(&dstump, &sample, 0.1);
@@ -309,7 +301,6 @@ pub mod softboost_tests {
     
         let mut softboost = SoftBoost::init(&sample).capping(cap);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = softboost.run(&dstump, &sample, 0.1);
@@ -341,7 +332,6 @@ pub mod softboost_tests {
 
         let mut softboost = SoftBoost::init(&sample);
         let dstump = DStump::init(&sample);
-        // let dstump = Box::new(dstump);
 
 
         let f = softboost.run(&dstump, &sample, 0.1);

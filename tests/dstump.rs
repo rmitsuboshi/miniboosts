@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use lycaon::data_type::*;
 
-use lycaon::base_learner::core::{BaseLearner, Classifier};
-use lycaon::base_learner::dstump::DStump;
+use lycaon::{BaseLearner, Classifier};
+use lycaon::DStump;
 
 
 

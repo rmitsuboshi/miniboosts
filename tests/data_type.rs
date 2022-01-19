@@ -33,12 +33,4 @@ fn test() {
 
     assert!(sample.dtype == DType::Dense);
 
-    // let expected = vec![
-    //     (Data::Dense(vec![0.0, 1.0]),  1.0),
-    //     (Data::Dense(vec![2.0, 1.0]), -1.0),
-    //     (Data::Dense(vec![0.0, 9.0]), -1.0),
-    //     (Data::Dense(vec![1.0, 6.0]), -1.0),
-    // ];
-
-    // assert_eq!(sample, expected);
 }

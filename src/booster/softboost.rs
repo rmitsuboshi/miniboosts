@@ -329,7 +329,8 @@ impl<C> Booster<C> for SoftBoost
             Ok(weights) => {
                 weights.into_iter()
                     .zip(clfs.into_iter())
-                    .collect::<Vec<_>>()
+                    .filter(|(w, _)| *w != 0.0)
+                    .collect::<Vec<(f64, C)>>()
             }
         };
 
