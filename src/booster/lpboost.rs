@@ -2,7 +2,7 @@
 //! "Boosting algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use crate::Sample;
+use crate::{Data, Label, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -34,7 +34,7 @@ pub struct LPBoost {
 
 impl LPBoost {
     /// Initialize the `LPBoost`.
-    pub fn init(sample: &Sample) -> LPBoost {
+    pub fn init<T: Data>(sample: &Sample<T>) -> LPBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -147,7 +147,10 @@ impl LPBoost {
     /// `update_params` updates `self.distribution` and `self.gamma_hat`
     /// by solving a linear program
     #[inline(always)]
-    fn update_params(&mut self, predictions: Vec<f64>, edge: f64) -> f64 {
+    fn update_params(&mut self,
+                     predictions: Vec<Label>,
+                     edge:        f64) -> f64
+    {
         // update `self.gamma_hat`
         if self.gamma_hat > edge {
             self.gamma_hat = edge;
@@ -197,14 +200,18 @@ impl LPBoost {
 }
 
 
-impl<C> Booster<C> for LPBoost
-    where C: Classifier + Eq + PartialEq
+impl<D, C> Booster<D, C> for LPBoost
+    where D: Data,
+          C: Classifier<D> + Eq + PartialEq
 {
 
 
-    fn run<B>(&mut self, base_learner: &B, sample: &Sample, tolerance: f64)
-        -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+    fn run<B>(&mut self,
+              base_learner: &B,
+              sample:       &Sample<D>,
+              tolerance:    f64)
+        -> CombinedClassifier<D, C>
+        where B: BaseLearner<D, Clf = C>,
     {
         if self.tolerance != tolerance {
             self.set_tolerance(tolerance);
@@ -220,8 +227,8 @@ impl<C> Booster<C> for LPBoost
             // Each element in `predictions` is the product of
             // the predicted vector and the correct vector
             let predictions = sample.iter()
-                .map(|ex| ex.label * h.predict(&ex.data))
-                .collect::<Vec<f64>>();
+                .map(|(dat, lab)| *lab * h.predict(dat))
+                .collect::<Vec<Label>>();
 
 
             let edge = predictions.iter()
@@ -260,9 +267,7 @@ impl<C> Booster<C> for LPBoost
             .collect::<Vec<(f64, C)>>();
 
 
-        CombinedClassifier {
-            weighted_classifier
-        }
+        CombinedClassifier::from(weighted_classifier)
     }
 }
 

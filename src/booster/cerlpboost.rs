@@ -6,7 +6,7 @@
 //! since it is referred as `the Corrective version of CERLPBoost`
 //! in "Entropy Regularized LPBoost" by Warmuth et al.
 //! 
-use crate::Sample;
+use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -36,7 +36,7 @@ pub struct CERLPBoost {
 
 impl CERLPBoost {
     /// Initialize the `CERLPBoost`.
-    pub fn init(sample: &Sample) -> CERLPBoost {
+    pub fn init<T: Data>(sample: &Sample<T>) -> CERLPBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -89,17 +89,18 @@ impl CERLPBoost {
 
     /// Compute the dual objective value
     #[inline(always)]
-    fn dual_objval_mut<C>(&mut self,
-                          sample:         &Sample,
-                          classifier_map: &HashMap<C, f64>)
-        where C: Classifier + Eq + PartialEq + Hash
+    fn dual_objval_mut<C, D>(&mut self,
+                             sample:         &Sample<D>,
+                             classifier_map: &HashMap<C, f64>)
+        where C: Classifier<D> + Eq + PartialEq + Hash,
+              D: Data,
     {
         self.dual_optval = classifier_map.keys()
             .fold(f64::MIN, |acc, h| {
                 let temp = sample.iter()
                     .zip(self.dist.iter())
-                    .fold(0.0, |acc2, (ex, &d)|
-                        acc2 + d * ex.label * h.predict(&ex.data)
+                    .fold(0.0, |acc2, ((dat, lab), &d)|
+                        acc2 + d * *lab * h.predict(dat)
                     );
 
                 acc.max(temp)
@@ -118,7 +119,8 @@ impl CERLPBoost {
     ///  `self.tolerance` and `self.capping_param`.)
     #[inline(always)]
     fn regularization_param(&mut self) {
-        let ln_part = (self.dist.len() as f64 / self.capping_param).ln();
+        let m = self.dist.len() as f64;
+        let ln_part = (m / self.capping_param).ln();
         self.eta = 2.0 * ln_part / self.tolerance;
     }
 
@@ -144,17 +146,18 @@ impl CERLPBoost {
 
 
     /// Updates weight on hypotheses and `self.dist` in this order.
-    fn update_distribution_mut<C>(&mut self,
-                                  classifier_map: &HashMap<C, f64>,
-                                  sample: &Sample)
-        where C: Classifier + Eq + PartialEq + Hash
+    fn update_distribution_mut<C, D>(&mut self,
+                                     classifier_map: &HashMap<C, f64>,
+                                     sample: &Sample<D>)
+        where C: Classifier<D> + Eq + PartialEq + Hash,
+              D: Data
     {
-        for (d, ex) in self.dist.iter_mut().zip(sample.iter()) {
+        for (d, (dat, lab)) in self.dist.iter_mut().zip(sample.iter()) {
             // Compute the confidence of the current combined hypothesis
             let p = classifier_map.iter()
-                .fold(0.0, |acc, (h, &w)| acc + w * h.predict(&ex.data));
+                .fold(0.0, |acc, (h, &w)| acc + w * h.predict(dat));
 
-            *d = - self.eta * ex.label * p;
+            *d = - self.eta * *lab * p;
         }
 
         let m  = self.dist.len();
@@ -189,11 +192,11 @@ impl CERLPBoost {
         let ub = 1.0 / self.capping_param;
         let log_cap = self.capping_param.ln();
 
-        let mut indices_with_logsum = indices.into_iter()
+        let mut idx_with_logsum = indices.into_iter()
             .zip(logsums.into_iter())
             .enumerate();
 
-        while let Some((i, (i_sorted, logsum))) = indices_with_logsum.next() {
+        while let Some((i, (i_sorted, logsum))) = idx_with_logsum.next() {
             let log_xi = (1.0 - ub * i as f64).ln() - logsum;
             // TODO replace this line into `get_unchecked`
             let d = self.dist[i_sorted];
@@ -201,7 +204,7 @@ impl CERLPBoost {
             // Stopping criterion of this while loop
             if log_xi + d + log_cap <= 0.0 {
                 self.dist[i_sorted] = (log_xi + d).exp();
-                while let Some((_, (ii, _))) = indices_with_logsum.next() {
+                while let Some((_, (ii, _))) = idx_with_logsum.next() {
                     self.dist[ii] = (log_xi + self.dist[ii]).exp();
                 }
                 break;
@@ -213,11 +216,12 @@ impl CERLPBoost {
 
 
     /// Update the weights on hypotheses
-    fn update_clf_weight_mut<C>(&self,
-                                clfs:    &mut HashMap<C, f64>,
-                                new_clf: C,
-                                gap_vec: Vec<f64>)
-        where C: Classifier + Eq + PartialEq + Hash
+    fn update_clf_weight_mut<D, C>(&self,
+                                   clfs:    &mut HashMap<C, f64>,
+                                   new_clf: C,
+                                   gap_vec: Vec<f64>)
+        where C: Classifier<D> + Eq + PartialEq + Hash,
+              D: Data<Output = f64>
     {
         // Numerator
         let numer = gap_vec.iter()
@@ -254,14 +258,18 @@ impl CERLPBoost {
 }
 
 
-impl<C> Booster<C> for CERLPBoost
-    where C: Classifier + Eq + PartialEq + Hash
+impl<D, C> Booster<D, C> for CERLPBoost
+    where D: Data<Output = f64>,
+          C: Classifier<D> + Eq + PartialEq + Hash
 {
 
 
-    fn run<B>(&mut self, base_learner: &B, sample: &Sample, tolerance: f64)
-        -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+    fn run<B>(&mut self,
+              base_learner: &B,
+              sample:       &Sample<D>,
+              tolerance:    f64)
+        -> CombinedClassifier<D, C>
+        where B: BaseLearner<D, Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 
@@ -290,14 +298,14 @@ impl<C> Booster<C> for CERLPBoost
 
 
             let gap_vec = sample.iter()
-                .map(|ex| {
+                .map(|(dat, lab)| {
                     let old_pred = classifier_map.iter()
                         .fold(0.0, |acc, (g, w)|
-                            acc + *w * g.predict(&ex.data)
+                            acc + *w * g.predict(dat)
                         );
-                    let new_pred = h.predict(&ex.data);
+                    let new_pred = h.predict(dat);
 
-                    ex.label * (new_pred - old_pred)
+                    *lab * (new_pred - old_pred)
                 })
                 .collect::<Vec<_>>();
 
@@ -330,8 +338,6 @@ impl<C> Booster<C> for CERLPBoost
             .collect::<Vec<_>>();
 
 
-        CombinedClassifier {
-            weighted_classifier
-        }
+        CombinedClassifier::from(weighted_classifier)
     }
 }

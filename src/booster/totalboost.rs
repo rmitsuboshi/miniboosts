@@ -2,7 +2,7 @@
 //! "Totally Corrective Boosting Algorithms that Maximize the Margin"
 //! by Warmuth et al.
 //! 
-use crate::Sample;
+use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -20,7 +20,7 @@ pub struct TotalBoost {
 
 impl TotalBoost {
     /// initialize the `TotalBoost`.
-    pub fn init(sample: &Sample) -> TotalBoost {
+    pub fn init<T: Data>(sample: &Sample<T>) -> TotalBoost {
         let softboost = SoftBoost::init(&sample)
             .capping(1.0);
 
@@ -35,12 +35,16 @@ impl TotalBoost {
 }
 
 
-impl<C> Booster<C> for TotalBoost
-    where C: Classifier
+impl<D, C> Booster<D, C> for TotalBoost
+    where C: Classifier<D>,
+          D: Data<Output = f64>,
 {
-    fn run<B>(&mut self, base_learner: &B, sample: &Sample, eps: f64)
-        -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+    fn run<B>(&mut self,
+              base_learner: &B,
+              sample:       &Sample<D>,
+              eps:          f64)
+        -> CombinedClassifier<D, C>
+        where B: BaseLearner<D, Clf = C>,
     {
         self.softboost.run(base_learner, sample, eps)
     }

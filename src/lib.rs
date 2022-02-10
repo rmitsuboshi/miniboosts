@@ -31,7 +31,8 @@ pub mod booster;
 pub mod base_learner;
 
 // Export struct `Sample`.
-pub use data_type::{Sample, Data, Label, DType};
+pub use data_type::{Sample, Data, Label};
+// pub use data_type::{Sample, Data, Label, DType};
 
 
 // Export functions that reads file with some format.

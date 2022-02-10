@@ -2,7 +2,7 @@
 //! "Boosting Algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use crate::Sample;
+use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -29,7 +29,7 @@ pub struct SoftBoost {
 
 impl SoftBoost {
     /// Initialize the `SoftBoost`.
-    pub fn init(sample: &Sample) -> SoftBoost {
+    pub fn init<T: Data>(sample: &Sample<T>) -> SoftBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -110,9 +110,10 @@ impl SoftBoost {
 impl SoftBoost {
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
-    fn set_weights<C>(&mut self, sample: &Sample, clfs: &[C])
+    fn set_weights<C, D>(&mut self, sample: &Sample<D>, clfs: &[C])
         -> Result<Vec<f64>, grb::Error>
-        where C: Classifier
+        where C: Classifier<D>,
+              D: Data,
     {
         let mut model = Model::with_env("", &self.env)?;
 
@@ -132,10 +133,10 @@ impl SoftBoost {
 
 
         // Set constraints
-        for (ex, &x) in sample.iter().zip(xi_vec.iter()) {
+        for ((dat, lab), &x) in sample.iter().zip(xi_vec.iter()) {
             let expr = wt_vec.iter()
                 .zip(clfs.iter())
-                .map(|(&w, h)| ex.label * h.predict(&ex.data) * w)
+                .map(|(&w, h)| *lab * h.predict(dat) * w)
                 .grb_sum();
 
             model.add_constr(&"", c!(expr >= rho - x))?;
@@ -175,11 +176,15 @@ impl SoftBoost {
         Ok(weights)
     }
 
+
     /// Updates `self.distribution`
     /// Returns `None` if the stopping criterion satisfied.
-    fn update_params_mut<C>(&mut self, sample: &Sample, clfs: &[C])
+    fn update_params_mut<C, D>(&mut self,
+                               sample: &Sample<D>,
+                               clfs:   &[C])
         -> Option<()>
-        where C: Classifier
+        where C: Classifier<D>,
+              D: Data
     {
         loop {
             // Initialize GRBModel
@@ -193,7 +198,8 @@ impl SoftBoost {
                 .map(|&d| {
                     let lb = - d;
                     let ub = cap - d;
-                    add_ctsvar!(model, name: &"", bounds: lb..ub).unwrap()
+                    add_ctsvar!(model, name: &"", bounds: lb..ub)
+                        .unwrap()
                 })
                 .collect::<Vec<Var>>();
             model.update().unwrap();
@@ -204,8 +210,8 @@ impl SoftBoost {
                 let expr = sample.iter()
                     .zip(self.dist.iter())
                     .zip(vars.iter())
-                    .map(|((ex, &d), &v)| {
-                        ex.label * h.predict(&ex.data) * (d + v)
+                    .map(|(((dat, lab), &d), &v)| {
+                        *lab * h.predict(dat) * (d + v)
                     }).grb_sum();
 
                 model.add_constr(
@@ -241,7 +247,8 @@ impl SoftBoost {
             // If the status is `Status::Infeasible`,
             // it implies that the `tolerance`-optimalitys
             // of the previous solution
-            if status == Status::Infeasible || status == Status::InfOrUnbd {
+            if status == Status::Infeasible
+                || status == Status::InfOrUnbd {
                 return None;
             }
 
@@ -279,14 +286,18 @@ impl SoftBoost {
 }
 
 
-impl<C> Booster<C> for SoftBoost
-    where C: Classifier
+impl<D, C> Booster<D, C> for SoftBoost
+    where C: Classifier<D>,
+          D: Data<Output = f64>,
 {
 
 
-    fn run<B>(&mut self, base_learner: &B, sample: &Sample, tolerance: f64)
-        -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+    fn run<B>(&mut self,
+              base_learner: &B,
+              sample:       &Sample<D>,
+              tolerance:    f64)
+        -> CombinedClassifier<D, C>
+        where B: BaseLearner<D, Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 
@@ -298,8 +309,8 @@ impl<C> Booster<C> for SoftBoost
             // update `self.gamma_hat`
             let edge = self.dist.iter()
                 .zip(sample.iter())
-                .fold(0.0_f64, |mut acc, (&d, example)| {
-                    acc += d * example.label * h.predict(&example.data);
+                .fold(0.0_f64, |mut acc, (&d, (dat, lab))| {
+                    acc += d * *lab * h.predict(dat);
                     acc
                 });
 
@@ -334,9 +345,7 @@ impl<C> Booster<C> for SoftBoost
             }
         };
 
-        CombinedClassifier {
-            weighted_classifier
-        }
+        CombinedClassifier::from(weighted_classifier)
     }
 }
 

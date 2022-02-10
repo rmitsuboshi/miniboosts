@@ -2,7 +2,7 @@
 //! "Entropy Regularized LPBoost"
 //! by Warmuth et al.
 //! 
-use crate::Sample;
+use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -33,7 +33,7 @@ pub struct ERLPBoost {
 
 impl ERLPBoost {
     /// Initialize the `ERLPBoost`.
-    pub fn init(sample: &Sample) -> ERLPBoost {
+    pub fn init<T: Data>(sample: &Sample<T>) -> ERLPBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -150,9 +150,10 @@ impl ERLPBoost {
 
 impl ERLPBoost {
     /// Compute the weight on hypotheses
-    fn set_weights<C>(&mut self, sample: &Sample, clfs: &[C])
+    fn set_weights<C, D>(&mut self, sample: &Sample<D>, clfs: &[C])
         -> Result<Vec<f64>, grb::Error>
-        where C: Classifier
+        where C: Classifier<D>,
+              D: Data,
     {
         let mut model = Model::with_env("", &self.env)?;
 
@@ -172,10 +173,10 @@ impl ERLPBoost {
 
 
         // Set constraints
-        for (ex, &xi) in sample.iter().zip(xi_vec.iter()) {
+        for ((dat, lab), &xi) in sample.iter().zip(xi_vec.iter()) {
             let expr = wt_vec.iter()
                 .zip(clfs.iter())
-                .map(|(&w, h)| ex.label * h.predict(&ex.data) * w)
+                .map(|(&w, h)| *lab * h.predict(dat) * w)
                 .grb_sum();
 
             model.add_constr(&"", c!(expr >= rho - xi))?;
@@ -218,8 +219,9 @@ impl ERLPBoost {
 
 
     /// Updates `self.distribution`
-    fn update_params_mut<C>(&mut self, clfs: &[C], sample:  &Sample)
-        where C: Classifier
+    fn update_params_mut<C, D>(&mut self, clfs: &[C], sample: &Sample<D>)
+        where C: Classifier<D>,
+              D: Data,
     {
 
 
@@ -241,7 +243,8 @@ impl ERLPBoost {
                     // define the i'th lb & ub
                     let lb = -d;
                     let ub = upper_bound - d;
-                    add_ctsvar!(model, name: &name, bounds: lb..ub).unwrap()
+                    add_ctsvar!(model, name: &name, bounds: lb..ub)
+                        .unwrap()
                 }).collect::<Vec<Var>>();
 
             model.update().unwrap();
@@ -251,8 +254,8 @@ impl ERLPBoost {
                 let expr = sample.iter()
                     .zip(self.dist.iter())
                     .zip(vars.iter())
-                    .map(|((ex, &d), &v)| {
-                        ex.label * h.predict(&ex.data) * (d + v)
+                    .map(|(((dat, lab), &d), &v)| {
+                        lab * h.predict(dat) * (d + v)
                     })
                     .grb_sum();
 
@@ -316,12 +319,16 @@ impl ERLPBoost {
 }
 
 
-impl<C> Booster<C> for ERLPBoost
-    where C: Classifier + Eq + PartialEq
+impl<D, C> Booster<D, C> for ERLPBoost
+    where C: Classifier<D> + Eq + PartialEq,
+          D: Data<Output = f64>
 {
-    fn run<B>(&mut self, base_learner: &B, sample: &Sample, tolerance: f64)
-        -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+    fn run<B>(&mut self,
+              base_learner: &B,
+              sample:       &Sample<D>,
+              tolerance:    f64)
+        -> CombinedClassifier<D, C>
+        where B: BaseLearner<D, Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 
@@ -335,8 +342,8 @@ impl<C> Booster<C> for ERLPBoost
             // update `self.gamma_hat`
             let edge = self.dist.iter()
                 .zip(sample.iter())
-                .fold(0.0_f64, |mut acc, (d, example)| {
-                    acc += d * example.label * h.predict(&example.data);
+                .fold(0.0_f64, |mut acc, (d, (dat, lab))| {
+                    acc += d * *lab * h.predict(dat);
                     acc
                 });
 
@@ -374,7 +381,7 @@ impl<C> Booster<C> for ERLPBoost
             }
         };
 
-        CombinedClassifier { weighted_classifier }
+        CombinedClassifier::from(weighted_classifier)
     }
 }
 
