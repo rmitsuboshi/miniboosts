@@ -1,5 +1,5 @@
 //! Provides the `AdaBoost*` by Rätsch & Warmuth, 2005.
-use crate::Sample;
+use crate::{Data, Label, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -22,7 +22,7 @@ pub struct AdaBoostV {
 
 impl AdaBoostV {
     /// Initialize the `AdaBoostV<D, L>`.
-    pub fn init(sample: &Sample) -> AdaBoostV {
+    pub fn init<T: Data>(sample: &Sample<T>) -> AdaBoostV {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
@@ -44,10 +44,14 @@ impl AdaBoostV {
         2 * ((m as f64).ln() / (eps * eps)) as usize
     }
 
-    /// `update_params` updates `self.distribution`
-    /// and determine the weight on hypothesis
-    /// that the algorithm obtained at current iteration.
-    fn update_params(&mut self, predictions: Vec<f64>, edge: f64) -> f64 {
+    /// Returns a weight on the new hypothesis.
+    /// `update_params` also updates `self.distribution`
+    #[inline]
+    fn update_params(&mut self,
+                     predictions: Vec<Label>,
+                     edge:        f64)
+        -> f64
+    {
 
 
         // Update edge & margin estimation parameters
@@ -96,14 +100,18 @@ impl AdaBoostV {
 }
 
 
-impl<C> Booster<C> for AdaBoostV
-    where C: Classifier + Eq + PartialEq
+impl<D, C> Booster<D, C> for AdaBoostV
+    where D: Data,
+          C: Classifier<D> + Eq + PartialEq,
 {
 
 
-    fn run<B>(&mut self, base_learner: &B, sample: &Sample, eps: f64)
-        -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>,
+    fn run<B>(&mut self,
+              base_learner: &B,
+              sample:       &Sample<D>,
+              eps:          f64)
+        -> CombinedClassifier<D, C>
+        where B: BaseLearner<D, Clf = C>,
     {
         // Initialize parameters
         let m   = sample.len();
@@ -124,7 +132,7 @@ impl<C> Booster<C> for AdaBoostV
             // Each element in `predictions` is the product of
             // the predicted vector and the correct vector
             let predictions = sample.iter()
-                .map(|ex| ex.label * h.predict(&ex.data))
+                .map(|(dat, lab)| *lab * h.predict(dat))
                 .collect::<Vec<f64>>();
 
 
@@ -150,9 +158,8 @@ impl<C> Booster<C> for AdaBoostV
             );
         }
 
-        CombinedClassifier {
-            weighted_classifier
-        }
+        CombinedClassifier::from(weighted_classifier)
+
     }
 }
 

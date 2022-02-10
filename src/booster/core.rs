@@ -1,5 +1,5 @@
 //! Provides the trait `Booster<C>`.
-use crate::Sample;
+use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 
@@ -7,8 +7,9 @@ use crate::BaseLearner;
 /// 
 /// You need to implement `run`
 /// in order to write a new boosting algorithm.
-pub trait Booster<C>
-    where C: Classifier
+pub trait Booster<D, C>
+    where D: Data,
+          C: Classifier<D>
 {
     /// A main function that runs boosting algorithm.
     /// This method takes
@@ -16,8 +17,11 @@ pub trait Booster<C>
     /// - the reference of an instance of the `BaseLearner` trait,
     /// - a reference of the training examples, and
     /// - a tolerance parameter.
-    fn run<B>(&mut self, base_learner: &B, sample: &Sample, tolerance: f64)
-        -> CombinedClassifier<C>
-        where B: BaseLearner<Clf=C>;
+    fn run<B>(&mut self,
+              base_learner: &B,
+              sample:       &Sample<D>,
+              tolerance:    f64)
+        -> CombinedClassifier<D, C>
+        where B: BaseLearner<D, Clf = C>;
 }
 

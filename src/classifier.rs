@@ -21,37 +21,58 @@ use serde::{Serialize, Deserialize};
 
 /// A trait that defines the function used in the combined classifier
 /// of the boosting algorithms.
-pub trait Classifier {
+pub trait Classifier<T: Data> {
 
     /// Predicts the label of the given example.
-    fn predict(&self, example: &Data) -> Label;
+    fn predict(&self, example: &T) -> Label;
 
 
     /// Predicts the labels of the given examples.
-    fn predict_all(&self, examples: &[Data]) -> Vec<Label> {
+    fn predict_all(&self, examples: &[T]) -> Vec<Label>
+    {
         examples.iter()
-                .map(|example| self.predict(&example))
+                .map(|example| self.predict(example))
                 .collect()
     }
 }
 
-
+use std::marker::PhantomData;
 
 /// A struct that the boosting algorithms in this library return.
 /// You can read/write this struct by `serde` trait.
 /// TODO USE SERDE TRAIT
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CombinedClassifier<C: Classifier> {
+pub struct CombinedClassifier<D, C>
+    where D: Data,
+          C: Classifier<D>
+{
     /// Each element is the pair of hypothesis and its weight
-    pub weighted_classifier: Vec<(f64, C)>
+    pub inner: Vec<(f64, C)>,
+    _phantom: PhantomData<D>,
+}
+
+impl<D, C> From<Vec<(f64, C)>> for CombinedClassifier<D, C>
+    where D: Data,
+          C: Classifier<D>,
+{
+    fn from(inner: Vec<(f64, C)>) -> Self {
+        CombinedClassifier {
+            inner,
+            _phantom: PhantomData
+        }
+    }
 }
 
 
-impl<C: Classifier> Classifier for CombinedClassifier<C> {
-    fn predict(&self, example: &Data) -> Label {
-        self.weighted_classifier
+impl<D, C> Classifier<D> for CombinedClassifier<D, C>
+    where D: Data<Output = f64>,
+          C: Classifier<D>,
+{
+    fn predict(&self, example: &D) -> Label
+    {
+        self.inner
             .iter()
-            .fold(0.0, |acc, (w, h)| acc + *w * h.predict(&example))
+            .fold(0.0, |acc, (w, h)| acc + *w * h.predict(example))
             .signum()
     }
 }

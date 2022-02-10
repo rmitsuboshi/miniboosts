@@ -1,153 +1,159 @@
 //! Defines some data structure used in this crate.
+use std::convert::From;
 use std::collections::HashMap;
 use std::ops::Index;
 
 
-/// Enum of the sparse and dense data.
-/// A sparse data is represented by a `HashMap<usize, f64>`,
-/// and a dense data is represented by a `Vec<f64>`.
-#[derive(Clone, Debug)]
-pub enum Data {
-    /// Sparse(..) holds the pair of (index, value), where the
-    /// value has non-zero value.
-    Sparse(HashMap<usize, f64>),
-    /// Dense holds the entire data.
-    Dense(Vec<f64>),
+/// The trait `Data` defines the desired property of data.
+pub trait Data {
+    /// The value type of the specified index.
+    type Output;
+
+    /// Returns the value of the specified index.
+    fn value_at(&self, index: usize) -> Self::Output;
+
+    /// Returns the dimension
+    fn dim(&self) -> usize;
+}
+
+
+impl<T> Data for HashMap<usize, T>
+    where T: Default + Clone
+{
+    type Output = T;
+    fn value_at(&self, index: usize) -> Self::Output {
+        match self.get(&index) {
+            Some(value) => value.clone(),
+            None        => Default::default()
+        }
+    }
+
+
+    fn dim(&self) -> usize {
+        match self.keys().max() {
+            Some(&k) => k + 1,
+            None     => 0_usize,
+        }
+    }
+}
+
+
+impl<T> Data for Vec<T>
+    where T: Clone
+{
+    type Output = T;
+    fn value_at(&self, index: usize) -> Self::Output {
+        self[index].clone()
+    }
+
+
+    fn dim(&self) -> usize {
+        self.len()
+    }
 }
 
 /// Introduce the `Label` for clarity.
 pub type Label = f64;
 
 
-impl Data {
-    /// Returns the `index`-th value of the `Data`.
-    /// If the `Data` is the sparse data, returns the default value.
-    pub fn value_at(&self, index: usize) -> f64 {
-        match self {
-            Data::Sparse(_data) => {
-                match _data.get(&index) {
-                    Some(_value) => _value.clone(),
-                    None => Default::default()
-                }
-            },
-            Data::Dense(_data) => {
-                _data[index].clone()
-            }
-        }
-    }
-}
-
-
-/// Represents the data type of the data.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DType {
-    /// Enum for sparse data
-    Sparse,
-    /// Enum for dense data
-    Dense
-}
-
-
-/// A pair of the instance and its label.
-pub struct LabeledData {
-    /// Instance
-    pub data:  Data,
-    /// Label
-    pub label: Label,
-}
-
 
 /// A sequence of the `LabeledData`.
 /// We assume that all the example in `sample` has the same format.
-pub struct Sample {
-    /// Vector of the `LabeledData`
-    pub sample: Vec<LabeledData>,
-    /// Type of the sample
-    pub dtype:  DType,
+#[derive(Debug)]
+pub struct Sample<T: Data> {
+
+    /// Holds the pair of data and label.
+    inner: Vec<(T, Label)>,
+
+    /// The number of examples. This value is equivalent to
+    /// `dat_set.len()` and `lab_set.len()`.
+    size:      usize,
+
+
+    /// The number of features of `Sample<T>`.
+    dimension: usize,
 }
 
 
-impl Sample {
+impl<T: Data> Sample<T> {
 
     /// Returns the number of training examples.
     pub fn len(&self) -> usize {
-        self.sample.len()
+        self.size
     }
 
-    /// Returns the number of features of examples.
-    pub fn feature_len(&self) -> usize {
-        let mut feature_size = 0_usize;
-        for labeled_data in self.sample.iter() {
-            let data = &labeled_data.data;
-            feature_size = match data {
-                Data::Sparse(_data) => {
-                    let l = match _data.keys().max() {
-                        Some(&k) => k + 1,
-                        None => 0
-                    };
-                    std::cmp::max(l, feature_size)
-                },
-                Data::Dense(_data) => std::cmp::max(_data.len(), feature_size)
-            }
-        }
-        feature_size
+    /// Returns the maximum dimensions in `Sample<T>`.
+    pub fn dim(&self) -> usize {
+        self.dimension
     }
+
+
 }
-
-
-impl Index<usize> for Sample {
-    type Output = LabeledData;
-    fn index(&self, idx: usize) -> &Self::Output {
-        &self.sample[idx]
-    }
-}
-
-
-/// Converts the sequence of `Data` and `Label` to `Sample`
-pub fn to_sample(examples: Vec<Data>, labels: Vec<Label>)
-    -> Sample
-{
-    let dtype = match &examples[0] {
-        &Data::Sparse(_) => DType::Sparse,
-        &Data::Dense(_)  => DType::Dense,
-    };
-
-    let sample = examples.into_iter()
-        .zip(labels)
-        .map(|(data, label)| LabeledData { data, label })
-        .collect::<Vec<_>>();
-
-    Sample { sample, dtype }
-}
-
 
 
 /// A struct for implementing the iterator over `Sample`.
-pub struct SampleIter<'a> {
-    sample: &'a [LabeledData]
+pub struct SampleIter<'a, T> {
+    inner: &'a [(T, Label)]
 }
 
 
-impl Sample {
+impl<T: Data> Sample<T> {
     /// Iterator for `Sample`
-    pub fn iter(&self) -> SampleIter<'_> {
-        SampleIter { sample: &self.sample[..] }
+    pub fn iter(&self) -> SampleIter<'_, T> {
+        SampleIter { inner: &self.inner[..] }
     }
 }
 
 
-impl<'a> Iterator for SampleIter<'a> {
-    type Item = &'a LabeledData;
+impl<'a, T: Data> Iterator for SampleIter<'a, T> {
+    type Item = &'a (T, Label);
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.sample.get(0) {
-            Some(labeled_data) => {
-                self.sample = &self.sample[1..];
+        match self.inner.get(0) {
+            Some(item) => {
+                self.inner = &self.inner[1..];
 
-                Some(labeled_data)
+                Some(item)
             },
             None => None
         }
+    }
+}
+
+
+impl<T: Data> From<(Vec<T>, Vec<Label>)> for Sample<T> {
+    fn from((examples, labels): (Vec<T>, Vec<Label>)) -> Self {
+        assert_eq!(examples.len(), labels.len());
+
+
+        let size = examples.len();
+
+        let mut dimension = 0;
+
+        let mut inner = Vec::with_capacity(size);
+
+        for (dat, lab) in examples.into_iter().zip(labels.into_iter()) {
+            dimension = std::cmp::max(dimension, dat.dim());
+            inner.push((dat, lab));
+        }
+
+        Sample {
+            inner,
+            dimension,
+            size,
+        }
+    }
+}
+
+
+
+
+
+impl<T: Data> Index<usize> for Sample<T> {
+    type Output = (T, Label);
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.inner[index]
     }
 }
 

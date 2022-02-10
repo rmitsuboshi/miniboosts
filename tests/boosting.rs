@@ -31,9 +31,9 @@ pub mod adaboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -49,8 +49,8 @@ pub mod adaboost_tests {
         path.push("tests/small_toy_example_libsvm.txt");
         let sample = read_libsvm(path).unwrap();
         println!(
-            "sample.len() is: {m}, sample.feature_len() is: {dim}",
-            m = sample.len(), dim = sample.feature_len()
+            "sample.len() is: {m}, sample.dim() is: {dim}",
+            m = sample.len(), dim = sample.dim()
         );
 
 
@@ -62,9 +62,9 @@ pub mod adaboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -94,9 +94,9 @@ pub mod lpboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -121,9 +121,9 @@ pub mod lpboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -138,8 +138,8 @@ pub mod lpboost_tests {
         path.push("tests/small_toy_example_libsvm.txt");
         let sample = read_libsvm(path).unwrap();
         println!(
-            "sample.len() is: {m}, sample.feature_len() is: {dim}",
-            m = sample.len(), dim = sample.feature_len()
+            "sample.len() is: {m}, sample.dim() is: {dim}",
+            m = sample.len(), dim = sample.dim()
         );
 
 
@@ -151,9 +151,9 @@ pub mod lpboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -183,9 +183,9 @@ pub mod erlpboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -212,9 +212,9 @@ pub mod erlpboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -230,8 +230,8 @@ pub mod erlpboost_tests {
         path.push("tests/small_toy_example_libsvm.txt");
         let sample = read_libsvm(path).unwrap();
         println!(
-            "sample.len() is: {m}, sample.feature_len() is: {dim}",
-            m = sample.len(), dim = sample.feature_len()
+            "sample.len() is: {m}, sample.dim() is: {dim}",
+            m = sample.len(), dim = sample.dim()
         );
 
 
@@ -243,9 +243,9 @@ pub mod erlpboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -278,9 +278,9 @@ pub mod softboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -307,9 +307,9 @@ pub mod softboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
@@ -325,8 +325,8 @@ pub mod softboost_tests {
         path.push("tests/small_toy_example_libsvm.txt");
         let sample = read_libsvm(path).unwrap();
         println!(
-            "sample.len() is: {m}, sample.feature_len() is: {dim}",
-            m = sample.len(), dim = sample.feature_len()
+            "sample.len() is: {m}, sample.dim() is: {dim}",
+            m = sample.len(), dim = sample.dim()
         );
 
 
@@ -338,9 +338,9 @@ pub mod softboost_tests {
 
 
         let mut loss = 0.0;
-        for ex in sample.iter() {
-            let p = f.predict(&ex.data);
-            if ex.label != p { loss += 1.0; }
+        for (dat, lab) in sample.iter() {
+            let p = f.predict(dat);
+            if *lab != p { loss += 1.0; }
         }
 
         loss /= sample.len() as f64;
