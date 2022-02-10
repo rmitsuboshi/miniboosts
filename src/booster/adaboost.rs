@@ -15,6 +15,21 @@ pub struct AdaBoost {
 
 impl AdaBoost {
     /// Initialize the `AdaBoost`.
+    /// This method just sets the parameter `AdaBoost` holds.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let examples = vec![
+    ///     vec![1.0, 2.0, 3.0],
+    ///     vec![4.0, 5.0, 6.0],
+    /// ];
+    /// let labels = vec![1.0, -1.0];
+    /// 
+    /// let sample = Sample::from((examples, labels));
+    /// 
+    /// let booster = AdaBoost::init(&sample);
+    /// ```
     pub fn init<T: Data>(sample: &Sample<T>) -> AdaBoost {
         let m = sample.len();
         assert!(m != 0);
@@ -26,8 +41,31 @@ impl AdaBoost {
 
 
     /// `max_loop` returns the maximum iteration
-    /// of the Adaboost to find a combined hypothesis
+    /// of the `AdaBoost` to find a combined hypothesis
     /// that has error at most `eps`.
+    /// After the `self.max_loop()` iterations,
+    /// `AdaBoost` guarantees no miss-classification on `sample<T>`
+    /// if the training examples are linearly separable.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let examples = vec![
+    ///     vec![1.0, 2.0, 3.0],
+    ///     vec![4.0, 5.0, 6.0],
+    /// ];
+    /// let labels = vec![1.0, -1.0];
+    /// 
+    /// let sample = Sample::from((examples, labels));
+    /// 
+    /// let booster = AdaBoost::init(&sample);
+    /// let eps = 0.01;
+    /// 
+    /// let expected = (sample.len() as f64).ln() / eps.powi(2);
+    /// 
+    /// assert_eq!(booster.max_loop(eps), expected);
+    /// ```
+    /// 
     pub fn max_loop(&self, eps: f64) -> u64 {
         let m = self.dist.len();
 

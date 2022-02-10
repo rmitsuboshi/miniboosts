@@ -23,11 +23,11 @@ use serde::{Serialize, Deserialize};
 /// of the boosting algorithms.
 pub trait Classifier<T: Data> {
 
-    /// Predicts the label of the given example.
+    /// Predicts the label of the given example of type `T`.
     fn predict(&self, example: &T) -> Label;
 
 
-    /// Predicts the labels of the given examples.
+    /// Predicts the labels of the given examples of type `T`.
     fn predict_all(&self, examples: &[T]) -> Vec<Label>
     {
         examples.iter()
@@ -48,7 +48,7 @@ pub struct CombinedClassifier<D, C>
 {
     /// Each element is the pair of hypothesis and its weight
     pub inner: Vec<(f64, C)>,
-    _phantom: PhantomData<D>,
+    _phantom:  PhantomData<D>,
 }
 
 impl<D, C> From<Vec<(f64, C)>> for CombinedClassifier<D, C>
