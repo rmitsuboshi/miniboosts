@@ -16,8 +16,8 @@ You can combine the following boosting algorithms and base learner arbitrary.
 - Boosters
     - Empirical Risk Minimization
         - [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub)
-        - [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html)
     - Hard Margin Maximization
+        - [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html)
         - [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970)
     - Soft Margin Maximization
         - [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf)
@@ -48,8 +48,6 @@ I'm also planning to implement the other booster/base learner in the future.
 Here is a sample code:
 
 ```rust
-
-extern crate boost;
 
 // `run()` and is the method of Booster trait
 use lycaon::Booster;
@@ -87,12 +85,10 @@ fn main() {
     let f = adaboost.run(&dstump, &sample, tolerance);
 
 
-    for example in sample.iter() {
-        let data  = &example.data;
-        let label =  example.label;
-
+    // These assertion may fail if the dataset are not linearly separable.
+    for (dat, lab) in sample.iter() {
         // Check the predictions
-        assert_eq!(f.predict(data), label);
+        assert_eq!(f.predict(dat), *lab);
     }
 }
 ```
