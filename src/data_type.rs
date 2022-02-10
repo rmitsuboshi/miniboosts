@@ -10,9 +10,24 @@ pub trait Data {
     type Output;
 
     /// Returns the value of the specified index.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let data = vec![1.0, 2.0, 3.0];
+    /// assert_eq!(data.value_at(1), 2.0);
+    /// ```
+    /// 
     fn value_at(&self, index: usize) -> Self::Output;
 
-    /// Returns the dimension
+
+    /// Returns the dimension of `self`.
+    /// # Example
+    /// 
+    /// ```rust
+    /// let data = vec![1.0, 2.0, 3.0];
+    /// assert_eq!(data.dim(), 3);
+    /// ```
     fn dim(&self) -> usize;
 }
 
@@ -52,7 +67,7 @@ impl<T> Data for Vec<T>
     }
 }
 
-/// Introduce the `Label` for clarity.
+/// Just an alias to `f64`.
 pub type Label = f64;
 
 
@@ -78,11 +93,47 @@ pub struct Sample<T: Data> {
 impl<T: Data> Sample<T> {
 
     /// Returns the number of training examples.
+    /// # Example
+    /// 
+    /// ```rust
+    /// let examples = vec![
+    ///     vec![1.0, 2.0, 3.0],
+    ///     vec![4.0, 5.0, 6.0],
+    /// ];
+    /// let labels = vec![1.0, -1.0];
+    /// 
+    /// let sample = Sample::from((examples, labels));
+    /// 
+    /// assert_eq!(sample.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         self.size
     }
 
-    /// Returns the maximum dimensions in `Sample<T>`.
+    /// Returns the dimension in `Sample<T>`.
+    /// # Example
+    /// 
+    /// ```rust
+    /// let examples = vec![
+    ///     vec![1.0, 2.0, 3.0],
+    ///     vec![4.0, 5.0, 6.0],
+    /// ];
+    /// let labels = vec![1.0, -1.0];
+    /// 
+    /// let sample = Sample::from((examples, labels));
+    /// 
+    /// assert_eq!(sample.dim(), 2);
+    /// 
+    /// // An example for the sparse sample.
+    /// use std::collections::HashMap;
+    /// let mut examples = vec![
+    ///     HashMap::from([ (0,  1.0), (2, 2.0), (7, -2.0) ]),
+    ///     HashMap::from([ (1, -1.0), (8, 8.0), (9,  6.1) ]),
+    /// ];
+    /// let labels = vec![-1.0, -1.0];
+    /// let sample = Sample::from((examples, labels));
+    /// assert_eq!(sample.dim(), 10);
+    /// ```
     pub fn dim(&self) -> usize {
         self.dimension
     }
@@ -98,7 +149,7 @@ pub struct SampleIter<'a, T> {
 
 
 impl<T: Data> Sample<T> {
-    /// Iterator for `Sample`
+    /// Iterator for `Sample`.
     pub fn iter(&self) -> SampleIter<'_, T> {
         SampleIter { inner: &self.inner[..] }
     }
@@ -108,6 +159,7 @@ impl<T: Data> Sample<T> {
 impl<'a, T: Data> Iterator for SampleIter<'a, T> {
     type Item = &'a (T, Label);
 
+    /// Returns a pair `&'a (T, Label)` of `Sample<T>`.
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner.get(0) {
             Some(item) => {
@@ -122,6 +174,7 @@ impl<'a, T: Data> Iterator for SampleIter<'a, T> {
 
 
 impl<T: Data> From<(Vec<T>, Vec<Label>)> for Sample<T> {
+    /// Convert the pair `(Vec<T>, Vec<Label>)` to `Sample<T>`.
     fn from((examples, labels): (Vec<T>, Vec<Label>)) -> Self {
         assert_eq!(examples.len(), labels.len());
 
@@ -152,6 +205,7 @@ impl<T: Data> From<(Vec<T>, Vec<Label>)> for Sample<T> {
 impl<T: Data> Index<usize> for Sample<T> {
     type Output = (T, Label);
 
+    /// Returns the pair `(T, Label)` at specified `index` of `Sample<T>`.
     fn index(&self, index: usize) -> &Self::Output {
         &self.inner[index]
     }
