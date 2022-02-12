@@ -20,6 +20,8 @@ impl AdaBoost {
     /// # Example
     /// 
     /// ```rust
+    /// use lycaon::{Sample, AdaBoost};
+    /// 
     /// let examples = vec![
     ///     vec![1.0, 2.0, 3.0],
     ///     vec![4.0, 5.0, 6.0],
@@ -50,6 +52,8 @@ impl AdaBoost {
     /// # Example
     /// 
     /// ```rust
+    /// use lycaon::{Sample, AdaBoost};
+    /// 
     /// let examples = vec![
     ///     vec![1.0, 2.0, 3.0],
     ///     vec![4.0, 5.0, 6.0],
@@ -59,11 +63,11 @@ impl AdaBoost {
     /// let sample = Sample::from((examples, labels));
     /// 
     /// let booster = AdaBoost::init(&sample);
-    /// let eps = 0.01;
+    /// let eps = 0.01_f64;
     /// 
     /// let expected = (sample.len() as f64).ln() / eps.powi(2);
     /// 
-    /// assert_eq!(booster.max_loop(eps), expected);
+    /// assert_eq!(booster.max_loop(eps), expected as u64);
     /// ```
     /// 
     pub fn max_loop(&self, eps: f64) -> u64 {

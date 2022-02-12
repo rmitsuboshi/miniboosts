@@ -14,6 +14,7 @@ pub trait Data {
     /// # Example
     /// 
     /// ```rust
+    /// use lycaon::Data;
     /// let data = vec![1.0, 2.0, 3.0];
     /// assert_eq!(data.value_at(1), 2.0);
     /// ```
@@ -25,6 +26,7 @@ pub trait Data {
     /// # Example
     /// 
     /// ```rust
+    /// use lycaon::Data;
     /// let data = vec![1.0, 2.0, 3.0];
     /// assert_eq!(data.dim(), 3);
     /// ```
@@ -96,6 +98,8 @@ impl<T: Data> Sample<T> {
     /// # Example
     /// 
     /// ```rust
+    /// use lycaon::Sample;
+    /// 
     /// let examples = vec![
     ///     vec![1.0, 2.0, 3.0],
     ///     vec![4.0, 5.0, 6.0],
@@ -114,6 +118,8 @@ impl<T: Data> Sample<T> {
     /// # Example
     /// 
     /// ```rust
+    /// use lycaon::Sample;
+    /// 
     /// let examples = vec![
     ///     vec![1.0, 2.0, 3.0],
     ///     vec![4.0, 5.0, 6.0],
@@ -122,7 +128,7 @@ impl<T: Data> Sample<T> {
     /// 
     /// let sample = Sample::from((examples, labels));
     /// 
-    /// assert_eq!(sample.dim(), 2);
+    /// assert_eq!(sample.dim(), 3);
     /// 
     /// // An example for the sparse sample.
     /// use std::collections::HashMap;

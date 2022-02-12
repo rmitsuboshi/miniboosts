@@ -27,7 +27,7 @@
 //! 
 //! # Example
 //! 
-//! ```rust
+//! ```rust,no_run
 //! 
 //! // `run()` and is the method of Booster trait
 //! use lycaon::Booster;
@@ -43,12 +43,15 @@
 //! use lycaon::DStump;
 //! 
 //! // This function reads a file with LIBSVM format
-//! use boost::data_reader::read_csv;
+//! use lycaon::data_reader::read_csv;
+//! 
+//! 
+//! use lycaon::Sample;
 //! 
 //! 
 //! fn main() {
 //!     // Set file name
-//!     let file = "/path/to/input/data.csv";
+//!     let file = "/path/to/input/file.csv";
 //! 
 //!     // Read file
 //!     let sample = read_csv(file).unwrap();
@@ -77,9 +80,12 @@
 //! If you use the soft margin maximizing boostings like LPBoost,
 //! you can set the capping parameter as follows:
 //! 
-//! ```rust
+//! ```rust,no_run
 //! use lycaon::LPBoost;
-//! let capping_param = 0.2 * sample.len();
+//! use lycaon::read_csv;
+//! 
+//! let sample = read_csv("/path/to/input/file.csv").unwrap();
+//! let capping_param = 0.2 * sample.len() as f64;
 //! let booster = LPBoost::init(&sample)
 //!     .capping(capping_param);
 //! ```
