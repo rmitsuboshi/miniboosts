@@ -1,8 +1,10 @@
 //! Provides some base learning algorithms.
 pub mod core;
-pub mod dstump;
+
+/// Defines the decision stump class.
+pub mod decision_stump;
 // pub mod dtree;
 // pub mod ltf;
 
 pub use self::core::BaseLearner;
-pub use self::dstump::{DStump, DStumpClassifier};
+pub use self::decision_stump::{DStump, DStumpClassifier};
