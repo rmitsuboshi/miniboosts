@@ -202,7 +202,7 @@ impl LPBoost {
 
 impl<D, C> Booster<D, C> for LPBoost
     where D: Data,
-          C: Classifier<D> + Eq + PartialEq
+          C: Classifier<D>
 {
 
 
