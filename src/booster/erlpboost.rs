@@ -320,7 +320,7 @@ impl ERLPBoost {
 
 
 impl<D, C> Booster<D, C> for ERLPBoost
-    where C: Classifier<D> + Eq + PartialEq,
+    where C: Classifier<D>,
           D: Data<Output = f64>
 {
     fn run<B>(&mut self,
