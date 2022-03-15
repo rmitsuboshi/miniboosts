@@ -292,7 +292,9 @@ impl ERLPBoost {
             // This will never happen
             // since the domain is a bounded & closed convex set,
             let status = model.status().unwrap();
-            if status != Status::Optimal {
+            if status != Status::Optimal
+                && status != Status::SubOptimal
+            {
                 let message = format!(
                     "Status is {:?}. something wrong.", status
                 );
