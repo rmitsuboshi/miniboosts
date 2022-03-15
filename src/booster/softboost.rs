@@ -255,7 +255,9 @@ impl SoftBoost {
 
             // At this point, the status is not `Status::Infeasible`.
             // If the status is not `Status::Optimal`, something wrong.
-            if status != Status::Optimal {
+            if status != Status::Optimal
+                && status != Status::SubOptimal
+            {
                 panic!("Status is {:?}. something wrong.", status);
             }
 
