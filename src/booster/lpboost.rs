@@ -86,6 +86,13 @@ impl LPBoost {
     }
 
 
+    /// Specify the number of threads used in `grb`.
+    pub fn with_threads(mut self, num: i32) -> Self {
+        self.model.get_env_mut().set(param::Threads, num);
+        self
+    }
+
+
     /// This method updates the capping parameter.
     /// Once the capping parameter changed,
     /// we need to update the `model` of the Gurobi.
