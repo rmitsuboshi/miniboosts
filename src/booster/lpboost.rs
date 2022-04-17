@@ -88,7 +88,7 @@ impl LPBoost {
 
     /// Specify the number of threads used in `grb`.
     pub fn with_threads(mut self, num: i32) -> Self {
-        self.model.get_env_mut().set(param::Threads, num);
+        self.model.get_env_mut().set(param::Threads, num).unwrap();
         self
     }
 
