@@ -10,13 +10,14 @@ use super::split_rule::*;
 use serde::{Serialize, Deserialize};
 
 
+// TODO
+//      Add other criterions.
+//      E.g., Gini criterion, Twoing criterion (page 38 of CART)
 /// Maximization objectives.
 /// * `Criterion::Gini` is the gini-index,
 /// * `Criterion::Entropy` is the entropy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Criterion {
-    /// Gini-index.
-    Gini,
     /// Binary entropy function.
     Entropy,
 }
@@ -106,6 +107,7 @@ impl<S> Node<S> {
     }
 
 
+    /// Construct a branch node from the arguments.
     pub(crate) fn branch(rule: S,
                          left:  Box<Node<S>>,
                          right: Box<Node<S>>,
@@ -124,6 +126,7 @@ impl<S> Node<S> {
     }
 
 
+    /// Returns the number of leaves of this sub-tree.
     pub(crate) fn leaves(&self) -> usize {
         match self {
             Node::Branch(ref node) => node.leaves,

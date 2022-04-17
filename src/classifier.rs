@@ -21,7 +21,7 @@ use serde::{Serialize, Deserialize};
 
 /// A trait that defines the function used in the combined classifier
 /// of the boosting algorithms.
-pub trait Classifier<T: Data> {
+pub trait Classifier<T> {
 
     /// Predicts the label of the given example of type `T`.
     fn predict(&self, example: &T) -> Label;
@@ -39,21 +39,21 @@ pub trait Classifier<T: Data> {
 use std::marker::PhantomData;
 
 /// A struct that the boosting algorithms in this library return.
-/// You can read/write this struct by `serde` trait.
-/// TODO USE SERDE TRAIT
+/// You can read/write this struct by `Serde` trait.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CombinedClassifier<D, C>
-    where D: Data,
-          C: Classifier<D>
+//     where D: Data,
+//           C: Classifier<D>
 {
     /// Each element is the pair of hypothesis and its weight
     pub inner: Vec<(f64, C)>,
     _phantom:  PhantomData<D>,
 }
 
+
 impl<D, C> From<Vec<(f64, C)>> for CombinedClassifier<D, C>
-    where D: Data,
-          C: Classifier<D>,
+//     where D: Data,
+//           C: Classifier<D>,
 {
     fn from(inner: Vec<(f64, C)>) -> Self {
         CombinedClassifier {
@@ -65,7 +65,7 @@ impl<D, C> From<Vec<(f64, C)>> for CombinedClassifier<D, C>
 
 
 impl<D, C> Classifier<D> for CombinedClassifier<D, C>
-    where D: Data<Output = f64>,
+    where D: Data,
           C: Classifier<D>,
 {
     fn predict(&self, example: &D) -> Label

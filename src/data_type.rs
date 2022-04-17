@@ -4,6 +4,47 @@ use std::collections::HashMap;
 use std::ops::Index;
 
 
+/// A trait that guarantee the existence of maximal value.
+pub trait DataBounds {
+    /// Returns the maximum value.
+    /// For example, `f64` returns `f64::MAX`.
+    fn max_value() -> Self;
+
+
+    /// Returns the minimum value.
+    /// For example, `f64` returns `f64::MAX`.
+    fn min_value() -> Self;
+}
+
+macro_rules! impl_databounds_primitive_inner {
+    ($t:ty) => (
+        impl DataBounds for $t {
+            #[inline]
+            fn max_value() -> Self {
+                Self::MAX
+            }
+
+
+            fn min_value() -> Self {
+                Self::MIN
+            }
+        }
+    )
+}
+
+
+macro_rules! impl_databounds_primitive {
+    ($($t:ty)*) => ($(
+        impl_databounds_primitive_inner! { $t }
+    )*)
+}
+
+
+impl_databounds_primitive! { i8 i16 i32 i64 i128 isize }
+impl_databounds_primitive! { u8 u16 u32 u64 u128 usize }
+impl_databounds_primitive! { f32 f64 }
+
+
 /// The trait `Data` defines the desired property of data.
 pub trait Data {
     /// The value type of the specified index.
@@ -77,7 +118,7 @@ pub type Label = f64;
 /// A sequence of the `LabeledData`.
 /// We assume that all the example in `sample` has the same format.
 #[derive(Debug)]
-pub struct Sample<T: Data> {
+pub struct Sample<T> {
 
     /// Holds the pair of data and label.
     inner: Vec<(T, Label)>,
@@ -92,7 +133,7 @@ pub struct Sample<T: Data> {
 }
 
 
-impl<T: Data> Sample<T> {
+impl<T> Sample<T> {
 
     /// Returns the number of training examples.
     /// # Example
@@ -154,7 +195,7 @@ pub struct SampleIter<'a, T> {
 }
 
 
-impl<T: Data> Sample<T> {
+impl<T> Sample<T> {
     /// Iterator for `Sample`.
     pub fn iter(&self) -> SampleIter<'_, T> {
         SampleIter { inner: &self.inner[..] }
@@ -181,6 +222,7 @@ impl<'a, T: Data> Iterator for SampleIter<'a, T> {
 
 impl<T: Data> From<(Vec<T>, Vec<Label>)> for Sample<T> {
     /// Convert the pair `(Vec<T>, Vec<Label>)` to `Sample<T>`.
+    #[inline]
     fn from((examples, labels): (Vec<T>, Vec<Label>)) -> Self {
         assert_eq!(examples.len(), labels.len());
 
@@ -208,7 +250,7 @@ impl<T: Data> From<(Vec<T>, Vec<Label>)> for Sample<T> {
 
 
 
-impl<T: Data> Index<usize> for Sample<T> {
+impl<T> Index<usize> for Sample<T> {
     type Output = (T, Label);
 
     /// Returns the pair `(T, Label)` at specified `index` of `Sample<T>`.
