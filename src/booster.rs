@@ -21,7 +21,8 @@ pub use self::adaboost::AdaBoost;
 /// Hard Margin Maximization
 pub use self::adaboostv::AdaBoostV;
 pub use self::totalboost::TotalBoost;
-// 
+
+
 /// Soft Margin Maximization
 pub use self::lpboost::LPBoost;
 pub use self::erlpboost::ERLPBoost;

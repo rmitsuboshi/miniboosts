@@ -7,9 +7,9 @@ use crate::BaseLearner;
 /// 
 /// You need to implement `run`
 /// in order to write a new boosting algorithm.
-pub trait Booster<D, C>
+pub trait Booster<D, L, C>
     where D: Data,
-          C: Classifier<D>
+          C: Classifier<D, L>
 {
     /// A main function that runs boosting algorithm.
     /// This method takes
@@ -19,9 +19,9 @@ pub trait Booster<D, C>
     /// - a tolerance parameter.
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D>,
+              sample:       &Sample<D, L>,
               tolerance:    f64)
-        -> CombinedClassifier<D, C>
-        where B: BaseLearner<D, Clf = C>;
+        -> CombinedClassifier<D, L, C>
+        where B: BaseLearner<D, L, Clf = C>;
 }
 

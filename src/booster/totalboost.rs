@@ -7,7 +7,7 @@ use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
 
-use crate::SoftBoost;
+use super::softboost::SoftBoost;
 
 
 /// Since we can regard TotalBoost as
@@ -20,7 +20,7 @@ pub struct TotalBoost {
 
 impl TotalBoost {
     /// initialize the `TotalBoost`.
-    pub fn init<T: Data>(sample: &Sample<T>) -> TotalBoost {
+    pub fn init<D, L>(sample: &Sample<D, L>) -> TotalBoost {
         let softboost = SoftBoost::init(&sample)
             .capping(1.0);
 
@@ -35,16 +35,16 @@ impl TotalBoost {
 }
 
 
-impl<D, C> Booster<D, C> for TotalBoost
-    where C: Classifier<D>,
+impl<D, C> Booster<D, f64, C> for TotalBoost
+    where C: Classifier<D, f64>,
           D: Data<Output = f64>,
 {
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D>,
+              sample:       &Sample<D, f64>,
               eps:          f64)
-        -> CombinedClassifier<D, C>
-        where B: BaseLearner<D, Clf = C>,
+        -> CombinedClassifier<D, f64, C>
+        where B: BaseLearner<D, f64, Clf = C>,
     {
         self.softboost.run(base_learner, sample, eps)
     }

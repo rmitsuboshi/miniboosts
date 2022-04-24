@@ -32,7 +32,7 @@ impl AdaBoost {
     /// 
     /// let booster = AdaBoost::init(&sample);
     /// ```
-    pub fn init<T: Data>(sample: &Sample<T>) -> AdaBoost {
+    pub fn init<D, L>(sample: &Sample<D, L>) -> AdaBoost {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
@@ -129,16 +129,16 @@ impl AdaBoost {
 }
 
 
-impl<D, C> Booster<D, C> for AdaBoost
+impl<D, C> Booster<D, f64, C> for AdaBoost
     where D: Data,
-          C: Classifier<D> + Eq + PartialEq,
+          C: Classifier<D, f64> + Eq + PartialEq,
 {
     fn run<B>(&mut self, 
               base_learner: &B,
-              sample:       &Sample<D>,
+              sample:       &Sample<D, f64>,
               eps:          f64)
-        -> CombinedClassifier<D, C>
-        where B: BaseLearner<D, Clf = C>,
+        -> CombinedClassifier<D, f64, C>
+        where B: BaseLearner<D, f64, Clf = C>,
     {
         // Initialize parameters
         let m   = sample.len();
