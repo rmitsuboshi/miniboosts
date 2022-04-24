@@ -2,7 +2,7 @@
 //! "Boosting algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use crate::{Data, Label, Sample};
+use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -34,7 +34,7 @@ pub struct LPBoost {
 
 impl LPBoost {
     /// Initialize the `LPBoost`.
-    pub fn init<T: Data>(sample: &Sample<T>) -> LPBoost {
+    pub fn init<D, L>(sample: &Sample<D, L>) -> LPBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -155,8 +155,8 @@ impl LPBoost {
     /// by solving a linear program
     #[inline(always)]
     fn update_params(&mut self,
-                     predictions: Vec<Label>,
-                     edge:        f64) -> f64
+                     margins: Vec<f64>,
+                     edge:    f64) -> f64
     {
         // update `self.gamma_hat`
         if self.gamma_hat > edge {
@@ -166,7 +166,7 @@ impl LPBoost {
 
 
         // Add a new constraint
-        let expr = predictions.iter()
+        let expr = margins.iter()
             .zip(self.vars.iter())
             .map(|(&yh, &v)| v * yh)
             .grb_sum();
@@ -207,18 +207,18 @@ impl LPBoost {
 }
 
 
-impl<D, C> Booster<D, C> for LPBoost
+impl<D, C> Booster<D, f64, C> for LPBoost
     where D: Data,
-          C: Classifier<D>
+          C: Classifier<D, f64>
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D>,
+              sample:       &Sample<D, f64>,
               tolerance:    f64)
-        -> CombinedClassifier<D, C>
-        where B: BaseLearner<D, Clf = C>,
+        -> CombinedClassifier<D, f64, C>
+        where B: BaseLearner<D, f64, Clf = C>,
     {
         if self.tolerance != tolerance {
             self.set_tolerance(tolerance);
@@ -233,17 +233,17 @@ impl<D, C> Booster<D, C> for LPBoost
 
             // Each element in `predictions` is the product of
             // the predicted vector and the correct vector
-            let predictions = sample.iter()
+            let margins = sample.iter()
                 .map(|(dat, lab)| *lab * h.predict(dat))
-                .collect::<Vec<Label>>();
+                .collect::<Vec<f64>>();
 
 
-            let edge = predictions.iter()
+            let edge = margins.iter()
                 .zip(self.dist.iter())
                 .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
 
 
-            let gamma_star = self.update_params(predictions, edge);
+            let gamma_star = self.update_params(margins, edge);
 
             clfs.push(h);
 

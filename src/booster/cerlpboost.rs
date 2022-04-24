@@ -36,7 +36,7 @@ pub struct CERLPBoost {
 
 impl CERLPBoost {
     /// Initialize the `CERLPBoost`.
-    pub fn init<T: Data>(sample: &Sample<T>) -> CERLPBoost {
+    pub fn init<D, L>(sample: &Sample<D, L>) -> CERLPBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -90,9 +90,9 @@ impl CERLPBoost {
     /// Compute the dual objective value
     #[inline(always)]
     fn dual_objval_mut<C, D>(&mut self,
-                             sample:         &Sample<D>,
+                             sample:         &Sample<D, f64>,
                              classifier_map: &HashMap<C, f64>)
-        where C: Classifier<D> + Eq + PartialEq + Hash,
+        where C: Classifier<D, f64> + Eq + PartialEq + Hash,
               D: Data,
     {
         self.dual_optval = classifier_map.keys()
@@ -148,8 +148,8 @@ impl CERLPBoost {
     /// Updates weight on hypotheses and `self.dist` in this order.
     fn update_distribution_mut<C, D>(&mut self,
                                      classifier_map: &HashMap<C, f64>,
-                                     sample: &Sample<D>)
-        where C: Classifier<D> + Eq + PartialEq + Hash,
+                                     sample: &Sample<D, f64>)
+        where C: Classifier<D, f64> + Eq + PartialEq + Hash,
               D: Data
     {
         for (d, (dat, lab)) in self.dist.iter_mut().zip(sample.iter()) {
@@ -220,7 +220,7 @@ impl CERLPBoost {
                                    clfs:    &mut HashMap<C, f64>,
                                    new_clf: C,
                                    gap_vec: Vec<f64>)
-        where C: Classifier<D> + Eq + PartialEq + Hash,
+        where C: Classifier<D, f64> + Eq + PartialEq + Hash,
               D: Data<Output = f64>
     {
         // Numerator
@@ -258,18 +258,18 @@ impl CERLPBoost {
 }
 
 
-impl<D, C> Booster<D, C> for CERLPBoost
+impl<D, C> Booster<D, f64, C> for CERLPBoost
     where D: Data<Output = f64>,
-          C: Classifier<D> + Eq + PartialEq + Hash
+          C: Classifier<D, f64> + Eq + PartialEq + Hash
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D>,
+              sample:       &Sample<D, f64>,
               tolerance:    f64)
-        -> CombinedClassifier<D, C>
-        where B: BaseLearner<D, Clf = C>,
+        -> CombinedClassifier<D, f64, C>
+        where B: BaseLearner<D, f64, Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 

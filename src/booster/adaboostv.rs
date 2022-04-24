@@ -1,5 +1,6 @@
 //! Provides the `AdaBoost*` by Rätsch & Warmuth, 2005.
-use crate::{Data, Label, Sample};
+use crate::{Data, Sample};
+// use crate::{Data, Label, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -22,7 +23,7 @@ pub struct AdaBoostV {
 
 impl AdaBoostV {
     /// Initialize the `AdaBoostV<D, L>`.
-    pub fn init<T: Data>(sample: &Sample<T>) -> AdaBoostV {
+    pub fn init<D, L>(sample: &Sample<D, L>) -> AdaBoostV {
         let m = sample.len();
         assert!(m != 0);
         let uni = 1.0 / m as f64;
@@ -73,8 +74,8 @@ impl AdaBoostV {
     /// `update_params` also updates `self.distribution`
     #[inline]
     fn update_params(&mut self,
-                     predictions: Vec<Label>,
-                     edge:        f64)
+                     margins: Vec<f64>,
+                     edge:    f64)
         -> f64
     {
 
@@ -93,7 +94,7 @@ impl AdaBoostV {
 
 
         // To prevent overflow, take the logarithm.
-        for (d, yh) in self.dist.iter_mut().zip(predictions.iter()) {
+        for (d, yh) in self.dist.iter_mut().zip(margins.iter()) {
             *d = d.ln() - weight * yh;
         }
 
@@ -125,18 +126,18 @@ impl AdaBoostV {
 }
 
 
-impl<D, C> Booster<D, C> for AdaBoostV
+impl<D, C> Booster<D, f64, C> for AdaBoostV
     where D: Data,
-          C: Classifier<D> + Eq + PartialEq,
+          C: Classifier<D, f64> + Eq + PartialEq,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D>,
+              sample:       &Sample<D, f64>,
               eps:          f64)
-        -> CombinedClassifier<D, C>
-        where B: BaseLearner<D, Clf = C>,
+        -> CombinedClassifier<D, f64, C>
+        where B: BaseLearner<D, f64, Clf = C>,
     {
         // Initialize parameters
         let m   = sample.len();

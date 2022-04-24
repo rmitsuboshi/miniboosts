@@ -1,5 +1,6 @@
 //! Provides the decision stump class.
-use crate::{Data, Label};
+use crate::Data;
+// use crate::{Data, Label};
 use crate::Classifier;
 
 
@@ -71,10 +72,10 @@ impl DStumpClassifier {
 }
 
 
-impl<D> Classifier<D> for DStumpClassifier
+impl<D> Classifier<D, f64> for DStumpClassifier
     where D: Data<Output = f64>
 {
-    fn predict(&self, data: &D) -> Label
+    fn predict(&self, data: &D) -> f64
     {
         let val = data.value_at(self.feature_index);
         match self.positive_side {

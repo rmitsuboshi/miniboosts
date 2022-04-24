@@ -29,7 +29,7 @@ pub struct SoftBoost {
 
 impl SoftBoost {
     /// Initialize the `SoftBoost`.
-    pub fn init<T: Data>(sample: &Sample<T>) -> SoftBoost {
+    pub fn init<D, L>(sample: &Sample<D, L>) -> SoftBoost {
         let m = sample.len();
         assert!(m != 0);
 
@@ -110,9 +110,9 @@ impl SoftBoost {
 impl SoftBoost {
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
-    fn set_weights<C, D>(&mut self, sample: &Sample<D>, clfs: &[C])
+    fn set_weights<C, D>(&mut self, sample: &Sample<D, f64>, clfs: &[C])
         -> Result<Vec<f64>, grb::Error>
-        where C: Classifier<D>,
+        where C: Classifier<D, f64>,
               D: Data,
     {
         let mut model = Model::with_env("", &self.env)?;
@@ -180,10 +180,10 @@ impl SoftBoost {
     /// Updates `self.distribution`
     /// Returns `None` if the stopping criterion satisfied.
     fn update_params_mut<C, D>(&mut self,
-                               sample: &Sample<D>,
+                               sample: &Sample<D, f64>,
                                clfs:   &[C])
         -> Option<()>
-        where C: Classifier<D>,
+        where C: Classifier<D, f64>,
               D: Data
     {
         loop {
@@ -288,18 +288,18 @@ impl SoftBoost {
 }
 
 
-impl<D, C> Booster<D, C> for SoftBoost
-    where C: Classifier<D>,
+impl<D, C> Booster<D, f64, C> for SoftBoost
+    where C: Classifier<D, f64>,
           D: Data<Output = f64>,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D>,
+              sample:       &Sample<D, f64>,
               tolerance:    f64)
-        -> CombinedClassifier<D, C>
-        where B: BaseLearner<D, Clf = C>,
+        -> CombinedClassifier<D, f64, C>
+        where B: BaseLearner<D, f64, Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 

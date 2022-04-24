@@ -110,18 +110,14 @@ impl<T> Data for Vec<T>
     }
 }
 
-/// Just an alias to `f64`.
-pub type Label = f64;
-
-
 
 /// A sequence of the `LabeledData`.
 /// We assume that all the example in `sample` has the same format.
 #[derive(Debug)]
-pub struct Sample<T> {
+pub struct Sample<D, L> {
 
     /// Holds the pair of data and label.
-    inner: Vec<(T, Label)>,
+    inner: Vec<(D, L)>,
 
     /// The number of examples. This value is equivalent to
     /// `dat_set.len()` and `lab_set.len()`.
@@ -133,7 +129,7 @@ pub struct Sample<T> {
 }
 
 
-impl<T> Sample<T> {
+impl<D, L> Sample<D, L> {
 
     /// Returns the number of training examples.
     /// # Example
@@ -190,21 +186,21 @@ impl<T> Sample<T> {
 
 
 /// A struct for implementing the iterator over `Sample`.
-pub struct SampleIter<'a, T> {
-    inner: &'a [(T, Label)]
+pub struct SampleIter<'a, D, L> {
+    inner: &'a [(D, L)]
 }
 
 
-impl<T> Sample<T> {
+impl<D, L> Sample<D, L> {
     /// Iterator for `Sample`.
-    pub fn iter(&self) -> SampleIter<'_, T> {
+    pub fn iter(&self) -> SampleIter<'_, D, L> {
         SampleIter { inner: &self.inner[..] }
     }
 }
 
 
-impl<'a, T: Data> Iterator for SampleIter<'a, T> {
-    type Item = &'a (T, Label);
+impl<'a, D, L> Iterator for SampleIter<'a, D, L> {
+    type Item = &'a (D, L);
 
     /// Returns a pair `&'a (T, Label)` of `Sample<T>`.
     fn next(&mut self) -> Option<Self::Item> {
@@ -220,10 +216,12 @@ impl<'a, T: Data> Iterator for SampleIter<'a, T> {
 }
 
 
-impl<T: Data> From<(Vec<T>, Vec<Label>)> for Sample<T> {
+impl<D, L> From<(Vec<D>, Vec<L>)> for Sample<D, L>
+    where D: Data
+{
     /// Convert the pair `(Vec<T>, Vec<Label>)` to `Sample<T>`.
     #[inline]
-    fn from((examples, labels): (Vec<T>, Vec<Label>)) -> Self {
+    fn from((examples, labels): (Vec<D>, Vec<L>)) -> Self {
         assert_eq!(examples.len(), labels.len());
 
 
@@ -250,8 +248,8 @@ impl<T: Data> From<(Vec<T>, Vec<Label>)> for Sample<T> {
 
 
 
-impl<T> Index<usize> for Sample<T> {
-    type Output = (T, Label);
+impl<D, L> Index<usize> for Sample<D, L> {
+    type Output = (D, L);
 
     /// Returns the pair `(T, Label)` at specified `index` of `Sample<T>`.
     fn index(&self, index: usize) -> &Self::Output {

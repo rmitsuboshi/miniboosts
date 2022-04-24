@@ -83,8 +83,10 @@
 //! ```rust,no_run
 //! use lycaon::LPBoost;
 //! use lycaon::read_csv;
+//! use lycaon::Sample;
 //! 
-//! let sample = read_csv("/path/to/input/file.csv").unwrap();
+//! let file = "/path/to/input/file.csv";
+//! let sample: Sample<Vec<f64>, f64> = read_csv(file).unwrap();
 //! let capping_param = 0.2 * sample.len() as f64;
 //! let booster = LPBoost::init(&sample)
 //!     .capping(capping_param);
@@ -110,7 +112,8 @@ pub mod booster;
 pub mod base_learner;
 
 // Export struct `Sample`.
-pub use data_type::{Sample, Data, Label, DataBounds};
+pub use data_type::{Sample, Data, DataBounds};
+// pub use data_type::{Sample, Data, Label, DataBounds};
 
 
 // Export functions that reads file with some format.
@@ -129,25 +132,26 @@ pub use booster::Booster;
 pub use booster::AdaBoost;
 
 
-// Export the boosting algorithms that maximizes the hard margin.
+// // Export the boosting algorithms that maximizes the hard margin.
 pub use booster::{AdaBoostV, TotalBoost};
-
-
+// 
+// 
 // Export the boosting algorithms that maximizes the soft margin.
 pub use booster::{LPBoost, ERLPBoost, SoftBoost, CERLPBoost};
-
-
+// 
+// 
 // Export the `BaseLearner` trait.
 pub use base_learner::BaseLearner;
-
-
+// 
+// 
 // Export the instances of the `BaseLearner` trait.
 pub use base_learner::DStump;
+// pub use base_learner::DTree;
 
 
 // Export the instances of the `Classifier` trait.
 // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
-// pub use base_learner::{DStumpClassifier, CombinedClassifier};
 pub use base_learner::DStumpClassifier;
+// pub use base_learner::DTreeClassifier;
 
 

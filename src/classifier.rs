@@ -14,44 +14,64 @@
 //! 
 //! I'm planning to implement the code for the general base learner setting.
 //! 
-use crate::{Data, Label};
+// use crate::{Data, Label};
+use crate::Data;
 use serde::{Serialize, Deserialize};
 
 
 
 /// A trait that defines the function used in the combined classifier
 /// of the boosting algorithms.
-pub trait Classifier<T> {
+pub trait Classifier<D, L> {
 
     /// Predicts the label of the given example of type `T`.
-    fn predict(&self, example: &T) -> Label;
+    fn predict(&self, example: &D) -> L;
 
 
     /// Predicts the labels of the given examples of type `T`.
-    fn predict_all(&self, examples: &[T]) -> Vec<Label>
+    fn predict_all(&self, examples: &[D]) -> Vec<L>
     {
         examples.iter()
                 .map(|example| self.predict(example))
                 .collect()
     }
 }
+// pub trait Classifier<T> {
+// 
+//     /// Predicts the label of the given example of type `T`.
+//     fn predict(&self, example: &T) -> Label;
+// 
+// 
+//     /// Predicts the labels of the given examples of type `T`.
+//     fn predict_all(&self, examples: &[T]) -> Vec<Label>
+//     {
+//         examples.iter()
+//                 .map(|example| self.predict(example))
+//                 .collect()
+//     }
+// }
+
 
 use std::marker::PhantomData;
 
 /// A struct that the boosting algorithms in this library return.
 /// You can read/write this struct by `Serde` trait.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CombinedClassifier<D, C>
-//     where D: Data,
-//           C: Classifier<D>
+pub struct CombinedClassifier<D, L, C>
 {
     /// Each element is the pair of hypothesis and its weight
     pub inner: Vec<(f64, C)>,
-    _phantom:  PhantomData<D>,
+    _phantom:  PhantomData<(D, L)>,
 }
+// pub struct CombinedClassifier<D, C>
+// {
+//     /// Each element is the pair of hypothesis and its weight
+//     pub inner: Vec<(f64, C)>,
+//     _phantom:  PhantomData<D>,
+// }
 
 
-impl<D, C> From<Vec<(f64, C)>> for CombinedClassifier<D, C>
+impl<D, L, C> From<Vec<(f64, C)>> for CombinedClassifier<D, L, C>
 //     where D: Data,
 //           C: Classifier<D>,
 {
@@ -62,13 +82,24 @@ impl<D, C> From<Vec<(f64, C)>> for CombinedClassifier<D, C>
         }
     }
 }
+// impl<D, C> From<Vec<(f64, C)>> for CombinedClassifier<D, C>
+// //     where D: Data,
+// //           C: Classifier<D>,
+// {
+//     fn from(inner: Vec<(f64, C)>) -> Self {
+//         CombinedClassifier {
+//             inner,
+//             _phantom: PhantomData
+//         }
+//     }
+// }
 
 
-impl<D, C> Classifier<D> for CombinedClassifier<D, C>
+impl<D, C> Classifier<D, f64> for CombinedClassifier<D, f64, C>
     where D: Data,
-          C: Classifier<D>,
+          C: Classifier<D, f64>,
 {
-    fn predict(&self, example: &D) -> Label
+    fn predict(&self, example: &D) -> f64
     {
         self.inner
             .iter()
@@ -76,5 +107,17 @@ impl<D, C> Classifier<D> for CombinedClassifier<D, C>
             .signum()
     }
 }
+// impl<D, C> Classifier<D> for CombinedClassifier<D, C>
+//     where D: Data,
+//           C: Classifier<D>,
+// {
+//     fn predict(&self, example: &D) -> Label
+//     {
+//         self.inner
+//             .iter()
+//             .fold(0.0, |acc, (w, h)| acc + *w * h.predict(example))
+//             .signum()
+//     }
+// }
 
 
