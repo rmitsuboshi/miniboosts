@@ -157,12 +157,12 @@ impl<D, C> Booster<D, f64, C> for AdaBoostV
 
             // Each element in `predictions` is the product of
             // the predicted vector and the correct vector
-            let predictions = sample.iter()
+            let margins = sample.iter()
                 .map(|(dat, lab)| *lab * h.predict(dat))
                 .collect::<Vec<f64>>();
 
 
-            let edge = predictions.iter()
+            let edge = margins.iter()
                 .zip(self.dist.iter())
                 .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
 
@@ -178,7 +178,7 @@ impl<D, C> Booster<D, f64, C> for AdaBoostV
 
 
             // Compute the weight on the new hypothesis
-            let weight = self.update_params(predictions, edge);
+            let weight = self.update_params(margins, edge);
             weighted_classifier.push(
                 (weight, h)
             );
