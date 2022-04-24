@@ -1,3 +1,4 @@
+//! This file defines split rules for decision tree.
 use crate::Data;
 
 
@@ -11,13 +12,15 @@ pub enum LR {
 
 /// A trait that defines the splitting rule
 /// in the decision tree.
-pub trait SplitRule {
-    type Input;
-    fn split(&self, data: &Self::Input) -> LR;
+pub trait SplitRule<D> {
+    /// Returns `LR::Left` if `data` descends to the left child,
+    /// `LR::Right` otherwise.
+    fn split(&self, data: &D) -> LR;
 }
 
 
 /// Defines the split based on a feature.
+#[derive(Debug)]
 pub struct StumpSplit<D, O>
     where D: Data<Output = O>,
           O: PartialOrd
@@ -38,13 +41,12 @@ impl<D, O> From<(usize, O)> for StumpSplit<D, O>
 }
 
 
-impl<D, O> SplitRule for StumpSplit<D, O>
+impl<D, O> SplitRule<D> for StumpSplit<D, O>
     where D: Data<Output = O>,
           O: PartialOrd,
 {
-    type Input = D;
     #[inline]
-    fn split(&self, data: &Self::Input) -> LR {
+    fn split(&self, data: &D) -> LR {
         let value = data.value_at(self.index);
 
         if value < self.threshold {

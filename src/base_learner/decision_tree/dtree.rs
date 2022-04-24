@@ -1,28 +1,34 @@
 // TODO LIST
 //  * Implement `best_hypothesis`
 //      - Train/test split
-//      ? construct_full_tree
+//      o construct_full_tree
 //      - prune
 //  * Implement `construct_full_tree`
 //      ? Compute impurity
+//          o entropic impurity
+//          - gini impurity
 //      - Test whether this function works as expected.
 //  * Implement `pruing`
 //      - Cross-validation
+// 
 //  * Implement `train_test_split` to find the best pruning
 //  * Test code
 //      - construct_full_tree
+//      - pruning
 //  * Run boosting
 
-use crate::{DataBounds, Data, Label, Sample};
+use crate::{DataBounds, Data, Sample};
 use crate::BaseLearner;
 
 
 use super::dtree_classifier::DTreeClassifier;
 use super::split_rule::*;
 use super::node::*;
+use super::measure::*;
 
 
 use std::marker::PhantomData;
+use std::collections::HashMap;
 
 
 
@@ -37,17 +43,16 @@ pub enum Split {
 
 /// Generates a `DTreeClassifier` for a given distribution
 /// over examples.
-pub struct DTree<S> {
+pub struct DTree<S, L> {
     criterion: Criterion,
-    _phantom:  PhantomData<S>,
+    _phantom:  PhantomData<(S, L)>,
 }
 
 
-impl<S> DTree<S> {
+impl<S, L> DTree<S, L> {
     /// Initialize `DTree`.
     #[inline]
-    pub fn init<D>(_sample: &Sample<D>) -> Self
-        where D: Data
+    pub fn init<D>(_sample: &Sample<D, L>) -> Self
     {
         Self {
             criterion: Criterion::Entropy,
@@ -57,13 +62,16 @@ impl<S> DTree<S> {
 }
 
 
-impl<S, O, D> BaseLearner<D> for DTree<S>
-    where S: SplitRule<Input = D>,
-          D: Data<Output = O>,
-          O: PartialOrd + Clone + DataBounds
+// TODO remove `std::fmt::Debug` trait bound
+impl<S, O, D, L> BaseLearner<D, L> for DTree<S, L>
+    // where S: SplitRule<Input = D> + std::fmt::Debug,
+    where S: SplitRule<D> + std::fmt::Debug,
+          D: Data<Output = O> + std::fmt::Debug,
+          L: PartialEq + Eq + std::hash::Hash + Clone,
+          O: PartialOrd + Clone + DataBounds + std::fmt::Debug
 {
-    type Clf = DTreeClassifier<S>;
-    fn best_hypothesis(&self, sample: &Sample<D>, distribution: &[f64])
+    type Clf = DTreeClassifier<S, L>;
+    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64])
         -> Self::Clf
     {
         let m = sample.len();
@@ -93,13 +101,14 @@ impl<S, O, D> BaseLearner<D> for DTree<S>
 /// Construct a full binary tree
 /// that perfectly classify the given examples.
 #[inline]
-fn construct_full_tree<O, D>(sample:       &Sample<D>,
-                             distribution: &[f64],
-                             indices:      Vec<usize>,
-                             criterion:    Criterion)
-    -> Box<Node<StumpSplit<D, O>>>
-    where D: Data<Output = O>,
-          O: PartialOrd + Clone + DataBounds
+fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
+                                distribution: &[f64],
+                                indices:      Vec<usize>,
+                                criterion:    Criterion)
+    -> Box<Node<StumpSplit<D, O>, L>>
+    where D: Data<Output = O> + std::fmt::Debug,
+          L: PartialEq + Eq + std::hash::Hash + Clone,
+          O: PartialOrd + Clone + DataBounds + std::fmt::Debug,
 {
     // TODO
     // This sentence may be redundant
@@ -112,11 +121,8 @@ fn construct_full_tree<O, D>(sample:       &Sample<D>,
     let impurity = f64::MAX;
 
 
-    // TODO Implement the case where the all nodes have same label.
-    // If all the labels are same,
-    // returns a node that predicts the label.
     let mut labels = indices.iter()
-        .map(|&i| sample[i].1);
+        .map(|&i| sample[i].1.clone());
     let l = labels.next().unwrap();
     if labels.all(|t| l == t) {
         let node = Node::leaf(l, impurity);
@@ -131,19 +137,13 @@ fn construct_full_tree<O, D>(sample:       &Sample<D>,
     let mut best_split    = O::min_value();
     let mut best_decrease = f64::MAX;
     for j in 0..dim {
-        let sub_sample = indices.iter()
-            .map(|&i| {
-                let (x, y) = &sample[i];
-                (x.value_at(j), *y)
-            })
-            .collect::<Vec<_>>();
 
-        let sub_dist = indices.iter()
-            .map(|&i| distribution[i])
-            .collect::<Vec<_>>();
-
-
-        let (split, decrease) = find_best_split(sub_sample, sub_dist);
+        let (split, decrease) = find_best_split(
+            sample,
+            &distribution[..],
+            &indices[..],
+            j
+        );
 
         if decrease < best_decrease {
             best_index    = j;
@@ -155,21 +155,29 @@ fn construct_full_tree<O, D>(sample:       &Sample<D>,
 
     let rule = StumpSplit::from((best_index, best_split));
 
+    println!("rule: {rule:?}");
+
 
 
     let impurity = match criterion {
-        Criterion::Entropy => entropic_impurity(&sample, &indices[..])
+        Criterion::Entropy
+            => entropic_impurity(&sample, &distribution[..], &indices[..])
     };
 
 
     let (lidx, ridx) = indices.into_iter()
         .fold((Vec::new(), Vec::new()), |(mut l, mut r), i| {
-            match rule.split(&sample[i].0) {
+            let (x, _) = &sample[i];
+            match rule.split(x) {
                 LR::Left  => { l.push(i); },
                 LR::Right => { r.push(i); }
             }
             (l, r)
         });
+
+
+    // DEBUG
+    println!("left: {lidx:?}, right: {ridx:?}");
 
 
     // TODO
@@ -189,52 +197,49 @@ fn construct_full_tree<O, D>(sample:       &Sample<D>,
 /// Returns the best split
 /// that maximizes the decrease of impurity.
 #[inline]
-fn find_best_split<T>(sample:       Vec<(T, Label)>,
-                      distribution: Vec<f64>)
-    -> (T, f64)
-    where T: PartialOrd + Clone + DataBounds
+fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
+                            dist:    &[f64],
+                            indices: &[usize],
+                            index:    usize)
+    -> (O, f64)
+    where D: Data<Output = O>,
+          O: PartialOrd + DataBounds,
+          L: PartialEq + Eq + std::hash::Hash + Clone,
 {
-    // Sort the indices by the values in `sample` of type `T`.
-    let m = sample.len();
-    let mut indices = (0..m).into_iter().collect::<Vec<_>>();
+    // Sort the indices by the values in `sample` of type `D`.
+    let mut indices = indices.into_iter()
+        .map(|&i| i)
+        .collect::<Vec<_>>();
 
-    indices.sort_by(|&i, &j|
-        sample[i].0.partial_cmp(&sample[j].0).unwrap()
-    );
+    indices.sort_by(|&i, &j| {
+        let (xi, _) = &sample[i];
+        let (xj, _) = &sample[j];
+        xi.value_at(index)
+            .partial_cmp(&xj.value_at(index))
+            .unwrap()
+    });
 
 
-    let total_weight = distribution.iter().sum::<f64>();
-    let mut left  = TempNodeInfo::new(0.0, total_weight);
-    let mut right = {
-        let _p = sample.iter()
-            .zip(distribution.iter())
-            .fold(0.0, |acc, ((_, y), &d)| {
-                if *y > 0.0 { d + acc } else { acc }
-            });
-        TempNodeInfo::new(_p, total_weight)
-    };
+    let total_weight = dist.iter().sum::<f64>();
+    let mut left  = TempNodeInfo::empty();
+    let mut right = TempNodeInfo::new(sample, dist, &indices[..]);
 
 
     // These variables are used for the best splitting rules.
     let mut best_decrease = right.entropic_impurity();
-    let mut best_split = T::min_value();
+    let mut best_split = O::min_value();
 
 
     let mut iter = indices.into_iter().peekable();
 
     while let Some(i) = iter.next() {
         let (_, y) = &sample[i];
-        let weight = distribution[i];
-        if *y > 0.0 {
-            left.positive_inc_by(weight);
-            right.positive_dec_by(weight);
-        } else {
-            left.negative_inc_by(weight);
-            right.negative_dec_by(weight);
-        }
+        let weight = dist[i];
+        left.insert(y.clone(), weight);
+        right.delete(y.clone(), weight);
 
 
-        let lp = left.total_weight / total_weight;
+        let lp = left.total / total_weight;
         let rp = 1.0 - lp;
 
 
@@ -245,8 +250,11 @@ fn find_best_split<T>(sample:       Vec<(T, Label)>,
         if decrease < best_decrease {
             best_decrease = decrease;
             best_split = match iter.peek() {
-                Some(&index) => sample[index].0.clone(),
-                None => T::max_value()
+                Some(&j) => {
+                    let (data, _) = &sample[j];
+                    data.value_at(index)
+                },
+                None => O::max_value()
             };
         }
     }
@@ -257,78 +265,87 @@ fn find_best_split<T>(sample:       Vec<(T, Label)>,
 
 
 /// Some informations that are useful in `best_hypothesis(..)`.
-struct TempNodeInfo {
-    positive_weight: f64,
-    total_weight:    f64,
+struct TempNodeInfo<L>
+    where L: std::hash::Hash + PartialEq + Eq
+{
+    map:   HashMap<L, f64>,
+    total: f64,
 }
 
 
-impl TempNodeInfo {
+impl<L> TempNodeInfo<L>
+    where L: std::hash::Hash + PartialEq + Eq + Clone
+{
+    /// Build an empty instance of `TempNodeInfo`.
+    #[inline(always)]
+    pub(self) fn empty() -> Self {
+        Self {
+            map:   HashMap::new(),
+            total: 0.0_f64,
+        }
+    }
+
+
     /// Build an instance of `TempNodeInfo`.
-    fn new(positive_weight: f64, total_weight: f64) -> Self {
-        Self { positive_weight, total_weight }
+    #[inline(always)]
+    pub(self) fn new<D>(sample:  &Sample<D, L>,
+                        dist:    &[f64],
+                        indices: &[usize])
+        -> Self
+    {
+        let map = indices.iter()
+            .fold(HashMap::new(), |mut mp, &i| {
+                let (_, l) = &sample[i];
+
+                if let Some(cnt) = mp.get_mut(l) {
+                    *cnt += dist[i];
+                } else {
+                    mp.insert(l.clone(), dist[i]);
+                }
+                mp
+            });
+
+        let total = indices.iter()
+            .fold(0.0_f64, |acc, &i| acc + dist[i]);
+        Self { map, total }
     }
 
 
     /// Returns the impurity of this node.
-    fn entropic_impurity(&self) -> f64 {
-        if self.total_weight == 0.0 {
-            return 0.0;
-        }
+    #[inline(always)]
+    pub(self) fn entropic_impurity(&self) -> f64 {
+        if self.total == 0.0 || self.map.is_empty() { return 0.0; }
 
-
-        let p = self.positive_weight / self.total_weight;
-        let n = 1.0 - p;
-        - p * p.ln() - n * n.ln()
+        self.map.iter()
+            .map(|(_, &p)| {
+                let r = p / self.total;
+                -r * r.ln()
+            })
+            .sum::<f64>()
     }
 
 
     /// Increase the number of positive examples by one.
-    fn positive_inc_by(&mut self, weight: f64) {
-        self.positive_weight += weight;
-        self.total_weight    += weight;
+    pub(self) fn insert(&mut self, label: L, weight: f64) {
+        let cnt = self.map.entry(label).or_insert(0.0);
+        *cnt += weight;
+        self.total += weight;
+
     }
 
 
     /// Decrease the number of positive examples by one.
-    fn positive_dec_by(&mut self, weight: f64) {
-        self.positive_weight -= weight;
-        self.total_weight    -= weight;
-    }
+    pub(self) fn delete(&mut self, label: L, weight: f64) {
+        *self.map.get_mut(&label).unwrap() -= weight;
 
 
-    /// Increase the number of negative examples by one.
-    fn negative_inc_by(&mut self, weight: f64) {
-        self.total_weight += weight;
-    }
+        if *self.map.get(&label).unwrap() == 0.0 {
+            self.map.remove(&label);
+        }
 
 
-    /// Decrease the number of negative examples by one.
-    fn negative_dec_by(&mut self, weight: f64) {
-        self.total_weight -= weight;
+        self.total -= weight;
     }
 }
 
 
-
-// TODO: Implement the code that handle the multi-class case.
-/// Compute the binary entropy of the given subsample.
-#[inline]
-fn entropic_impurity<D>(sample: &Sample<D>, indices: &[usize])
-    -> f64
-{
-    let sample_size = indices.len() as f64;
-
-    let pos_cnt = indices.into_iter()
-        .filter(|&&i| {
-            let (_, l) = sample[i];
-            l > 0.0
-        })
-        .count() as f64;
-
-
-    let p = pos_cnt / sample_size;
-
-
-    - p * p.ln() - (1.0 - p) * (1.0 - p).ln()
-}

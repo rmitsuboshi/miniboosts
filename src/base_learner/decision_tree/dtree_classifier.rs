@@ -1,5 +1,5 @@
 //! Defines the decision tree classifier.
-use crate::{Data, Label};
+use crate::Data;
 use crate::Classifier;
 
 
@@ -9,19 +9,19 @@ use super::node::*;
 
 /// Decision tree classifier.
 /// This struct is just a wrapper of `Node`.
-pub struct DTreeClassifier<S>
-    where S: SplitRule
-{
-    root: Node<S>
+#[derive(Debug)]
+pub struct DTreeClassifier<S, L> {
+    root: Node<S, L>
 }
 
 
-impl<O, D, S> Classifier<D> for DTreeClassifier<S>
-    where S: SplitRule<Input = D>,
+impl<O, D, S, L> Classifier<D, L> for DTreeClassifier<S, L>
+    where S: SplitRule<D>,
           D: Data<Output = O>,
+          L: PartialEq + Clone,
           O: PartialOrd
 {
-    fn predict(&self, data: &D) -> Label {
+    fn predict(&self, data: &D) -> L {
         self.root.predict(data)
     }
 }

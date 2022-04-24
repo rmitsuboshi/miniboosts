@@ -146,12 +146,12 @@ pub use base_learner::BaseLearner;
 // 
 // Export the instances of the `BaseLearner` trait.
 pub use base_learner::DStump;
-// pub use base_learner::DTree;
+pub use base_learner::DTree;
 
 
 // Export the instances of the `Classifier` trait.
 // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
 pub use base_learner::DStumpClassifier;
-// pub use base_learner::DTreeClassifier;
+pub use base_learner::DTreeClassifier;
 
 
