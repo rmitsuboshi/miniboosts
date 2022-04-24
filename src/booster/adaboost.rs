@@ -81,8 +81,8 @@ impl AdaBoost {
     /// `update_params` also updates `self.distribution`
     #[inline]
     fn update_params(&mut self,
-                     predictions: Vec<f64>,
-                     edge:        f64)
+                     margins: Vec<f64>,
+                     edge:    f64)
         -> f64
     {
         let m = self.dist.len();
@@ -94,7 +94,7 @@ impl AdaBoost {
 
 
         // To prevent overflow, take the logarithm.
-        for (d, p) in self.dist.iter_mut().zip(predictions.iter()) {
+        for (d, p) in self.dist.iter_mut().zip(margins.iter()) {
             *d = d.ln() - weight * p;
         }
 
@@ -129,16 +129,17 @@ impl AdaBoost {
 }
 
 
-impl<D, C> Booster<D, f64, C> for AdaBoost
+impl<D, L, C> Booster<D, L, C> for AdaBoost
     where D: Data,
-          C: Classifier<D, f64> + Eq + PartialEq,
+          L: PartialEq,
+          C: Classifier<D, L> + Eq + PartialEq,
 {
     fn run<B>(&mut self, 
               base_learner: &B,
-              sample:       &Sample<D, f64>,
+              sample:       &Sample<D, L>,
               eps:          f64)
-        -> CombinedClassifier<D, f64, C>
-        where B: BaseLearner<D, f64, Clf = C>,
+        -> CombinedClassifier<D, L, C>
+        where B: BaseLearner<D, L, Clf = C>,
     {
         // Initialize parameters
         let m   = sample.len();
@@ -156,14 +157,16 @@ impl<D, C> Booster<D, f64, C> for AdaBoost
             let h = base_learner.best_hypothesis(sample, &self.dist);
 
 
-            // Each element in `predictions` is the product of
+            // Each element in `margins` is the product of
             // the predicted vector and the correct vector
-            let predictions = sample.iter()
-                .map(|(dat, lab)| *lab * h.predict(dat))
+            let margins = sample.iter()
+                .map(|(dat, lab)|
+                    if *lab == h.predict(dat) { 1.0 } else { -1.0 }
+                )
                 .collect::<Vec<f64>>();
 
 
-            let edge = predictions.iter()
+            let edge = margins.iter()
                 .zip(self.dist.iter())
                 .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
 
@@ -178,7 +181,7 @@ impl<D, C> Booster<D, f64, C> for AdaBoost
 
 
             // Compute the weight on the new hypothesis
-            let weight = self.update_params(predictions, edge);
+            let weight = self.update_params(margins, edge);
             weighted_classifier.push(
                 (weight, h)
             );

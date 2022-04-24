@@ -154,9 +154,8 @@ impl LPBoost {
     /// `update_params` updates `self.distribution` and `self.gamma_hat`
     /// by solving a linear program
     #[inline(always)]
-    fn update_params(&mut self,
-                     margins: Vec<f64>,
-                     edge:    f64) -> f64
+    fn update_params(&mut self, margins: Vec<f64>, edge: f64)
+        -> f64
     {
         // update `self.gamma_hat`
         if self.gamma_hat > edge {
@@ -207,18 +206,19 @@ impl LPBoost {
 }
 
 
-impl<D, C> Booster<D, f64, C> for LPBoost
+impl<D, L, C> Booster<D, L, C> for LPBoost
     where D: Data,
-          C: Classifier<D, f64>
+          L: PartialEq,
+          C: Classifier<D, L>,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, f64>,
+              sample:       &Sample<D, L>,
               tolerance:    f64)
-        -> CombinedClassifier<D, f64, C>
-        where B: BaseLearner<D, f64, Clf = C>,
+        -> CombinedClassifier<D, L, C>
+        where B: BaseLearner<D, L, Clf = C>,
     {
         if self.tolerance != tolerance {
             self.set_tolerance(tolerance);
@@ -231,10 +231,12 @@ impl<D, C> Booster<D, f64, C> for LPBoost
         loop {
             let h = base_learner.best_hypothesis(sample, &self.dist);
 
-            // Each element in `predictions` is the product of
+            // Each element in `margins` is the product of
             // the predicted vector and the correct vector
             let margins = sample.iter()
-                .map(|(dat, lab)| *lab * h.predict(dat))
+                .map(|(dat, lab)|
+                    if *lab == h.predict(dat) { 1.0 } else { -1.0 }
+                )
                 .collect::<Vec<f64>>();
 
 
