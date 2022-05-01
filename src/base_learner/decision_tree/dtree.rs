@@ -1,21 +1,26 @@
 // TODO LIST
 //  * Implement `best_hypothesis`
-//      - Train/test split
-//      o construct_full_tree
+//      x Train/test split
+//      x construct_full_tree
 //      - prune
 //  * Implement `construct_full_tree`
 //      ? Compute impurity
-//          o entropic impurity
+//          x entropic impurity
 //          - gini impurity
 //      - Test whether this function works as expected.
-//  * Implement `pruing`
+//  * Implement `pruning`
 //      - Cross-validation
 // 
-//  * Implement `train_test_split` to find the best pruning
 //  * Test code
 //      - construct_full_tree
 //      - pruning
 //  * Run boosting
+//  * Remove `print` for debugging
+//  * Add a member `mistake_ratio` to each branch/leaf node.
+//  * Each node has `impurity` member, but it may be redundant
+
+
+use rand::prelude::*;
 
 use crate::{DataBounds, Data, Sample};
 use crate::BaseLearner;
@@ -27,6 +32,8 @@ use super::node::*;
 use super::measure::*;
 
 
+use std::rc::Rc;
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::collections::HashMap;
 
@@ -44,8 +51,10 @@ pub enum Split {
 /// Generates a `DTreeClassifier` for a given distribution
 /// over examples.
 pub struct DTree<S, L> {
-    criterion: Criterion,
-    _phantom:  PhantomData<(S, L)>,
+    rng:         RefCell<ThreadRng>,
+    criterion:   Criterion,
+    train_ratio: f64,
+    _phantom:    PhantomData<(S, L)>,
 }
 
 
@@ -54,24 +63,52 @@ impl<S, L> DTree<S, L> {
     #[inline]
     pub fn init<D>(_sample: &Sample<D, L>) -> Self
     {
+        let rng         = RefCell::new(rand::thread_rng());
+        let criterion   = Criterion::Entropy;
+        let train_ratio = 0.8_f64;
         Self {
-            criterion: Criterion::Entropy,
-            _phantom:  PhantomData
+            rng,
+            criterion,
+            train_ratio,
+            _phantom: PhantomData
         }
+    }
+
+
+    /// Set the training ratio.
+    /// Default ratio is `0.8`.
+    #[inline]
+    pub fn with_train_ratio(mut self, ratio: f64) -> Self {
+        assert!(0.0 <= ratio && ratio <= 1.0);
+        self.train_ratio = ratio;
+
+        self
+    }
+
+
+
+    /// Set the criterion that measures a node impurity.
+    /// Default criterion is `Criterion::Entropy`.
+    #[inline]
+    pub fn with_criterion(mut self, criterion: Criterion) -> Self {
+        self.criterion = criterion;
+
+        self
     }
 }
 
 
 // TODO remove `std::fmt::Debug` trait bound
 impl<S, O, D, L> BaseLearner<D, L> for DTree<S, L>
-    // where S: SplitRule<Input = D> + std::fmt::Debug,
     where S: SplitRule<D> + std::fmt::Debug,
           D: Data<Output = O> + std::fmt::Debug,
-          L: PartialEq + Eq + std::hash::Hash + Clone,
+          L: PartialEq + Eq + std::hash::Hash + Clone + std::fmt::Debug,
           O: PartialOrd + Clone + DataBounds + std::fmt::Debug
 {
     type Clf = DTreeClassifier<S, L>;
-    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64])
+    fn best_hypothesis(&self,
+                       sample: &Sample<D, L>,
+                       distribution: &[f64])
         -> Self::Clf
     {
         let m = sample.len();
@@ -79,16 +116,43 @@ impl<S, O, D, L> BaseLearner<D, L> for DTree<S, L>
 
         // TODO
         // Modify this line to split the train/test sample.
-        let indices = (0..m).into_iter()
+        let mut indices = (0..m).into_iter()
             .collect::<Vec<usize>>();
 
 
-        let full_tree = construct_full_tree(
+        // Shuffle indices
+        let rng: &mut ThreadRng = &mut self.rng.borrow_mut();
+        indices.shuffle(rng);
+
+
+        let train_size = (self.train_ratio * m as f64).floor() as usize;
+        let train_indices = indices.drain(..train_size)
+            .collect::<Vec<_>>();
+        let test_indices = indices;
+
+
+        println!("Train indices: {train_indices:?}");
+
+
+        let mut tree = construct_full_tree(
             sample,
             distribution,
-            indices,
+            train_indices,
             self.criterion
         );
+
+
+        // TODO train_err is not proper one.
+        // Maybe I should replace train_err to test_err.
+
+
+        prune(&mut tree, sample, distribution, test_indices, self.criterion);
+
+        println!("# of leaves: {}", tree.leaves());
+
+
+        println!("Resulting tree:\n{tree:?}");
+
 
 
         todo!()
@@ -105,7 +169,7 @@ fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
                                 distribution: &[f64],
                                 indices:      Vec<usize>,
                                 criterion:    Criterion)
-    -> Box<Node<StumpSplit<D, O>, L>>
+    -> Rc<Node<StumpSplit<D, O>, L>>
     where D: Data<Output = O> + std::fmt::Debug,
           L: PartialEq + Eq + std::hash::Hash + Clone,
           O: PartialOrd + Clone + DataBounds + std::fmt::Debug,
@@ -117,35 +181,31 @@ fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
     }
 
 
-    // TODO set impurity
-    let impurity = f64::MAX;
+    let (label, train_err) = calc_train_err(
+        sample, distribution, &indices[..]
+    );
 
 
-    let mut labels = indices.iter()
-        .map(|&i| sample[i].1.clone());
-    let l = labels.next().unwrap();
-    if labels.all(|t| l == t) {
-        let node = Node::leaf(l, impurity);
-        return Box::new(node);
-    }
-
-
-    let dim = sample.dim();
+    // Compute the node impurity
+    let (split, decrease) = find_best_split(
+        sample, &distribution[..], &indices[..], 0
+    );
 
 
     let mut best_index    = 0_usize;
-    let mut best_split    = O::min_value();
-    let mut best_decrease = f64::MAX;
-    for j in 0..dim {
+    let mut best_split    = split;
+    let mut best_decrease = decrease;
+
+
+    let dim = sample.dim();
+    for j in 1..dim {
 
         let (split, decrease) = find_best_split(
-            sample,
-            &distribution[..],
-            &indices[..],
-            j
+            sample, &distribution[..], &indices[..], j
         );
 
-        if decrease < best_decrease {
+
+        if decrease <= best_decrease {
             best_index    = j;
             best_split    = split;
             best_decrease = decrease;
@@ -154,9 +214,6 @@ fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
 
 
     let rule = StumpSplit::from((best_index, best_split));
-
-    println!("rule: {rule:?}");
-
 
 
     let impurity = match criterion {
@@ -176,7 +233,15 @@ fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
         });
 
 
+    // If the split has no meaning, construct a leaf node.
+    if lidx.is_empty() || ridx.is_empty() {
+        let leaf = Node::leaf(label, train_err, impurity);
+        return Rc::new(leaf);
+    }
+
+
     // DEBUG
+    println!("rule: {rule:?}");
     println!("left: {lidx:?}, right: {ridx:?}");
 
 
@@ -190,7 +255,7 @@ fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
     );
 
 
-    Box::new(Node::branch(rule, left, right, impurity))
+    Rc::new(Node::branch(rule, left, right, label, train_err, impurity))
 }
 
 
@@ -201,7 +266,7 @@ fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
                             dist:    &[f64],
                             indices: &[usize],
                             index:    usize)
-    -> (O, f64)
+    -> (O, Impurity)
     where D: Data<Output = O>,
           O: PartialOrd + DataBounds,
           L: PartialEq + Eq + std::hash::Hash + Clone,
@@ -220,7 +285,8 @@ fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
     });
 
 
-    let total_weight = dist.iter().sum::<f64>();
+    let total_weight = indices.iter()
+        .fold(0.0, |acc, &i| acc + dist[i]);
     let mut left  = TempNodeInfo::empty();
     let mut right = TempNodeInfo::new(sample, dist, &indices[..]);
 
@@ -243,8 +309,8 @@ fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
         let rp = 1.0 - lp;
 
 
-        let decrease = lp * left.entropic_impurity()
-            + rp * right.entropic_impurity();
+        let decrease = Impurity::from(lp) * left.entropic_impurity()
+            + Impurity::from(rp) * right.entropic_impurity();
 
 
         if decrease < best_decrease {
@@ -296,12 +362,9 @@ impl<L> TempNodeInfo<L>
         let map = indices.iter()
             .fold(HashMap::new(), |mut mp, &i| {
                 let (_, l) = &sample[i];
-
-                if let Some(cnt) = mp.get_mut(l) {
-                    *cnt += dist[i];
-                } else {
-                    mp.insert(l.clone(), dist[i]);
-                }
+                let l = l.clone();
+                let cnt = mp.entry(l).or_insert(0.0);
+                *cnt += dist[i];
                 mp
             });
 
@@ -313,8 +376,8 @@ impl<L> TempNodeInfo<L>
 
     /// Returns the impurity of this node.
     #[inline(always)]
-    pub(self) fn entropic_impurity(&self) -> f64 {
-        if self.total == 0.0 || self.map.is_empty() { return 0.0; }
+    pub(self) fn entropic_impurity(&self) -> Impurity {
+        if self.total == 0.0 || self.map.is_empty() { return 0.0.into(); }
 
         self.map.iter()
             .map(|(_, &p)| {
@@ -322,6 +385,7 @@ impl<L> TempNodeInfo<L>
                 -r * r.ln()
             })
             .sum::<f64>()
+            .into()
     }
 
 
@@ -339,7 +403,7 @@ impl<L> TempNodeInfo<L>
         *self.map.get_mut(&label).unwrap() -= weight;
 
 
-        if *self.map.get(&label).unwrap() == 0.0 {
+        if *self.map.get(&label).unwrap() <= 0.0 {
             self.map.remove(&label);
         }
 
@@ -347,5 +411,54 @@ impl<L> TempNodeInfo<L>
         self.total -= weight;
     }
 }
+
+
+
+/// Returns the training error
+#[inline]
+fn calc_train_err<D, L>(sample:  &Sample<D, L>,
+                        dist:    &[f64],
+                        indices: &[usize])
+    -> (L, NodeError)
+    where L: Eq + std::hash::Hash + Clone
+{
+    let mut counter = HashMap::new();
+    for &i in indices {
+        let (_, l) = &sample[i];
+        let l = l.clone();
+        let cnt = counter.entry(l).or_insert(0.0);
+        *cnt += dist[i];
+    }
+
+
+    let total = counter.values().sum::<f64>();
+
+
+    // Compute the max (key, val) that has maximal p(j, t)
+    let (l, p) = counter.into_iter()
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .unwrap();
+
+
+    let node_err = total * (1.0 - (p / total));
+
+
+    (l, node_err.into())
+}
+
+
+/// Prune the full-binary tree.
+#[inline]
+fn prune<D, S, L>(root: &mut Rc<Node<S, L>>,
+                  sample: &Sample<D, L>,
+                  dist: &[f64],
+                  indices: Vec<usize>,
+                  criterion: Criterion)
+    where L: Clone
+{
+    Rc::get_mut(root).unwrap().pre_process();
+    todo!()
+}
+
 
 

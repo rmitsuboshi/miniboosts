@@ -5,12 +5,15 @@ use crate::Sample;
 use std::collections::HashMap;
 
 
+use super::node::*;
+
+
 /// Compute the binary entropy of the given subsample.
 #[inline]
 pub(super) fn entropic_impurity<D, L>(sample:  &Sample<D, L>,
                                       dist:    &[f64],
                                       indices: &[usize])
-    -> f64
+    -> Impurity
     where L: Eq + std::hash::Hash + Clone
 {
     let mut grouped = HashMap::new();
@@ -30,5 +33,6 @@ pub(super) fn entropic_impurity<D, L>(sample:  &Sample<D, L>,
             -p * p.ln()
         })
         .sum::<f64>()
+        .into()
 }
 
