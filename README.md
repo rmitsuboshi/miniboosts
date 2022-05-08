@@ -27,7 +27,8 @@ You can combine the following boosting algorithms and base learner arbitrary.
 
 
 - Base Learner
-    - Decision stump class
+    - Decision stump
+    - Decision tree (in progress)
 
 ## What I will implement:
 
@@ -35,7 +36,6 @@ You can combine the following boosting algorithms and base learner arbitrary.
     - LogitBoost
 
 - Base Learner
-  - Decision tree
   - Bag of words
   - Two Layer Neural Network
 
