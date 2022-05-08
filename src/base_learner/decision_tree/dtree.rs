@@ -1,6 +1,7 @@
 // TODO LIST
 //  * Implement `best_hypothesis`
 //      x Train/test split
+//      - Cross-validation
 //      x construct_full_tree
 //      - prune
 //  * Implement `construct_full_tree`
@@ -9,6 +10,7 @@
 //          - gini impurity
 //      - Test whether this function works as expected.
 //  * Implement `pruning`
+//      - Train/test split
 //      - Cross-validation
 // 
 //  * Test code
@@ -29,7 +31,7 @@ use crate::BaseLearner;
 use super::dtree_classifier::DTreeClassifier;
 use super::split_rule::*;
 use super::node::*;
-use super::measure::*;
+use super::train_node::*;
 
 
 use std::rc::Rc;
@@ -50,25 +52,28 @@ pub enum Split {
 
 /// Generates a `DTreeClassifier` for a given distribution
 /// over examples.
-pub struct DTree<S, L> {
+pub struct DTree<L> {
     rng:         RefCell<ThreadRng>,
     criterion:   Criterion,
+    split_rule:  Split,
     train_ratio: f64,
-    _phantom:    PhantomData<(S, L)>,
+    _phantom:    PhantomData<L>,
 }
 
 
-impl<S, L> DTree<S, L> {
+impl<L> DTree<L> {
     /// Initialize `DTree`.
     #[inline]
     pub fn init<D>(_sample: &Sample<D, L>) -> Self
     {
         let rng         = RefCell::new(rand::thread_rng());
         let criterion   = Criterion::Entropy;
+        let split_rule  = Split::Feature;
         let train_ratio = 0.8_f64;
         Self {
             rng,
             criterion,
+            split_rule,
             train_ratio,
             _phantom: PhantomData
         }
@@ -99,13 +104,12 @@ impl<S, L> DTree<S, L> {
 
 
 // TODO remove `std::fmt::Debug` trait bound
-impl<S, O, D, L> BaseLearner<D, L> for DTree<S, L>
-    where S: SplitRule<D> + std::fmt::Debug,
-          D: Data<Output = O> + std::fmt::Debug,
+impl<O, D, L> BaseLearner<D, L> for DTree<L>
+    where D: Data<Output = O> + std::fmt::Debug,
           L: PartialEq + Eq + std::hash::Hash + Clone + std::fmt::Debug,
           O: PartialOrd + Clone + DataBounds + std::fmt::Debug
 {
-    type Clf = DTreeClassifier<S, L>;
+    type Clf = DTreeClassifier<O, L>;
     fn best_hypothesis(&self,
                        sample: &Sample<D, L>,
                        distribution: &[f64])
@@ -114,8 +118,6 @@ impl<S, O, D, L> BaseLearner<D, L> for DTree<S, L>
         let m = sample.len();
 
 
-        // TODO
-        // Modify this line to split the train/test sample.
         let mut indices = (0..m).into_iter()
             .collect::<Vec<usize>>();
 
@@ -131,31 +133,45 @@ impl<S, O, D, L> BaseLearner<D, L> for DTree<S, L>
         let test_indices = indices;
 
 
+        let train_indices = vec![2, 6, 0, 1, 3];
+        let test_indices  = vec![4, 5];
+
+
         println!("Train indices: {train_indices:?}");
 
 
-        let mut tree = construct_full_tree(
-            sample,
-            distribution,
-            train_indices,
-            self.criterion
-        );
+        let mut tree = match self.split_rule {
+            Split::Feature =>
+                stump_fulltree(
+                    sample,
+                    distribution,
+                    train_indices,
+                    test_indices,
+                    self.criterion
+                ),
+        };
 
 
         // TODO train_err is not proper one.
         // Maybe I should replace train_err to test_err.
+        println!("Before pruning:\n{tree:?}");
 
 
-        prune(&mut tree, sample, distribution, test_indices, self.criterion);
-
-        println!("# of leaves: {}", tree.leaves());
+        prune(&mut tree);
 
 
-        println!("Resulting tree:\n{tree:?}");
+        println!("# of leaves: {}", tree.borrow().leaves());
 
 
+        println!("After pruning:\n{tree:?}");
 
-        todo!()
+
+        let root = match Rc::try_unwrap(tree) {
+            Ok(train_node) => Node::from(train_node.into_inner()),
+            Err(_) => panic!("Root node has reference counter >= 1")
+        };
+
+        DTreeClassifier::from(root)
     }
 }
 
@@ -165,43 +181,38 @@ impl<S, O, D, L> BaseLearner<D, L> for DTree<S, L>
 /// Construct a full binary tree
 /// that perfectly classify the given examples.
 #[inline]
-fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
-                                distribution: &[f64],
-                                indices:      Vec<usize>,
-                                criterion:    Criterion)
-    -> Rc<Node<StumpSplit<D, O>, L>>
+fn stump_fulltree<O, D, L>(sample:     &Sample<D, L>,
+                           dist:       &[f64],
+                           train:       Vec<usize>,
+                           test:        Vec<usize>,
+                           criterion:   Criterion)
+    -> Rc<RefCell<TrainNode<O, L>>>
     where D: Data<Output = O> + std::fmt::Debug,
-          L: PartialEq + Eq + std::hash::Hash + Clone,
+          L: PartialEq + Eq + std::hash::Hash + Clone + std::fmt::Debug,
           O: PartialOrd + Clone + DataBounds + std::fmt::Debug,
 {
-    // TODO
-    // This sentence may be redundant
-    if indices.is_empty() {
-        panic!("Empty tree is induced");
-    }
+    let (label, train_node_err) = calc_train_err(sample, dist, &train[..]);
+
+    let test_node_err = calc_test_err(sample, dist, &test[..], &label);
 
 
-    let (label, train_err) = calc_train_err(
-        sample, distribution, &indices[..]
-    );
+    let node_err = NodeError::from((train_node_err, test_node_err));
 
 
     // Compute the node impurity
-    let (split, decrease) = find_best_split(
-        sample, &distribution[..], &indices[..], 0
+    let (mut best_split, mut best_decrease) = find_best_split(
+        sample, &dist[..], &train[..], 0
     );
 
 
-    let mut best_index    = 0_usize;
-    let mut best_split    = split;
-    let mut best_decrease = decrease;
+    let mut best_index = 0_usize;
 
 
     let dim = sample.dim();
     for j in 1..dim {
 
         let (split, decrease) = find_best_split(
-            sample, &distribution[..], &indices[..], j
+            sample, &dist[..], &train[..], j
         );
 
 
@@ -213,16 +224,20 @@ fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
     }
 
 
-    let rule = StumpSplit::from((best_index, best_split));
+    // let rule = StumpSplit::from((best_index, best_split));
+    let rule = SplitRule::Stump(StumpSplit::from((best_index, best_split)));
 
 
-    let impurity = match criterion {
-        Criterion::Entropy
-            => entropic_impurity(&sample, &distribution[..], &indices[..])
-    };
-
-
-    let (lidx, ridx) = indices.into_iter()
+    let (ltrain, rtrain) = train.into_iter()
+        .fold((Vec::new(), Vec::new()), |(mut l, mut r), i| {
+            let (x, _) = &sample[i];
+            match rule.split(x) {
+                LR::Left  => { l.push(i); },
+                LR::Right => { r.push(i); }
+            }
+            (l, r)
+        });
+    let (ltest, rtest) = test.into_iter()
         .fold((Vec::new(), Vec::new()), |(mut l, mut r), i| {
             let (x, _) = &sample[i];
             match rule.split(x) {
@@ -234,28 +249,24 @@ fn construct_full_tree<O, D, L>(sample:       &Sample<D, L>,
 
 
     // If the split has no meaning, construct a leaf node.
-    if lidx.is_empty() || ridx.is_empty() {
-        let leaf = Node::leaf(label, train_err, impurity);
-        return Rc::new(leaf);
+    if ltrain.is_empty() || rtrain.is_empty() {
+        let leaf = TrainNode::leaf(label, node_err);
+        return Rc::new(RefCell::new(leaf));
     }
 
 
     // DEBUG
     println!("rule: {rule:?}");
-    println!("left: {lidx:?}, right: {ridx:?}");
+    println!("left: {ltrain:?}, right: {rtrain:?}");
 
 
-    // TODO
-    // Get the left/right nodes
-    let left = construct_full_tree(
-        sample, distribution, lidx, criterion
-    );
-    let right = construct_full_tree(
-        sample, distribution, ridx, criterion
-    );
+    let left = stump_fulltree(sample, dist, ltrain, ltest, criterion);
+    let right = stump_fulltree(sample, dist, rtrain, rtest, criterion);
 
 
-    Rc::new(Node::branch(rule, left, right, label, train_err, impurity))
+    Rc::new(RefCell::new(TrainNode::branch(
+        rule, left, right, label, node_err
+    )))
 }
 
 
@@ -419,7 +430,7 @@ impl<L> TempNodeInfo<L>
 fn calc_train_err<D, L>(sample:  &Sample<D, L>,
                         dist:    &[f64],
                         indices: &[usize])
-    -> (L, NodeError)
+    -> (L, f64)
     where L: Eq + std::hash::Hash + Clone
 {
     let mut counter = HashMap::new();
@@ -443,22 +454,123 @@ fn calc_train_err<D, L>(sample:  &Sample<D, L>,
     let node_err = total * (1.0 - (p / total));
 
 
-    (l, node_err.into())
+    (l, node_err)
+}
+
+
+#[inline]
+fn calc_test_err<D, L>(sample:  &Sample<D, L>,
+                       dist:    &[f64],
+                       indices: &[usize],
+                       pred:    &L)
+    -> f64
+    where L: Eq
+{
+    let total = indices.iter().map(|&i| dist[i]).sum::<f64>();
+
+
+    if total == 0.0 {
+        return 0.0;
+    }
+
+
+    let wrong = indices.iter()
+        .filter_map(|&i| {
+            let (_, l) = &sample[i];
+            if l != pred { Some(dist[i]) } else { None }
+        })
+        .sum::<f64>();
+
+
+    wrong / total
 }
 
 
 /// Prune the full-binary tree.
 #[inline]
-fn prune<D, S, L>(root: &mut Rc<Node<S, L>>,
-                  sample: &Sample<D, L>,
-                  dist: &[f64],
-                  indices: Vec<usize>,
-                  criterion: Criterion)
+fn prune<O, L>(root: &mut Rc<RefCell<TrainNode<O, L>>>)
     where L: Clone
 {
-    Rc::get_mut(root).unwrap().pre_process();
-    todo!()
+    // Construct the sub-tree that achieves the same training error
+    // with fewer leaves.
+    Rc::get_mut(root).unwrap()
+        .borrow_mut()
+        .pre_process();
+
+
+    // Sort the nodes in the tree by the `alpha` value.
+    let links = weak_links(root);
+
+
+    // Prune the nodes 
+    // while node error is lower than or equals to tree error
+    for node in links {
+        let node_err = node.borrow().node_error();
+        let tree_err = node.borrow().tree_error();
+
+        if node_err.test >= tree_err.test {
+            break;
+        }
+
+
+        node.borrow_mut().prune();
+    }
 }
 
 
 
+#[inline]
+fn weak_links<O, L>(root: &Rc<RefCell<TrainNode<O, L>>>)
+    -> Vec<Rc<RefCell<TrainNode<O, L>>>>
+    where L: Clone
+{
+    let mut links = Vec::new();
+    let mut stack = Vec::from([Rc::clone(root)]);
+    while let Some(node) = stack.pop() {
+        match get_ref(&node).deref() {
+            TrainNode::Leaf(_) => {
+                continue;
+            },
+            TrainNode::Branch(ref branch) => {
+                stack.push(Rc::clone(&branch.left));
+                stack.push(Rc::clone(&branch.right));
+            },
+        }
+
+
+        links.push(node);
+    }
+
+
+    links.sort_by(|u, v|
+        u.borrow().alpha().partial_cmp(&v.borrow().alpha()).unwrap()
+    );
+
+    links
+}
+
+
+use std::cell::Ref;
+use std::ops::Deref;
+
+struct TrainNodeGuard<'a, O, L> {
+    guard: Ref<'a, TrainNode<O, L>>
+}
+
+
+impl<'b, O, L> Deref for TrainNodeGuard<'b, O, L> {
+    type Target = TrainNode<O, L>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+
+pub(self) fn get_ref<O, L>(node: &Rc<RefCell<TrainNode<O, L>>>)
+    -> TrainNodeGuard<O, L>
+{
+    TrainNodeGuard {
+        guard: node.borrow()
+    }
+}

@@ -5,7 +5,7 @@ use crate::Sample;
 use std::collections::HashMap;
 
 
-use super::node::*;
+use super::node::Impurity;
 
 
 /// Compute the binary entropy of the given subsample.

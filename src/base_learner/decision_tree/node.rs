@@ -5,50 +5,15 @@ use crate::Classifier;
 
 
 use super::split_rule::*;
+use super::train_node::*;
 
 
 use serde::{Serialize, Deserialize};
-use std::rc::Rc;
 
+use std::rc::Rc;
 use std::cmp::Ordering;
 use std::ops::{Mul, Add};
 
-
-/// Error on a node.
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct NodeError(f64);
-
-
-impl From<f64> for NodeError {
-    #[inline(always)]
-    fn from(node_err: f64) -> Self {
-        NodeError(node_err)
-    }
-}
-
-
-/// Error on a sub-tree.
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct TreeError(f64);
-
-
-impl From<f64> for TreeError {
-    #[inline(always)]
-    fn from(tree_err: f64) -> Self {
-        TreeError(tree_err)
-    }
-}
-
-
-impl Add for TreeError {
-    type Output = Self;
-    #[inline]
-    fn add(self, other: Self) -> Self::Output {
-        Self(self.0 + other.0)
-    }
-}
 
 
 /// Impurity
@@ -114,9 +79,11 @@ pub enum Criterion {
 
 /// Enumeration of `BranchNode` and `LeafNode`.
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Node<S, L> {
+pub enum Node<O, L> {
     /// A node that have two childrens.
-    Branch(BranchNode<S, L>),
+    Branch(BranchNode<O, L>),
+
+
     /// A node that have no child.
     Leaf(LeafNode<L>),
 }
@@ -125,58 +92,27 @@ pub enum Node<S, L> {
 /// Represents the branch nodes of decision tree.
 /// Each `BranchNode` must have two childrens
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BranchNode<S, L> {
-    pub(self) split_rule: S,
-    pub(self) left_node:  Rc<Node<S, L>>,
-    pub(self) right_node: Rc<Node<S, L>>,
-
-    // Common members
-    pub(self) prediction: L,
-    pub(self) node_err:   NodeError,
-    pub(self) tree_err:   TreeError,
-    pub(self) impurity:   Impurity,
-    pub(self) leaves:     usize,
+pub struct BranchNode<O, L> {
+    pub(self) split_rule: SplitRule<O>,
+    pub(self) left_node:  Box<Node<O, L>>,
+    pub(self) right_node: Box<Node<O, L>>,
 }
 
 
-impl<S, L> BranchNode<S, L> {
+impl<O, L> BranchNode<O, L> {
     /// Returns the `BranchNode` from the given components.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(split_rule: S,
-                           left_node:  Rc<Node<S, L>>,
-                           right_node: Rc<Node<S, L>>,
-                           prediction: L,
-                           node_err:   NodeError,
-                           impurity:   Impurity)
+    pub(crate) fn from_raw(split_rule: SplitRule<O>,
+                           left_node:  Box<Node<O, L>>,
+                           right_node: Box<Node<O, L>>)
         -> Self
     {
-        let tree_err = left_node.tree_error() + right_node.tree_error();
-        let tree_err = TreeError::from(tree_err);
-        let leaves = left_node.leaves() + right_node.leaves();
-
-
         Self {
             split_rule,
             left_node,
             right_node,
-
-            prediction,
-            node_err,
-            tree_err,
-            impurity,
-            leaves
         }
-    }
-
-
-    /// Convert `self` to the components that are used for
-    /// the construction of a leaf.
-    #[inline]
-    pub(self) fn into_leaf_component(self)
-        -> (L, NodeError, Impurity)
-    {
-        (self.prediction, self.node_err, self.impurity)
     }
 }
 
@@ -185,8 +121,6 @@ impl<S, L> BranchNode<S, L> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LeafNode<L> {
     pub(self) prediction: L,
-    pub(self) node_err:   NodeError,
-    pub(self) impurity:   Impurity,
 }
 
 
@@ -195,123 +129,51 @@ impl<L> LeafNode<L> {
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(prediction: L,
-                           node_err:   NodeError,
-                           impurity:   Impurity)
-        -> Self
-    {
-        Self {
-            prediction,
-            node_err,
-            impurity,
-        }
+    pub(crate) fn from_raw(prediction: L) -> Self {
+        Self { prediction }
     }
 }
 
 
-impl<S, L> From<BranchNode<S, L>> for LeafNode<L> {
+impl<O, L> From<TrainBranchNode<O, L>> for BranchNode<O, L> {
     #[inline]
-    fn from(branch: BranchNode<S, L>) -> LeafNode<L> {
-        let (p, node_err, impurity) = branch.into_leaf_component();
-        LeafNode::from_raw(p, node_err, impurity)
+    fn from(branch: TrainBranchNode<O, L>) -> Self {
+
+        let left = match Rc::try_unwrap(branch.left) {
+            Ok(l) => l.into_inner().into(),
+            Err(_) => panic!("Strong count is greater than 1")
+        };
+        let right = match Rc::try_unwrap(branch.right) {
+            Ok(r) => r.into_inner().into(),
+            Err(_) => panic!("Strong count is greater than 1")
+        };
+
+        Self::from_raw(
+            branch.split_rule,
+            Box::new(left),
+            Box::new(right),
+        )
     }
 }
 
 
-impl<S, L> Node<S, L> {
-    /// Construct a leaf node from the given arguments.
+impl<L> From<TrainLeafNode<L>> for LeafNode<L> {
     #[inline]
-    pub(crate) fn leaf(prediction: L,
-                       node_err:   NodeError,
-                       impurity:   Impurity)
-        -> Self
-    {
-        let leaf = LeafNode::from_raw(prediction, node_err, impurity);
-        Node::Leaf(leaf)
+    fn from(leaf: TrainLeafNode<L>) -> Self {
+        Self::from_raw(leaf.prediction)
     }
+}
 
 
-    /// Construct a branch node from the arguments.
+impl<O, L> From<TrainNode<O, L>> for Node<O, L> {
     #[inline]
-    pub(crate) fn branch(rule: S,
-                         left:  Rc<Node<S, L>>,
-                         right: Rc<Node<S, L>>,
-                         prediction: L,
-                         node_err:  NodeError,
-                         impurity:  Impurity)
-        -> Self
-    {
-        let node = BranchNode::from_raw(
-            rule,
-            left,
-            right,
-            prediction,
-            node_err,
-            impurity
-        );
-
-
-        Node::Branch(node)
-    }
-
-
-    #[inline]
-    pub(crate) fn node_error(&self) -> f64 {
-        match self {
-            Node::Branch(ref branch) => branch.node_err.0,
-            Node::Leaf(ref leaf) => leaf.node_err.0,
-        }
-    }
-
-
-    #[inline]
-    pub(crate) fn tree_error(&self) -> f64 {
-        match self {
-            Node::Branch(ref branch) => branch.tree_err.0,
-            Node::Leaf(ref leaf) => leaf.node_err.0,
-        }
-    }
-
-
-    /// Returns the number of leaves of this sub-tree.
-    #[inline]
-    pub(crate) fn leaves(&self) -> usize {
-        match self {
-            Node::Branch(ref node) => node.leaves,
-            Node::Leaf(_) => 1_usize
-        }
-    }
-
-
-
-    /// Execute preprocessing before the pruning.
-    /// This method removes the leaves that do not affect
-    /// the training error.
-    #[inline]
-    pub(super) fn pre_process(&mut self)
-        where L: Clone
-    {
-
-        if let Node::Branch(ref mut branch) = self {
-            let left  = branch.left_node.node_error();
-            let right = branch.right_node.node_error();
-
-
-            if branch.node_err.0 == left + right {
-                *self = Node::leaf(
-                    branch.prediction.clone(),
-                    branch.node_err,
-                    branch.impurity
-                );
-            } else {
-                // branch.left_node.pre_process();
-                // branch.right_node.pre_process();
-                Rc::get_mut(&mut branch.left_node)
-                    .unwrap()
-                    .pre_process();
-                Rc::get_mut(&mut branch.right_node)
-                    .unwrap()
-                    .pre_process();
+    fn from(train_node: TrainNode<O, L>) -> Self {
+        match train_node {
+            TrainNode::Branch(node) => {
+                Node::Branch(node.into())
+            },
+            TrainNode::Leaf(node) => {
+                Node::Leaf(node.into())
             }
         }
     }
@@ -329,10 +191,8 @@ impl<D, L> Classifier<D, L> for LeafNode<L>
 }
 
 
-impl<S, D, L, O> Classifier<D, L> for BranchNode<S, L>
-    where S: SplitRule<D>,
-    // where S: SplitRule<Input = D>,
-          D: Data<Output = O>,
+impl<D, L, O> Classifier<D, L> for BranchNode<O, L>
+    where D: Data<Output = O>,
           L: PartialEq + Clone,
           O: PartialOrd,
 {
@@ -346,10 +206,8 @@ impl<S, D, L, O> Classifier<D, L> for BranchNode<S, L>
 }
 
 
-impl<S, D, L, O> Classifier<D, L> for Node<S, L>
-    // where S: SplitRule<Input = D>,
-    where S: SplitRule<D>,
-          D: Data<Output = O>,
+impl<D, L, O> Classifier<D, L> for Node<O, L>
+    where D: Data<Output = O>,
           L: PartialEq + Clone,
           O: PartialOrd,
 {
