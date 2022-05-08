@@ -8,7 +8,6 @@ mod node;
 mod train_node;
 
 mod split_rule;
-// mod measure;
 
 
 pub use dtree_classifier::DTreeClassifier;

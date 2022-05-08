@@ -3,7 +3,7 @@
 //      x Train/test split
 //      - Cross-validation
 //      x construct_full_tree
-//      - prune
+//      x prune
 //  * Implement `construct_full_tree`
 //      ? Compute impurity
 //          x entropic impurity
@@ -14,10 +14,10 @@
 //      - Cross-validation
 // 
 //  * Test code
-//      - construct_full_tree
-//      - pruning
-//  * Run boosting
-//  * Remove `print` for debugging
+//      x construct_full_tree
+//      x pruning
+//  x Run boosting
+//  x Remove `print` for debugging
 //  * Add a member `mistake_ratio` to each branch/leaf node.
 //  * Each node has `impurity` member, but it may be redundant
 
@@ -105,9 +105,9 @@ impl<L> DTree<L> {
 
 // TODO remove `std::fmt::Debug` trait bound
 impl<O, D, L> BaseLearner<D, L> for DTree<L>
-    where D: Data<Output = O> + std::fmt::Debug,
-          L: PartialEq + Eq + std::hash::Hash + Clone + std::fmt::Debug,
-          O: PartialOrd + Clone + DataBounds + std::fmt::Debug
+    where D: Data<Output = O>,
+          L: PartialEq + Eq + std::hash::Hash + Clone,
+          O: PartialOrd + Clone + DataBounds
 {
     type Clf = DTreeClassifier<O, L>;
     fn best_hypothesis(&self,
@@ -133,13 +133,6 @@ impl<O, D, L> BaseLearner<D, L> for DTree<L>
         let test_indices = indices;
 
 
-        let train_indices = vec![2, 6, 0, 1, 3];
-        let test_indices  = vec![4, 5];
-
-
-        println!("Train indices: {train_indices:?}");
-
-
         let mut tree = match self.split_rule {
             Split::Feature =>
                 stump_fulltree(
@@ -152,18 +145,7 @@ impl<O, D, L> BaseLearner<D, L> for DTree<L>
         };
 
 
-        // TODO train_err is not proper one.
-        // Maybe I should replace train_err to test_err.
-        println!("Before pruning:\n{tree:?}");
-
-
         prune(&mut tree);
-
-
-        println!("# of leaves: {}", tree.borrow().leaves());
-
-
-        println!("After pruning:\n{tree:?}");
 
 
         let root = match Rc::try_unwrap(tree) {
@@ -187,9 +169,9 @@ fn stump_fulltree<O, D, L>(sample:     &Sample<D, L>,
                            test:        Vec<usize>,
                            criterion:   Criterion)
     -> Rc<RefCell<TrainNode<O, L>>>
-    where D: Data<Output = O> + std::fmt::Debug,
-          L: PartialEq + Eq + std::hash::Hash + Clone + std::fmt::Debug,
-          O: PartialOrd + Clone + DataBounds + std::fmt::Debug,
+    where D: Data<Output = O>,
+          L: PartialEq + Eq + std::hash::Hash + Clone,
+          O: PartialOrd + Clone + DataBounds,
 {
     let (label, train_node_err) = calc_train_err(sample, dist, &train[..]);
 
@@ -253,11 +235,6 @@ fn stump_fulltree<O, D, L>(sample:     &Sample<D, L>,
         let leaf = TrainNode::leaf(label, node_err);
         return Rc::new(RefCell::new(leaf));
     }
-
-
-    // DEBUG
-    println!("rule: {rule:?}");
-    println!("left: {ltrain:?}, right: {rtrain:?}");
 
 
     let left = stump_fulltree(sample, dist, ltrain, ltest, criterion);
@@ -411,9 +388,10 @@ impl<L> TempNodeInfo<L>
 
     /// Decrease the number of positive examples by one.
     pub(self) fn delete(&mut self, label: L, weight: f64) {
-        *self.map.get_mut(&label).unwrap() -= weight;
-
-
+        match self.map.get_mut(&label) {
+            Some(key) => { *key -= weight; },
+            None => { return; }
+        }
         if *self.map.get(&label).unwrap() <= 0.0 {
             self.map.remove(&label);
         }
