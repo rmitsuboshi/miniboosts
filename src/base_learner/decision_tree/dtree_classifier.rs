@@ -3,21 +3,27 @@ use crate::Data;
 use crate::Classifier;
 
 
-use super::split_rule::*;
 use super::node::*;
 
 
 /// Decision tree classifier.
 /// This struct is just a wrapper of `Node`.
 #[derive(Debug)]
-pub struct DTreeClassifier<S, L> {
-    root: Node<S, L>
+pub struct DTreeClassifier<O, L> {
+    root: Node<O, L>
 }
 
 
-impl<O, D, S, L> Classifier<D, L> for DTreeClassifier<S, L>
-    where S: SplitRule<D>,
-          D: Data<Output = O>,
+impl<O, L> From<Node<O, L>> for DTreeClassifier<O, L> {
+    #[inline]
+    fn from(root: Node<O, L>) -> Self {
+        Self { root }
+    }
+}
+
+
+impl<O, D, L> Classifier<D, L> for DTreeClassifier<O, L>
+    where D: Data<Output = O>,
           L: PartialEq + Clone,
           O: PartialOrd
 {
@@ -25,3 +31,5 @@ impl<O, D, S, L> Classifier<D, L> for DTreeClassifier<S, L>
         self.root.predict(data)
     }
 }
+
+
