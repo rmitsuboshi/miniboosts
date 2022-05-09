@@ -8,7 +8,7 @@ use super::node::*;
 
 /// Decision tree classifier.
 /// This struct is just a wrapper of `Node`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DTreeClassifier<O, L> {
     root: Node<O, L>
 }

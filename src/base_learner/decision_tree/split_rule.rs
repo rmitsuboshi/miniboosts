@@ -15,7 +15,7 @@ pub enum LR {
 
 /// Defines the splitting rules.
 /// Currently, you can use the stump rule.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum SplitRule<O> {
     /// If data[j] < threshold then go left and go right otherwise.
     Stump(StumpSplit<O>),
@@ -23,7 +23,7 @@ pub enum SplitRule<O> {
 
 
 /// Defines the split based on a feature.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct StumpSplit<O> {
     index:     usize,
     threshold: O,

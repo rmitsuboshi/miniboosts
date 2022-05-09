@@ -10,8 +10,6 @@ use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
-use std::collections::HashMap;
-use std::hash::Hash;
 
 
 
@@ -91,12 +89,12 @@ impl CERLPBoost {
     #[inline(always)]
     fn dual_objval_mut<C, D>(&mut self,
                              sample:         &Sample<D, f64>,
-                             classifier_map: &HashMap<C, f64>)
-        where C: Classifier<D, f64> + Eq + PartialEq + Hash,
+                             classifiers: &[(C, f64)])
+        where C: Classifier<D, f64> + Eq + PartialEq,
               D: Data,
     {
-        self.dual_optval = classifier_map.keys()
-            .fold(f64::MIN, |acc, h| {
+        self.dual_optval = classifiers.iter()
+            .fold(f64::MIN, |acc, (h, _)| {
                 let temp = sample.iter()
                     .zip(self.dist.iter())
                     .fold(0.0, |acc2, ((dat, lab), &d)|
@@ -147,15 +145,15 @@ impl CERLPBoost {
 
     /// Updates weight on hypotheses and `self.dist` in this order.
     fn update_distribution_mut<C, D>(&mut self,
-                                     classifier_map: &HashMap<C, f64>,
+                                     classifiers: &[(C, f64)],
                                      sample: &Sample<D, f64>)
-        where C: Classifier<D, f64> + Eq + PartialEq + Hash,
+        where C: Classifier<D, f64> + Eq + PartialEq,
               D: Data
     {
         for (d, (dat, lab)) in self.dist.iter_mut().zip(sample.iter()) {
             // Compute the confidence of the current combined hypothesis
-            let p = classifier_map.iter()
-                .fold(0.0, |acc, (h, &w)| acc + w * h.predict(dat));
+            let p = classifiers.iter()
+                .fold(0.0, |acc, (h, w)| acc + w * h.predict(dat));
 
             *d = - self.eta * *lab * p;
         }
@@ -217,10 +215,10 @@ impl CERLPBoost {
 
     /// Update the weights on hypotheses
     fn update_clf_weight_mut<D, C>(&self,
-                                   clfs:    &mut HashMap<C, f64>,
+                                   clfs:    &mut Vec<(C, f64)>,
                                    new_clf: C,
                                    gap_vec: Vec<f64>)
-        where C: Classifier<D, f64> + Eq + PartialEq + Hash,
+        where C: Classifier<D, f64> + Eq + PartialEq,
               D: Data<Output = f64>
     {
         // Numerator
@@ -242,17 +240,18 @@ impl CERLPBoost {
         );
 
 
-        // Shrink the weights on past hypotheses
-        for val in clfs.values_mut() {
-            *val *= 1.0 - weight;
+        let mut already_exist = false;
+        for (clf, w) in clfs.iter_mut() {
+            if *clf == new_clf {
+                already_exist = true;
+                *w += weight;
+            } else {
+                *w *= 1.0 - weight;
+            }
         }
 
-
-        // Add a new hypothesis with weight
-        if let Some(w) = clfs.get_mut(&new_clf) {
-            *w += weight;
-        } else {
-            clfs.insert(new_clf, weight);
+        if !already_exist {
+            clfs.push((new_clf, weight));
         }
     }
 }
@@ -260,7 +259,7 @@ impl CERLPBoost {
 
 impl<D, C> Booster<D, f64, C> for CERLPBoost
     where D: Data<Output = f64>,
-          C: Classifier<D, f64> + Eq + PartialEq + Hash
+          C: Classifier<D, f64> + Eq + PartialEq
 {
 
 
@@ -274,7 +273,7 @@ impl<D, C> Booster<D, f64, C> for CERLPBoost
         let max_iter = self.max_loop(tolerance);
 
 
-        let mut classifier_map: HashMap<C, f64> = HashMap::new();
+        let mut classifiers: Vec<(C, f64)> = Vec::new();
 
 
         // Get a new hypothesis and assign 1.0 as its weight.
@@ -283,15 +282,14 @@ impl<D, C> Booster<D, f64, C> for CERLPBoost
         // since the sum of weights on hypotheses is not equals to one.
         // If we can ensure the weight on the first hypothesis equals one,
         // we can eliminate this block.
-        {
-            let h = base_learner.best_hypothesis(sample, &self.dist);
-            classifier_map.insert(h, 1.0);
-        }
+        classifiers.push(
+            (base_learner.best_hypothesis(sample, &self.dist), 1.0)
+        );
 
 
         for t in 1..=max_iter {
             // Update the distribution over examples
-            self.update_distribution_mut(&classifier_map, &sample);
+            self.update_distribution_mut(&classifiers, &sample);
 
             // Receive a hypothesis from the base learner
             let h = base_learner.best_hypothesis(sample, &self.dist);
@@ -299,7 +297,7 @@ impl<D, C> Booster<D, f64, C> for CERLPBoost
 
             let gap_vec = sample.iter()
                 .map(|(dat, lab)| {
-                    let old_pred = classifier_map.iter()
+                    let old_pred = classifiers.iter()
                         .fold(0.0, |acc, (g, w)|
                             acc + *w * g.predict(dat)
                         );
@@ -323,15 +321,14 @@ impl<D, C> Booster<D, f64, C> for CERLPBoost
             }
 
             // Update the weight on hypotheses
-            self.update_clf_weight_mut(&mut classifier_map, h, gap_vec);
+            self.update_clf_weight_mut(&mut classifiers, h, gap_vec);
         }
 
         // Compute the dual optimal value for debug
-        self.dual_objval_mut(&sample, &classifier_map);
+        self.dual_objval_mut(&sample, &classifiers);
 
 
-
-        let weighted_classifier = classifier_map.into_iter()
+        let weighted_classifier = classifiers.into_iter()
             .filter_map(|(h, w)|
                 if w != 0.0 { Some((w, h)) } else { None }
             )

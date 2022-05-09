@@ -78,7 +78,7 @@ pub enum Criterion {
 
 
 /// Enumeration of `BranchNode` and `LeafNode`.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum Node<O, L> {
     /// A node that have two childrens.
     Branch(BranchNode<O, L>),
@@ -91,7 +91,7 @@ pub enum Node<O, L> {
 
 /// Represents the branch nodes of decision tree.
 /// Each `BranchNode` must have two childrens
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BranchNode<O, L> {
     pub(self) split_rule: SplitRule<O>,
     pub(self) left_node:  Box<Node<O, L>>,
@@ -118,7 +118,7 @@ impl<O, L> BranchNode<O, L> {
 
 
 /// Represents the leaf nodes of decision tree.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode<L> {
     pub(self) prediction: L,
 }
