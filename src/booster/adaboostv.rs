@@ -126,18 +126,19 @@ impl AdaBoostV {
 }
 
 
-impl<D, C> Booster<D, f64, C> for AdaBoostV
+impl<D, L, C> Booster<D, L, C> for AdaBoostV
     where D: Data,
-          C: Classifier<D, f64> + Eq + PartialEq,
+          L: Clone + Into<f64>,
+          C: Classifier<D, L> + Eq + PartialEq,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, f64>,
+              sample:       &Sample<D, L>,
               eps:          f64)
-        -> CombinedClassifier<D, f64, C>
-        where B: BaseLearner<D, f64, Clf = C>,
+        -> CombinedClassifier<D, L, C>
+        where B: BaseLearner<D, L, Clf = C>,
     {
         // Initialize parameters
         let m   = sample.len();
@@ -158,7 +159,11 @@ impl<D, C> Booster<D, f64, C> for AdaBoostV
             // Each element in `predictions` is the product of
             // the predicted vector and the correct vector
             let margins = sample.iter()
-                .map(|(dat, lab)| *lab * h.predict(dat))
+                .map(|(dat, lab)| {
+                    let l: f64 = lab.clone().into();
+                    let p: f64 = h.predict(dat).into();
+                    l * p
+                })
                 .collect::<Vec<f64>>();
 
 

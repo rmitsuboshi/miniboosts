@@ -35,16 +35,17 @@ impl TotalBoost {
 }
 
 
-impl<D, C> Booster<D, f64, C> for TotalBoost
-    where C: Classifier<D, f64>,
+impl<D, L, C> Booster<D, L, C> for TotalBoost
+    where C: Classifier<D, L>,
           D: Data<Output = f64>,
+          L: Clone + Into<f64>,
 {
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, f64>,
+              sample:       &Sample<D, L>,
               eps:          f64)
-        -> CombinedClassifier<D, f64, C>
-        where B: BaseLearner<D, f64, Clf = C>,
+        -> CombinedClassifier<D, L, C>
+        where B: BaseLearner<D, L, Clf = C>,
     {
         self.softboost.run(base_learner, sample, eps)
     }
