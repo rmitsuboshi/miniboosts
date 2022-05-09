@@ -87,19 +87,22 @@ impl CERLPBoost {
 
     /// Compute the dual objective value
     #[inline(always)]
-    fn dual_objval_mut<C, D>(&mut self,
-                             sample:         &Sample<D, f64>,
-                             classifiers: &[(C, f64)])
-        where C: Classifier<D, f64> + Eq + PartialEq,
+    fn dual_objval_mut<C, D, L>(&mut self,
+                                sample:      &Sample<D, L>,
+                                classifiers: &[(C, f64)])
+        where C: Classifier<D, L> + PartialEq,
               D: Data,
+              L: Into<f64> + Clone,
     {
         self.dual_optval = classifiers.iter()
             .fold(f64::MIN, |acc, (h, _)| {
                 let temp = sample.iter()
                     .zip(self.dist.iter())
-                    .fold(0.0, |acc2, ((dat, lab), &d)|
-                        acc2 + d * *lab * h.predict(dat)
-                    );
+                    .fold(0.0, |acc2, ((dat, lab), &d)| {
+                        let l: f64 = lab.clone().into();
+                        let p: f64 = h.predict(dat).into();
+                        acc2 + d * l * p
+                    });
 
                 acc.max(temp)
             });
@@ -144,18 +147,20 @@ impl CERLPBoost {
 
 
     /// Updates weight on hypotheses and `self.dist` in this order.
-    fn update_distribution_mut<C, D>(&mut self,
-                                     classifiers: &[(C, f64)],
-                                     sample: &Sample<D, f64>)
-        where C: Classifier<D, f64> + Eq + PartialEq,
-              D: Data
+    fn update_distribution_mut<C, D, L>(&mut self,
+                                        classifiers: &[(C, f64)],
+                                        sample: &Sample<D, L>)
+        where C: Classifier<D, L> + PartialEq,
+              D: Data,
+              L: Into<f64> + Clone
     {
         for (d, (dat, lab)) in self.dist.iter_mut().zip(sample.iter()) {
             // Compute the confidence of the current combined hypothesis
             let p = classifiers.iter()
-                .fold(0.0, |acc, (h, w)| acc + w * h.predict(dat));
+                .fold(0.0, |acc, (h, w)| acc + w * h.predict(dat).into());
 
-            *d = - self.eta * *lab * p;
+            let l: f64 = lab.clone().into();
+            *d = - self.eta * l * p;
         }
 
         let m  = self.dist.len();
@@ -214,11 +219,11 @@ impl CERLPBoost {
 
 
     /// Update the weights on hypotheses
-    fn update_clf_weight_mut<D, C>(&self,
-                                   clfs:    &mut Vec<(C, f64)>,
-                                   new_clf: C,
-                                   gap_vec: Vec<f64>)
-        where C: Classifier<D, f64> + Eq + PartialEq,
+    fn update_clf_weight_mut<D, L, C>(&self,
+                                      clfs:    &mut Vec<(C, f64)>,
+                                      new_clf: C,
+                                      gap_vec: Vec<f64>)
+        where C: Classifier<D, L> + PartialEq,
               D: Data<Output = f64>
     {
         // Numerator
@@ -257,18 +262,19 @@ impl CERLPBoost {
 }
 
 
-impl<D, C> Booster<D, f64, C> for CERLPBoost
+impl<D, L, C> Booster<D, L, C> for CERLPBoost
     where D: Data<Output = f64>,
-          C: Classifier<D, f64> + Eq + PartialEq
+          L: Into<f64> + Clone,
+          C: Classifier<D, L> + PartialEq
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, f64>,
+              sample:       &Sample<D, L>,
               tolerance:    f64)
-        -> CombinedClassifier<D, f64, C>
-        where B: BaseLearner<D, f64, Clf = C>,
+        -> CombinedClassifier<D, L, C>
+        where B: BaseLearner<D, L, Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 
@@ -299,11 +305,13 @@ impl<D, C> Booster<D, f64, C> for CERLPBoost
                 .map(|(dat, lab)| {
                     let old_pred = classifiers.iter()
                         .fold(0.0, |acc, (g, w)|
-                            acc + *w * g.predict(dat)
+                            acc + *w * g.predict(dat).into()
                         );
-                    let new_pred = h.predict(dat);
+                    let new_pred = h.predict(dat).into();
 
-                    *lab * (new_pred - old_pred)
+                    let l: f64 = lab.clone().into();
+
+                    l * (new_pred - old_pred)
                 })
                 .collect::<Vec<_>>();
 

@@ -110,10 +110,11 @@ impl SoftBoost {
 impl SoftBoost {
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
-    fn set_weights<C, D>(&mut self, sample: &Sample<D, f64>, clfs: &[C])
+    fn set_weights<C, D, L>(&mut self, sample: &Sample<D, L>, clfs: &[C])
         -> Result<Vec<f64>, grb::Error>
-        where C: Classifier<D, f64>,
+        where C: Classifier<D, L>,
               D: Data,
+              L: Clone + Into<f64>,
     {
         let mut model = Model::with_env("", &self.env)?;
 
@@ -136,7 +137,11 @@ impl SoftBoost {
         for ((dat, lab), &x) in sample.iter().zip(xi_vec.iter()) {
             let expr = wt_vec.iter()
                 .zip(clfs.iter())
-                .map(|(&w, h)| *lab * h.predict(dat) * w)
+                .map(|(&w, h)| {
+                    let l: f64 = lab.clone().into();
+                    let p: f64 = h.predict(dat).into();
+                    l * p * w
+                })
                 .grb_sum();
 
             model.add_constr(&"", c!(expr >= rho - x))?;
@@ -179,12 +184,13 @@ impl SoftBoost {
 
     /// Updates `self.distribution`
     /// Returns `None` if the stopping criterion satisfied.
-    fn update_params_mut<C, D>(&mut self,
-                               sample: &Sample<D, f64>,
-                               clfs:   &[C])
+    fn update_params_mut<C, D, L>(&mut self,
+                                  sample: &Sample<D, L>,
+                                  clfs:   &[C])
         -> Option<()>
-        where C: Classifier<D, f64>,
-              D: Data
+        where C: Classifier<D, L>,
+              D: Data,
+              L: Clone + Into<f64>,
     {
         loop {
             // Initialize GRBModel
@@ -211,7 +217,9 @@ impl SoftBoost {
                     .zip(self.dist.iter())
                     .zip(vars.iter())
                     .map(|(((dat, lab), &d), &v)| {
-                        *lab * h.predict(dat) * (d + v)
+                        let l: f64 = lab.clone().into();
+                        let p: f64 = h.predict(dat).into();
+                        l * p * (d + v)
                     }).grb_sum();
 
                 model.add_constr(
@@ -288,18 +296,19 @@ impl SoftBoost {
 }
 
 
-impl<D, C> Booster<D, f64, C> for SoftBoost
-    where C: Classifier<D, f64>,
+impl<D, L, C> Booster<D, L, C> for SoftBoost
+    where C: Classifier<D, L>,
           D: Data<Output = f64>,
+          L: Clone + Into<f64>,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, f64>,
+              sample:       &Sample<D, L>,
               tolerance:    f64)
-        -> CombinedClassifier<D, f64, C>
-        where B: BaseLearner<D, f64, Clf = C>,
+        -> CombinedClassifier<D, L, C>
+        where B: BaseLearner<D, L, Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 
@@ -311,9 +320,10 @@ impl<D, C> Booster<D, f64, C> for SoftBoost
             // update `self.gamma_hat`
             let edge = self.dist.iter()
                 .zip(sample.iter())
-                .fold(0.0_f64, |mut acc, (&d, (dat, lab))| {
-                    acc += d * *lab * h.predict(dat);
-                    acc
+                .fold(0.0_f64, |acc, (&d, (dat, lab))| {
+                    let l: f64 = lab.clone().into();
+                    let p: f64 = h.predict(dat).into();
+                    acc + d * l * p
                 });
 
 
