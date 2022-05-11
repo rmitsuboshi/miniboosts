@@ -289,7 +289,7 @@ impl<D, L, C> Booster<D, L, C> for CERLPBoost
         // If we can ensure the weight on the first hypothesis equals one,
         // we can eliminate this block.
         classifiers.push(
-            (base_learner.best_hypothesis(sample, &self.dist), 1.0)
+            (base_learner.produce(sample, &self.dist), 1.0)
         );
 
 
@@ -298,7 +298,7 @@ impl<D, L, C> Booster<D, L, C> for CERLPBoost
             self.update_distribution_mut(&classifiers, &sample);
 
             // Receive a hypothesis from the base learner
-            let h = base_learner.best_hypothesis(sample, &self.dist);
+            let h = base_learner.produce(sample, &self.dist);
 
 
             let gap_vec = sample.iter()

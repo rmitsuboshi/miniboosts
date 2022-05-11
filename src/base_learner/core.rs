@@ -26,7 +26,7 @@ pub trait BaseLearner<D, L> {
     /// Returns an instance of the `Classifier` trait
     /// that maximizes the edge of the `sample`
     /// with respect to the given `distribution`.
-    fn best_hypothesis(&self, sample: &Sample<D, L>, distribution: &[f64])
+    fn produce(&self, sample: &Sample<D, L>, distribution: &[f64])
         -> Self::Clf;
 }
 

@@ -229,7 +229,7 @@ impl<D, L, C> Booster<D, L, C> for LPBoost
         // Since the LPBoost does not have non-trivial iteration,
         // we run this until the stopping criterion is satisfied.
         loop {
-            let h = base_learner.best_hypothesis(sample, &self.dist);
+            let h = base_learner.produce(sample, &self.dist);
 
             // Each element in `margins` is the product of
             // the predicted vector and the correct vector

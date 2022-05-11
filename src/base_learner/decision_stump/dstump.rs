@@ -10,7 +10,7 @@ pub(self) type FeatureIndex   = Vec<IndicesByValue>;
 
 
 /// The struct `DStump` generates a `DStumpClassifier`
-/// for each call of `self.best_hypothesis(..)`.
+/// for each call of `self.produce(..)`.
 pub struct DStump {
     pub(crate) indices: Vec<FeatureIndex>,
 }
@@ -136,9 +136,9 @@ impl DStump {
 
 impl<D: Data<Output = f64>> BaseLearner<D, f64> for DStump {
     type Clf = DStumpClassifier;
-    fn best_hypothesis(&self,
-                       sample: &Sample<D, f64>,
-                       distribution: &[f64])
+    fn produce(&self,
+               sample: &Sample<D, f64>,
+               distribution: &[f64])
         -> Self::Clf
     {
         let init_edge = distribution.iter()
@@ -230,99 +230,4 @@ impl<D: Data<Output = f64>> BaseLearner<D, f64> for DStump {
         dstump
     }
 }
-
-// impl<D: Data<Output = f64>> BaseLearner<D> for DStump {
-//     type Clf = DStumpClassifier;
-//     fn best_hypothesis(&self, sample: &Sample<D>, distribution: &[f64])
-//         -> Self::Clf
-//     {
-//         let init_edge = distribution.iter()
-//             .zip(sample.iter())
-//             .fold(0.0, |acc, (dist, (_, lab))| acc + dist * *lab);
-// 
-//         let mut best_edge = init_edge - 1e-2;
-// 
-// 
-//         // This is the output of this function.
-//         // Initialize with some init value.
-//         let mut dstump = {
-//             let (min_dat, _) = &sample[self.indices[0][0][0]];
-//             DStumpClassifier {
-//                 threshold:     min_dat.value_at(0) - 1.0,
-//                 feature_index: 0_usize,
-//                 positive_side: PositiveSide::RHS
-//             }
-//         };
-// 
-//         {
-//             // `self.indidces[i][j][k]` is the `k`th index
-//             // of the `j`th block of the `i`th feature
-//             // TODO this line may fail since self.indices[0][0] 
-//             // may have no element.
-//             let i   = self.indices[0][0][0];
-//             let (ith_dat, _) = &sample[i];
-//             let val = ith_dat.value_at(0);
-//             if val > 0.0 {
-//                 dstump.threshold = val / 2.0;
-//             }
-//         }
-// 
-// 
-//         let mut update_params_mut = |edge: f64, threshold: f64, j: usize| {
-//             if best_edge < edge.abs() {
-//                 dstump.threshold     = threshold;
-//                 dstump.feature_index = j;
-//                 best_edge = edge.abs();
-//                 if edge > 0.0 {
-//                     dstump.positive_side = PositiveSide::RHS;
-//                 } else {
-//                     dstump.positive_side = PositiveSide::LHS;
-//                 }
-//             }
-//         };
-// 
-//         for (j, index) in self.indices.iter().enumerate() {
-//             let mut edge = init_edge;
-// 
-//             let mut index = index.iter().peekable();
-// 
-// 
-//             let mut right = {
-//                 let idx = index.peek().unwrap();
-//                 let (first_dat, _) = &sample[idx[0]];
-//                 first_dat.value_at(j)
-//             };
-//             let mut left;
-// 
-// 
-//             while let Some(idx) = index.next() {
-//                 let temp = idx.iter()
-//                     .fold(0.0, |acc, &i| {
-//                         let (_, lab) = &sample[i];
-//                         acc + distribution[i] * lab
-//                     });
-// 
-//                 edge -= 2.0 * temp;
-// 
-//                 left  = right;
-//                 right = match index.peek() {
-//                     Some(next_index) => {
-//                         // TODO: This line can be replaced by
-//                         // `get_unchecked`
-//                         let i = next_index[0];
-//                         let (ith_dat, _) = &sample[i];
-//                         ith_dat.value_at(j)
-//                     },
-//                     None => {
-//                         left + 2.0
-//                     }
-//                 };
-//                 update_params_mut(edge, (left + right) / 2.0, j);
-//             }
-//         }
-// 
-// 
-//         dstump
-//     }
-// }
 
