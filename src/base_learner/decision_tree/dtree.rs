@@ -1,5 +1,5 @@
 // TODO LIST
-//  * Implement `best_hypothesis`
+//  * Implement `produce`
 //      x Train/test split
 //      - Cross-validation
 //      x construct_full_tree
@@ -110,9 +110,9 @@ impl<O, D, L> BaseLearner<D, L> for DTree<L>
           O: PartialOrd + Clone + DataBounds
 {
     type Clf = DTreeClassifier<O, L>;
-    fn best_hypothesis(&self,
-                       sample: &Sample<D, L>,
-                       distribution: &[f64])
+    fn produce(&self,
+               sample: &Sample<D, L>,
+               distribution: &[f64])
         -> Self::Clf
     {
         let m = sample.len();
@@ -318,7 +318,7 @@ fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
 }
 
 
-/// Some informations that are useful in `best_hypothesis(..)`.
+/// Some informations that are useful in `produce(..)`.
 struct TempNodeInfo<L>
     where L: std::hash::Hash + PartialEq + Eq
 {

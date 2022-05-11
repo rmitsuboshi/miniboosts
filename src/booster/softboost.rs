@@ -315,7 +315,7 @@ impl<D, L, C> Booster<D, L, C> for SoftBoost
         let mut clfs = Vec::new();
         for t in 1..=max_iter {
             // Receive a hypothesis from the base learner
-            let h = base_learner.best_hypothesis(sample, &self.dist);
+            let h = base_learner.produce(sample, &self.dist);
 
             // update `self.gamma_hat`
             let edge = self.dist.iter()

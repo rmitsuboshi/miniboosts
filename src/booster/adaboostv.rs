@@ -153,7 +153,7 @@ impl<D, L, C> Booster<D, L, C> for AdaBoostV
 
         for _t in 1..=max_loop {
             // Get a new hypothesis
-            let h = base_learner.best_hypothesis(sample, &self.dist);
+            let h = base_learner.produce(sample, &self.dist);
 
 
             // Each element in `predictions` is the product of
