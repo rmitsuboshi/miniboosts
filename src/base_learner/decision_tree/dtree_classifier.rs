@@ -4,11 +4,12 @@ use crate::Classifier;
 
 
 use super::node::*;
+use serde::{Serialize, Deserialize};
 
 
 /// Decision tree classifier.
 /// This struct is just a wrapper of `Node`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct DTreeClassifier<O, L> {
     root: Node<O, L>
 }
