@@ -10,7 +10,7 @@ use lycaon::DStump;
 
 
 #[test]
-fn best_hypothesis() {
+fn produce() {
     let examples = vec![
         vec![  1.2, 0.5, -1.0,  2.0],
         vec![  0.1, 0.2,  0.3, -9.0],
@@ -25,7 +25,7 @@ fn best_hypothesis() {
     let dstump = DStump::init(&sample);
 
     let distribution = vec![1.0/3.0; 3];
-    let h = dstump.best_hypothesis(&sample, &distribution);
+    let h = dstump.produce(&sample, &distribution);
 
     for (dat, lab) in sample.iter() {
         assert_eq!(h.predict(dat), *lab);
@@ -34,7 +34,7 @@ fn best_hypothesis() {
 
 
     let distribution = vec![0.7, 0.1, 0.2];
-    let h = dstump.best_hypothesis(&sample, &distribution);
+    let h = dstump.produce(&sample, &distribution);
     for (dat, lab) in sample.iter() {
         assert_eq!(h.predict(dat), *lab);
     }
@@ -42,7 +42,7 @@ fn best_hypothesis() {
 
 
 #[test]
-fn best_hypothesis_sparse() {
+fn produce_sparse() {
     let tuples: Vec<(usize, f64)> = vec![
         (1, 0.2), (3, -12.5), (8, -4.0), (9, 0.8)
     ];
@@ -63,7 +63,7 @@ fn best_hypothesis_sparse() {
     let dstump = DStump::init(&sample);
 
     let distribution = vec![1.0/10.0; 10];
-    let h = dstump.best_hypothesis(&sample, &distribution);
+    let h = dstump.produce(&sample, &distribution);
     for (dat, lab) in sample.iter() {
         assert_eq!(h.predict(dat), *lab);
     }

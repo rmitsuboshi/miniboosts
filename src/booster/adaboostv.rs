@@ -1,6 +1,5 @@
 //! Provides the `AdaBoost*` by Rätsch & Warmuth, 2005.
 use crate::{Data, Sample};
-// use crate::{Data, Label, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -14,10 +13,10 @@ use crate::Booster;
 /// - `gamma` is the minimum edge over the past edges,
 /// - `dist` is the distribution over training examples,
 pub struct AdaBoostV {
-    pub(crate) tolerance: f64,
-    pub(crate) rho:       f64,
-    pub(crate) gamma:     f64,
-    pub(crate) dist:      Vec<f64>,
+    pub(self) tolerance: f64,
+    pub(self) rho:       f64,
+    pub(self) gamma:     f64,
+    pub(self) dist:      Vec<f64>,
 }
 
 
@@ -33,6 +32,14 @@ impl AdaBoostV {
             gamma:       1.0,
             dist:        vec![uni; m],
         }
+    }
+
+
+
+    /// Set the tolerance parameter.
+    #[inline]
+    pub fn set_tolerance(&mut self, tolerance: f64) {
+        self.tolerance = tolerance;
     }
 
 
@@ -56,19 +63,22 @@ impl AdaBoostV {
     /// 
     /// let sample = Sample::from((examples, labels));
     /// 
-    /// let booster = AdaBoostV::init(&sample);
+    /// let mut booster = AdaBoostV::init(&sample);
     /// let eps = 0.01_f64;
+    /// booster.set_tolerance(eps);
     /// 
     /// let expected = 2.0 * (sample.len() as f64).ln() / eps.powi(2);
     /// 
-    /// assert_eq!(booster.max_loop(eps), expected as usize);
+    /// assert_eq!(booster.max_loop(), expected as usize);
     /// ```
     /// 
-    pub fn max_loop(&self, eps: f64) -> usize {
+    #[inline]
+    pub fn max_loop(&self) -> usize {
         let m = self.dist.len();
 
-        2 * ((m as f64).ln() / (eps * eps)) as usize
+        (2.0 * (m as f64).ln() / self.tolerance.powi(2)) as usize
     }
+
 
     /// Returns a weight on the new hypothesis.
     /// `update_params` also updates `self.distribution`
@@ -143,12 +153,12 @@ impl<D, L, C> Booster<D, L, C> for AdaBoostV
         // Initialize parameters
         let m   = sample.len();
         self.dist      = vec![1.0 / m as f64; m];
-        self.tolerance = eps;
+        self.set_tolerance(eps);
 
         let mut weighted_classifier = Vec::new();
 
 
-        let max_loop = self.max_loop(eps);
+        let max_loop = self.max_loop();
         println!("max_loop: {max_loop}");
 
         for _t in 1..=max_loop {

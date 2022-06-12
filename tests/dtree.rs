@@ -47,7 +47,7 @@ fn full_binary_tree() {
 
     let dist = vec![1.0/7.0; 7];
 
-    let f = dtree.best_hypothesis(&sample, &dist[..]);
+    let f = dtree.produce(&sample, &dist[..]);
 
     println!("{f:?}");
 }

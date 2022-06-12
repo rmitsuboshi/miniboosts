@@ -36,20 +36,6 @@ pub trait Classifier<D, L> {
                 .collect()
     }
 }
-// pub trait Classifier<T> {
-// 
-//     /// Predicts the label of the given example of type `T`.
-//     fn predict(&self, example: &T) -> Label;
-// 
-// 
-//     /// Predicts the labels of the given examples of type `T`.
-//     fn predict_all(&self, examples: &[T]) -> Vec<Label>
-//     {
-//         examples.iter()
-//                 .map(|example| self.predict(example))
-//                 .collect()
-//     }
-// }
 
 
 use std::marker::PhantomData;
