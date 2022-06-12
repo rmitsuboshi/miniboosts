@@ -1,12 +1,11 @@
 //! Provides some function that reads `Sample<D, L>`
 //! from CSV or LIBSVM file.
 use crate::data_type::Sample;
-// use crate::data_type::{Sample, Label};
 use std::collections::HashMap;
 use std::path::Path;
-use std::io;
-use std::io::prelude::*;
 use std::fs::File;
+use std::io::prelude::*;
+use std::io;
 
 
 use std::str::FromStr;
