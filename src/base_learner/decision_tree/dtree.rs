@@ -1,28 +1,5 @@
-// TODO LIST
-//  * Implement `produce`
-//      x Train/test split
-//      - Cross-validation
-//      x construct_full_tree
-//      x prune
-//  * Implement `construct_full_tree`
-//      ? Compute impurity
-//          x entropic impurity
-//          - gini impurity
-//      - Test whether this function works as expected.
-//  * Implement `pruning`
-//      - Train/test split
-//      - Cross-validation
-// 
-//  * Test code
-//      x construct_full_tree
-//      x pruning
-//  x Run boosting
-//  x Remove `print` for debugging
-//  * Add a member `mistake_ratio` to each branch/leaf node.
-//  * Each node has `impurity` member, but it may be redundant
-
-
 use rand::prelude::*;
+use rand::rngs::StdRng;
 
 use crate::{DataBounds, Data, Sample};
 use crate::BaseLearner;
@@ -53,11 +30,11 @@ pub enum Split {
 /// Generates a `DTreeClassifier` for a given distribution
 /// over examples.
 pub struct DTree<L> {
-    rng:         RefCell<ThreadRng>,
-    criterion:   Criterion,
-    split_rule:  Split,
+    rng: RefCell<StdRng>,
+    criterion: Criterion,
+    split_rule: Split,
     train_ratio: f64,
-    _phantom:    PhantomData<L>,
+    _phantom: PhantomData<L>,
 }
 
 
@@ -66,9 +43,10 @@ impl<L> DTree<L> {
     #[inline]
     pub fn init<D>(_sample: &Sample<D, L>) -> Self
     {
-        let rng         = RefCell::new(rand::thread_rng());
-        let criterion   = Criterion::Entropy;
-        let split_rule  = Split::Feature;
+        let seed: u64 = 0;
+        let rng = RefCell::new(SeedableRng::seed_from_u64(seed));
+        let criterion = Criterion::Entropy;
+        let split_rule = Split::Feature;
         let train_ratio = 0.8_f64;
         Self {
             rng,
@@ -80,10 +58,21 @@ impl<L> DTree<L> {
     }
 
 
-    /// Set the training ratio.
+    /// Initialize the RNG by `seed`.
+    /// If you don't use this method, 
+    /// `DTree` initializes RNG by `0_u64`.
+    pub fn seed(&self, seed: u64)
+    {
+        let rng: StdRng = SeedableRng::seed_from_u64(seed);
+        *self.rng.borrow_mut() = rng;
+    }
+
+
+    /// Set the ratio used for growing a tree.
+    /// The rest examples are for pruning.
     /// Default ratio is `0.8`.
     #[inline]
-    pub fn with_train_ratio(mut self, ratio: f64) -> Self {
+    pub fn with_grow_ratio(mut self, ratio: f64) -> Self {
         assert!(0.0 <= ratio && ratio <= 1.0);
         self.train_ratio = ratio;
 
@@ -103,7 +92,6 @@ impl<L> DTree<L> {
 }
 
 
-// TODO remove `std::fmt::Debug` trait bound
 impl<O, D, L> BaseLearner<D, L> for DTree<L>
     where D: Data<Output = O>,
           L: PartialEq + Eq + std::hash::Hash + Clone,
@@ -123,7 +111,7 @@ impl<O, D, L> BaseLearner<D, L> for DTree<L>
 
 
         // Shuffle indices
-        let rng: &mut ThreadRng = &mut self.rng.borrow_mut();
+        let rng: &mut StdRng = &mut self.rng.borrow_mut();
         indices.shuffle(rng);
 
 
@@ -159,7 +147,6 @@ impl<O, D, L> BaseLearner<D, L> for DTree<L>
 
 
 
-/// TODO complete this function
 /// Construct a full binary tree
 /// that perfectly classify the given examples.
 #[inline]
@@ -174,6 +161,7 @@ fn stump_fulltree<O, D, L>(sample:     &Sample<D, L>,
           O: PartialOrd + Clone + DataBounds,
 {
     let (label, train_node_err) = calc_train_err(sample, dist, &train[..]);
+
 
     let test_node_err = calc_test_err(sample, dist, &test[..], &label);
 
@@ -206,7 +194,6 @@ fn stump_fulltree<O, D, L>(sample:     &Sample<D, L>,
     }
 
 
-    // let rule = StumpSplit::from((best_index, best_split));
     let rule = SplitRule::Stump(StumpSplit::from((best_index, best_split)));
 
 
@@ -429,7 +416,13 @@ fn calc_train_err<D, L>(sample:  &Sample<D, L>,
         .unwrap();
 
 
-    let node_err = total * (1.0 - (p / total));
+    // From the update rule of boosting algorithm,
+    // the sum of `dist` over `indices` may become zero,
+    let node_err = if total > 0.0 {
+        total * (1.0 - (p / total))
+    } else {
+        0.0
+    };
 
 
     (l, node_err)
@@ -520,8 +513,6 @@ fn weak_links<O, L>(root: &Rc<RefCell<TrainNode<O, L>>>)
     }
 
 
-    // TODO find bug in this line.
-    // An error occurred on this `unwrap()`.
     links.sort_by(|u, v|
         u.borrow().alpha().partial_cmp(&v.borrow().alpha()).unwrap()
     );
