@@ -520,6 +520,8 @@ fn weak_links<O, L>(root: &Rc<RefCell<TrainNode<O, L>>>)
     }
 
 
+    // TODO find bug in this line.
+    // An error occurred on this `unwrap()`.
     links.sort_by(|u, v|
         u.borrow().alpha().partial_cmp(&v.borrow().alpha()).unwrap()
     );

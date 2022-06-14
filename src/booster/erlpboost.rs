@@ -54,12 +54,7 @@ impl ERLPBoost {
 
 
         // Set regularization parameter
-        let mut eta = 1.0 / 2.0;
-        let temp    = 2.0 * ln_m / tolerance;
-
-        if eta < temp {
-            eta = temp;
-        }
+        let eta = (1.0_f64 / 2.0_f64).max(2.0_f64 * ln_m / tolerance);
 
         // Set gamma_hat and gamma_star
         let gamma_hat  = 1.0 + (ln_m / eta);
@@ -98,7 +93,6 @@ impl ERLPBoost {
     fn set_tolerance(&mut self, tolerance: f64) {
         self.tolerance = tolerance / 2.0;
         self.sub_tolerance = tolerance / 10.0;
-        self.regularization_param();
     }
 
 
@@ -106,14 +100,32 @@ impl ERLPBoost {
     #[inline(always)]
     fn regularization_param(&mut self) {
         let ln_m = (self.dist.len() as f64 / self.capping_param).ln();
-        self.eta = 1.0 / 2.0;
         let temp = 2.0 * ln_m / self.tolerance;
 
-        if self.eta < temp {
-            self.eta = temp;
-        }
 
-        self.gamma_hat = 1.0 + (ln_m / self.eta);
+        self.eta = 0.5_f64.max(temp);
+    }
+
+
+
+    /// Set `gamma_hat` and `gamma_star`.
+    #[inline]
+    fn set_gamma(&mut self) {
+        let ln_m = (self.dist.len() as f64).ln();
+
+        self.gamma_hat  = 1.0 + (ln_m / self.eta);
+        self.gamma_star = f64::MIN;
+    }
+
+
+    /// Set all parameters in ERLPBoost.
+    #[inline]
+    fn init_params(&mut self, tolerance: f64) {
+        self.set_tolerance(tolerance);
+
+        self.regularization_param();
+
+        self.set_gamma();
     }
 
 
@@ -129,19 +141,19 @@ impl ERLPBoost {
     /// that has error at most `tolerance`.
     pub fn max_loop(&mut self, tolerance: f64) -> u64 {
         if self.tolerance * 2.0 != tolerance {
-            self.set_tolerance(tolerance);
+            self.init_params(tolerance);
         }
 
-        let m = self.dist.len();
+        let m = self.dist.len() as f64;
 
         let mut max_iter = 8.0 / self.tolerance;
 
-        let temp = (m as f64 / self.capping_param).ln();
-        let temp = 32.0 * temp / (self.tolerance * self.tolerance);
 
-        if max_iter < temp {
-            max_iter = temp;
-        }
+        let temp = (m / self.capping_param).ln();
+        let temp = 32.0 * temp / self.tolerance.powi(2);
+
+
+        max_iter = max_iter.max(temp);
 
         max_iter.ceil() as u64
     }
@@ -149,6 +161,76 @@ impl ERLPBoost {
 
 
 impl ERLPBoost {
+    /// Update `self.gamma_hat`.
+    /// `self.gamma_hat` holds the minimum value of the objective value.
+    #[inline]
+    fn update_gamma_hat_mut<D, L, C>(&mut self,
+                                     clf: &C,
+                                     sample: &Sample<D, L>)
+        where C: Classifier<D, L>,
+              D: Data,
+              L: Clone + Into<f64>,
+    {
+        let edge = self.dist.iter()
+            .zip(sample.iter())
+            .map(|(d, (x, y))| {
+                let l: f64 = y.clone().into();
+                let p: f64 = clf.predict(x).into();
+                *d * l * p
+            })
+            .sum::<f64>();
+
+
+        let m = sample.len() as f64;
+        let entropy = self.dist.iter()
+            .map(|&d| d * (m * d).ln())
+            .sum::<f64>();
+
+
+        let obj_val = edge + (entropy / self.eta);
+
+        self.gamma_hat = self.gamma_hat.min(obj_val);
+    }
+
+
+    /// Update `self.gamma_star`.
+    /// `self.gamma_star` holds the current optimal value.
+    #[inline]
+    fn update_gamma_star_mut<D, L, C>(&mut self,
+                                      clfs: &[C],
+                                      sample: &Sample<D, L>)
+        where C: Classifier<D, L>,
+              D: Data,
+              L: Clone + Into<f64>,
+    {
+        let edge_of = |f: &C| {
+            self.dist.iter()
+                .zip(sample.iter())
+                .map(|(d, (x, y))| {
+                    let l: f64 = y.clone().into();
+                    let p: f64 = f.predict(x).into();
+                    *d * l * p
+                })
+                .sum::<f64>()
+        };
+
+
+        let max_edge = clfs.iter()
+            .map(|f| edge_of(f))
+            .reduce(f64::max)
+            .unwrap();
+
+
+        let m = sample.len() as f64;
+        let entropy = self.dist.iter()
+            .map(|&d| d * (m * d).ln())
+            .sum::<f64>();
+
+
+        self.gamma_star = max_edge + (entropy / self.eta);
+    }
+
+
     /// Compute the weight on hypotheses
     fn set_weights<C, D, L>(&mut self, sample: &Sample<D, L>, clfs: &[C])
         -> Result<Vec<f64>, grb::Error>
@@ -163,11 +245,11 @@ impl ERLPBoost {
 
         // Initialize GRBVars
         let wt_vec = (0..t).map(|i| {
-                let name = format!("w{}", i);
+                let name = format!("w[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..1.0).unwrap()
             }).collect::<Vec<_>>();
         let xi_vec = (0..m).map(|i| {
-                let name = format!("xi{}", i);
+                let name = format!("xi[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
             }).collect::<Vec<_>>();
         let rho = add_ctsvar!(model, name: &"rho", bounds: ..)?;
@@ -175,16 +257,17 @@ impl ERLPBoost {
 
         // Set constraints
         for ((dat, lab), &xi) in sample.iter().zip(xi_vec.iter()) {
+            let y: f64 = lab.clone().into();
+
             let expr = wt_vec.iter()
                 .zip(clfs.iter())
                 .map(|(&w, h)| {
-                    let l: f64 = lab.clone().into();
                     let p: f64 = h.predict(dat).into();
-                    l * p * w
+                    w * p
                 })
                 .grb_sum();
 
-            model.add_constr(&"", c!(expr >= rho - xi))?;
+            model.add_constr(&"", c!(y * expr >= rho - xi))?;
         }
 
         model.add_constr(
@@ -194,8 +277,8 @@ impl ERLPBoost {
 
 
         // Set the objective function
-        let temp = 1.0 / self.capping_param;
-        let objective = rho - temp * xi_vec.iter().grb_sum();
+        let param = 1.0 / self.capping_param;
+        let objective = rho - param * xi_vec.iter().grb_sum();
         model.set_objective(objective, Maximize)?;
         model.update()?;
 
@@ -206,11 +289,7 @@ impl ERLPBoost {
         let status = model.status()?;
 
         if status != Status::Optimal {
-            let message = format!(
-                "Failed to finding an optimal solution. Status: {:?}",
-                status
-            );
-            panic!("{message}");
+            panic!("Cannot solve the primal problem. Status: {status:?}");
         }
 
 
@@ -234,9 +313,8 @@ impl ERLPBoost {
         loop {
             // Initialize GRBModel
             let mut model = Model::with_env("", &self.env).unwrap();
-            let gamma = add_ctsvar!(
-                model, name: &"gamma", bounds: ..
-            ).unwrap();
+            let gamma = add_ctsvar!(model, name: &"gamma", bounds: ..)
+                .unwrap();
 
 
             // Set variables that are used in the optimization problem
@@ -245,7 +323,7 @@ impl ERLPBoost {
             let vars = self.dist.iter()
                 .enumerate()
                 .map(|(i, &d)| {
-                    let name = format!("v{}", i);
+                    let name = format!("v[{i}]");
                     // define the i'th lb & ub
                     let lb = -d;
                     let ub = upper_bound - d;
@@ -282,12 +360,16 @@ impl ERLPBoost {
                 .zip(vars.iter())
                 .map(|(&d, &v)| {
                     let temp = (m * d).ln() + 1.0;
-                    temp * v + (v * v) * (1.0 / (2.0 * d))
+                    let linear = temp * v;
+                    let quad = (1.0 / (2.0 * d)) * (v * v);
+
+                    linear + quad
                 })
                 .grb_sum();
 
             let objective = gamma + objective * (1.0 / self.eta);
             model.set_objective(objective, Minimize).unwrap();
+
 
             model.update().unwrap();
 
@@ -300,13 +382,8 @@ impl ERLPBoost {
             // This will never happen
             // since the domain is a bounded & closed convex set,
             let status = model.status().unwrap();
-            if status != Status::Optimal
-                && status != Status::SubOptimal
-            {
-                let message = format!(
-                    "Status is {:?}. something wrong.", status
-                );
-                panic!("{message}");
+            if status != Status::Optimal {
+                panic!("Status ({status:?}) is not optimal.");
             }
 
 
@@ -316,12 +393,13 @@ impl ERLPBoost {
             for (v, d) in vars.iter().zip(self.dist.iter_mut()) {
                 let val = model.get_obj_attr(attr::X, &v).unwrap();
                 *d += val;
-                l2 += val * val;
+                l2 += val.powi(2);
             }
             let l2 = l2.sqrt();
 
             if l2 < self.sub_tolerance {
-                self.gamma_star = model.get_attr(attr::ObjVal).unwrap();
+                // self.gamma_star = model.get_attr(attr::ObjVal).unwrap();
+                self.update_gamma_star_mut(clfs, sample);
                 break;
             }
         }
@@ -341,8 +419,16 @@ impl<D, L, C> Booster<D, L, C> for ERLPBoost
         -> CombinedClassifier<D, L, C>
         where B: BaseLearner<D, L, Clf = C>,
     {
+        // Initialize all parameters
+        self.init_params(tolerance);
+
+
+        // Get max iteration.
         let max_iter = self.max_loop(tolerance);
 
+
+        // This vector holds the classifiers
+        // obtained from the `base_learner`.
         let mut clfs = Vec::new();
 
         for t in 1..=max_iter {
@@ -351,17 +437,7 @@ impl<D, L, C> Booster<D, L, C> for ERLPBoost
 
 
             // update `self.gamma_hat`
-            let edge = self.dist.iter()
-                .zip(sample.iter())
-                .fold(0.0_f64, |acc, (d, (dat, lab))| {
-                    let l: f64 = lab.clone().into();
-                    let p: f64 = h.predict(dat).into();
-                    acc + d * l * p
-                });
-
-            if self.gamma_hat > edge {
-                self.gamma_hat = edge;
-            }
+            self.update_gamma_hat_mut(&h, &sample);
 
 
             // Check the stopping criterion

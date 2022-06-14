@@ -52,8 +52,6 @@ pub struct CombinedClassifier<D, L, C>
 
 
 impl<D, L, C> From<Vec<(f64, C)>> for CombinedClassifier<D, L, C>
-//     where D: Data,
-//           C: Classifier<D>,
 {
     fn from(inner: Vec<(f64, C)>) -> Self {
         CombinedClassifier {
