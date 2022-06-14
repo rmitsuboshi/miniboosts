@@ -116,6 +116,27 @@ impl<O, L> TrainBranchNode<O, L> {
         let leaves = left.borrow().leaves() + right.borrow().leaves();
 
 
+        if !tree_err.train.is_finite() {
+            println!("tree error: {}", tree_err.train);
+            let l = left.borrow().leaves() == 1;
+            let r = right.borrow().leaves() == 1;
+            println!(
+                "Left: {}, right: {}",
+                if l { "leaf" } else { "branch" },
+                if r { "leaf" } else { "branch" },
+            );
+
+            println!(
+                "left.tree_err.train: {}, right.tree_err.train: {}",
+                left.borrow().tree_error().train,
+                right.borrow().tree_error().train,
+            );
+
+            assert!(tree_err.train.is_finite());
+
+        }
+
+
         Self {
             split_rule,
             left,
@@ -229,11 +250,19 @@ impl<O, L> TrainNode<O, L> {
 
     #[inline]
     pub(super) fn alpha(&self) -> f64 {
-        let node_err = self.node_error();
-        let tree_err = self.tree_error();
-        let leaves   = self.leaves() as f64;
-
-        (node_err.train - tree_err.train) / (leaves - 1.0)
+        match self {
+            TrainNode::Branch(_) => {
+                let node_err = self.node_error();
+                let tree_err = self.tree_error();
+                let leaves   = self.leaves() as f64;
+                assert!(node_err.train.is_finite());
+                assert!(tree_err.train.is_finite());
+                (node_err.train - tree_err.train) / (leaves - 1.0)
+            },
+            TrainNode::Leaf(_) => {
+                f64::INFINITY
+            }
+        }
     }
 
 
