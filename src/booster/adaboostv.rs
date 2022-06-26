@@ -1,4 +1,7 @@
 //! Provides the `AdaBoost*` by Rätsch & Warmuth, 2005.
+use rayon::prelude::*;
+
+
 use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
@@ -13,10 +16,10 @@ use crate::Booster;
 /// - `gamma` is the minimum edge over the past edges,
 /// - `dist` is the distribution over training examples,
 pub struct AdaBoostV {
-    pub(self) tolerance: f64,
-    pub(self) rho:       f64,
-    pub(self) gamma:     f64,
-    pub(self) dist:      Vec<f64>,
+    tolerance: f64,
+    rho:       f64,
+    gamma:     f64,
+    dist:      Vec<f64>,
 }
 
 
@@ -25,12 +28,18 @@ impl AdaBoostV {
     pub fn init<D, L>(sample: &Sample<D, L>) -> AdaBoostV {
         let m = sample.len();
         assert!(m != 0);
+
+
         let uni = 1.0 / m as f64;
+        let dist = (0..m).into_par_iter()
+            .map(|_| uni)
+            .collect::<Vec<_>>();
+
         AdaBoostV {
-            tolerance:   0.0,
-            rho:         1.0,
-            gamma:       1.0,
-            dist:        vec![uni; m],
+            tolerance: 0.0,
+            rho:       1.0,
+            gamma:     1.0,
+            dist,
         }
     }
 
@@ -83,9 +92,7 @@ impl AdaBoostV {
     /// Returns a weight on the new hypothesis.
     /// `update_params` also updates `self.distribution`
     #[inline]
-    fn update_params(&mut self,
-                     margins: Vec<f64>,
-                     edge:    f64)
+    fn update_params(&mut self, margins: Vec<f64>, edge: f64)
         -> f64
     {
 
@@ -104,9 +111,9 @@ impl AdaBoostV {
 
 
         // To prevent overflow, take the logarithm.
-        for (d, yh) in self.dist.iter_mut().zip(margins.iter()) {
-            *d = d.ln() - weight * yh;
-        }
+        self.dist.par_iter_mut()
+            .zip(margins)
+            .for_each(|(d, yh)| *d = d.ln() - weight * yh);
 
 
         let m = self.dist.len();
@@ -127,9 +134,9 @@ impl AdaBoostV {
             normalizer = a + (1.0 + (b - a).exp()).ln();
         }
 
-        for d in self.dist.iter_mut() {
-            *d = (*d - normalizer).exp();
-        }
+
+        self.dist.par_iter_mut()
+            .for_each(|d| *d = (*d - normalizer).exp());
 
         weight
     }
@@ -151,8 +158,8 @@ impl<D, L, C> Booster<D, L, C> for AdaBoostV
         where B: BaseLearner<D, L, Clf = C>,
     {
         // Initialize parameters
-        let m   = sample.len();
-        self.dist      = vec![1.0 / m as f64; m];
+        let m = sample.len();
+        self.dist = vec![1.0 / m as f64; m];
         self.set_tolerance(eps);
 
         let mut weighted_classifier = Vec::new();
@@ -177,9 +184,10 @@ impl<D, L, C> Booster<D, L, C> for AdaBoostV
                 .collect::<Vec<f64>>();
 
 
-            let edge = margins.iter()
-                .zip(self.dist.iter())
-                .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
+            let edge = margins.par_iter()
+                .zip(self.dist.par_iter())
+                .map(|(&yh, &d)| yh * d)
+                .sum::<f64>();
 
 
             // If `h` predicted all the examples in `sample` correctly,

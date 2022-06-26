@@ -6,6 +6,8 @@
 //! since it is referred as `the Corrective version of CERLPBoost`
 //! in "Entropy Regularized LPBoost" by Warmuth et al.
 //! 
+use rayon::prelude::*;
+
 use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
@@ -94,18 +96,20 @@ impl CERLPBoost {
               D: Data,
               L: Into<f64> + Clone,
     {
+        let edge_of = |f: &C| -> f64 {
+            sample.iter()
+                .zip(self.dist.iter().copied())
+                .map(|((x, y), d)| {
+                    let l: f64 = y.clone().into();
+                    let p: f64 = f.predict(x).into();
+                    d * l * p
+                })
+                .sum::<f64>()
+        };
         self.dual_optval = classifiers.iter()
-            .fold(f64::MIN, |acc, (h, _)| {
-                let temp = sample.iter()
-                    .zip(self.dist.iter())
-                    .fold(0.0, |acc2, ((dat, lab), &d)| {
-                        let l: f64 = lab.clone().into();
-                        let p: f64 = h.predict(dat).into();
-                        acc2 + d * l * p
-                    });
-
-                acc.max(temp)
-            });
+            .map(|(h, _)| edge_of(h))
+            .reduce(f64::max)
+            .unwrap();
     }
 
     /// Returns an optimal value of the dual problem.
@@ -317,9 +321,10 @@ impl<D, L, C> Booster<D, L, C> for CERLPBoost
 
             // Compute the difference between the new hypothesis
             // and the current combined hypothesis
-            let diff = gap_vec.iter()
-                .zip(self.dist.iter())
-                .fold(0.0, |acc, (&v, &d)| acc + v * d);
+            let diff = gap_vec.par_iter()
+                .zip(self.dist.par_iter())
+                .map(|(v, d)| v * d)
+                .sum::<f64>();
 
 
             // Update the parameters
