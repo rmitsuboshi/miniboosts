@@ -1,15 +1,16 @@
-//! Provides the `AdaBoost` by Freund & Schapire, 1995.
+//! Provides `AdaBoost` by Freund & Schapire, 1995.
+use rayon::prelude::*;
+
+
 use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
 
 
-/// Struct `AdaBoost` has one parameter.
-/// 
-/// - `dist` is the distribution over training examples,
+/// Defines `AdaBoost`.
 pub struct AdaBoost {
-    pub(crate) dist: Vec<f64>,
+    pub(self) dist: Vec<f64>,
 }
 
 
@@ -94,13 +95,14 @@ impl AdaBoost {
 
 
         // To prevent overflow, take the logarithm.
-        for (d, p) in self.dist.iter_mut().zip(margins.iter()) {
-            *d = d.ln() - weight * p;
-        }
+        self.dist.par_iter_mut()
+            .zip(margins)
+            .for_each(|(d, p)| *d = d.ln() - weight * p);
 
 
         // Sort indices by ascending order
-        let mut indices = (0..m).collect::<Vec<usize>>();
+        let mut indices = (0..m).into_par_iter()
+            .collect::<Vec<usize>>();
         indices.sort_unstable_by(|&i, &j| {
             self.dist[i].partial_cmp(&self.dist[j]).unwrap()
         });
@@ -119,9 +121,8 @@ impl AdaBoost {
 
 
         // Update the distribution
-        for d in self.dist.iter_mut() {
-            *d = (*d - normalizer).exp();
-        }
+        self.dist.par_iter_mut()
+            .for_each(|d| *d = (*d - normalizer).exp());
 
 
         weight
@@ -142,7 +143,7 @@ impl<D, L, C> Booster<D, L, C> for AdaBoost
         where B: BaseLearner<D, L, Clf = C>,
     {
         // Initialize parameters
-        let m   = sample.len();
+        let m = sample.len();
         let uni = 1.0 / m as f64;
         self.dist = vec![uni; m];
 
@@ -166,9 +167,10 @@ impl<D, L, C> Booster<D, L, C> for AdaBoost
                 .collect::<Vec<f64>>();
 
 
-            let edge = margins.iter()
-                .zip(self.dist.iter())
-                .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
+            let edge = margins.par_iter()
+                .zip(self.dist.par_iter())
+                .map(|(&yh, &d)| yh * d)
+                .sum::<f64>();
 
 
             // If `h` predicted all the examples in `sample` correctly,

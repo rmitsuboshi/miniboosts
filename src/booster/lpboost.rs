@@ -11,12 +11,9 @@ use grb::prelude::*;
 
 
 
-/// Struct `LPBoost` has one parameter.
-/// 
-/// - `dist` is the distribution over training examples,
-/// 
+/// Defines `LPBoost`.
 pub struct LPBoost {
-    pub(crate) dist: Vec<f64>,
+    dist: Vec<f64>,
 
     // min-max edge of the new hypothesis
     gamma_hat: f64,
