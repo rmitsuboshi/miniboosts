@@ -1,5 +1,5 @@
 //! Defines the decision tree classifier.
-use crate::Data;
+use polars::prelude::*;
 use crate::Classifier;
 
 
@@ -10,26 +10,22 @@ use serde::{Serialize, Deserialize};
 /// Decision tree classifier.
 /// This struct is just a wrapper of `Node`.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct DTreeClassifier<O, L> {
-    root: Node<O, L>
+pub struct DTreeClassifier {
+    root: Node
 }
 
 
-impl<O, L> From<Node<O, L>> for DTreeClassifier<O, L> {
+impl From<Node> for DTreeClassifier {
     #[inline]
-    fn from(root: Node<O, L>) -> Self {
+    fn from(root: Node) -> Self {
         Self { root }
     }
 }
 
 
-impl<O, D, L> Classifier<D, L> for DTreeClassifier<O, L>
-    where D: Data<Output = O>,
-          L: PartialEq + Clone,
-          O: PartialOrd
-{
-    fn predict(&self, data: &D) -> L {
-        self.root.predict(data)
+impl Classifier for DTreeClassifier {
+    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
+        self.root.predict(data, row)
     }
 }
 

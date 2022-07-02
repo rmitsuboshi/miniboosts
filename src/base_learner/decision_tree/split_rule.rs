@@ -1,5 +1,5 @@
 //! This file defines split rules for decision tree.
-use crate::Data;
+use polars::prelude::*;
 
 
 use serde::*;
@@ -16,39 +16,45 @@ pub enum LR {
 /// Defines the splitting rules.
 /// Currently, you can use the stump rule.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum SplitRule<O> {
+pub enum SplitRule {
     /// If data[j] < threshold then go left and go right otherwise.
-    Stump(StumpSplit<O>),
+    Stump(StumpSplit),
+}
+
+
+impl SplitRule {
+    pub(super) fn create_stump(name: &str, threshold: f64) -> Self {
+        let feature = name.to_string();
+        let stump = StumpSplit {
+            feature,
+            threshold,
+        };
+        Self::Stump(stump)
+    }
 }
 
 
 /// Defines the split based on a feature.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct StumpSplit<O> {
-    index:     usize,
-    threshold: O,
+pub struct StumpSplit {
+    feature: String,
+    threshold: f64,
 }
 
 
-impl<O> From<(usize, O)> for StumpSplit<O> {
-    #[inline]
-    fn from((index, threshold): (usize, O)) -> Self {
-        Self { index, threshold }
-    }
-}
 
 
-impl<O> SplitRule<O>
-    where O: PartialOrd,
-{
+impl SplitRule {
     /// Defines the splitting.
     #[inline]
-    pub fn split<D>(&self, data: &D) -> LR
-        where D: Data<Output = O>
-    {
+    pub fn split(&self, data: &DataFrame, row: usize) -> LR {
         match self {
             SplitRule::Stump(ref stump) => {
-                let value = data.value_at(stump.index);
+                let name = stump.feature.as_ref();
+                let value = data[name]
+                    .f64()
+                    .expect("The target class df[{name}] is not an dtype f64")
+                    .get(row).unwrap();
 
                 if value < stump.threshold {
                     LR::Left
@@ -59,5 +65,3 @@ impl<O> SplitRule<O>
         }
     }
 }
-
-

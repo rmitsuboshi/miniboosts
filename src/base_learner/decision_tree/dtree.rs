@@ -1,7 +1,8 @@
+use polars::prelude::*;
+
 use rand::prelude::*;
 use rand::rngs::StdRng;
 
-use crate::{DataBounds, Data, Sample};
 use crate::BaseLearner;
 
 
@@ -13,7 +14,6 @@ use super::train_node::*;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::marker::PhantomData;
 use std::collections::HashMap;
 
 
@@ -29,20 +29,18 @@ pub enum Split {
 
 /// Generates a `DTreeClassifier` for a given distribution
 /// over examples.
-pub struct DTree<L> {
+pub struct DTree {
     rng: RefCell<StdRng>,
     criterion: Criterion,
     split_rule: Split,
     train_ratio: f64,
-    _phantom: PhantomData<L>,
 }
 
 
-impl<L> DTree<L> {
+impl DTree {
     /// Initialize `DTree`.
     #[inline]
-    pub fn init<D>(_sample: &Sample<D, L>) -> Self
-    {
+    pub fn init(_df: &DataFrame) -> Self {
         let seed: u64 = 0;
         let rng = RefCell::new(SeedableRng::seed_from_u64(seed));
         let criterion = Criterion::Entropy;
@@ -53,7 +51,6 @@ impl<L> DTree<L> {
             criterion,
             split_rule,
             train_ratio,
-            _phantom: PhantomData
         }
     }
 
@@ -61,8 +58,7 @@ impl<L> DTree<L> {
     /// Initialize the RNG by `seed`.
     /// If you don't use this method, 
     /// `DTree` initializes RNG by `0_u64`.
-    pub fn seed(&self, seed: u64)
-    {
+    pub fn seed(&self, seed: u64) {
         let rng: StdRng = SeedableRng::seed_from_u64(seed);
         *self.rng.borrow_mut() = rng;
     }
@@ -92,18 +88,15 @@ impl<L> DTree<L> {
 }
 
 
-impl<O, D, L> BaseLearner<D, L> for DTree<L>
-    where D: Data<Output = O>,
-          L: PartialEq + Eq + std::hash::Hash + Clone,
-          O: PartialOrd + Clone + DataBounds
-{
-    type Clf = DTreeClassifier<O, L>;
+impl BaseLearner for DTree {
+    type Clf = DTreeClassifier;
     fn produce(&self,
-               sample: &Sample<D, L>,
+               data: &DataFrame,
+               target: &Series,
                distribution: &[f64])
         -> Self::Clf
     {
-        let m = sample.len();
+        let (m, _) = data.shape();
 
 
         let mut indices = (0..m).into_iter()
@@ -124,7 +117,8 @@ impl<O, D, L> BaseLearner<D, L> for DTree<L>
         let mut tree = match self.split_rule {
             Split::Feature =>
                 stump_fulltree(
-                    sample,
+                    data,
+                    target,
                     distribution,
                     train_indices,
                     test_indices,
@@ -150,86 +144,73 @@ impl<O, D, L> BaseLearner<D, L> for DTree<L>
 /// Construct a full binary tree
 /// that perfectly classify the given examples.
 #[inline]
-fn stump_fulltree<O, D, L>(sample:     &Sample<D, L>,
-                           dist:       &[f64],
-                           train:       Vec<usize>,
-                           test:        Vec<usize>,
-                           criterion:   Criterion)
-    -> Rc<RefCell<TrainNode<O, L>>>
-    where D: Data<Output = O>,
-          L: PartialEq + Eq + std::hash::Hash + Clone,
-          O: PartialOrd + Clone + DataBounds,
+fn stump_fulltree(data: &DataFrame,
+                  target: &Series,
+                  dist: &[f64],
+                  train: Vec<usize>,
+                  test: Vec<usize>,
+                  criterion: Criterion)
+    -> Rc<RefCell<TrainNode>>
 {
-    let (label, train_node_err) = calc_train_err(sample, dist, &train[..]);
+    // Compute the best prediction that minimizes the training error
+    // on this node.
+    let (pred, train_err) = calc_train_err(target, dist, &train[..]);
 
 
-    let test_node_err = calc_test_err(sample, dist, &test[..], &label);
+    let test_err = calc_test_err(target, dist, &test[..], pred);
 
 
-    let node_err = NodeError::from((train_node_err, test_node_err));
+    let node_err = NodeError::from((train_err, test_err));
 
 
-    // Compute the node impurity
-    let (mut best_split, mut best_decrease) = find_best_split(
-        sample, &dist[..], &train[..], 0
-    );
+    let (_, feature, threshold) = data.get_columns()
+        .into_iter()
+        .map(|column| {
+            let (thr, dec) = find_best_split(
+                column, target, &dist[..], &train[..]
+            );
+            (dec, column.name(), thr)
+        })
+        .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+        .expect("No feature that descrease impurity");
 
 
-    let mut best_index = 0_usize;
+    let rule = SplitRule::create_stump(feature, threshold);
 
 
-    let dim = sample.dim();
-    for j in 1..dim {
-
-        let (split, decrease) = find_best_split(
-            sample, &dist[..], &train[..], j
-        );
-
-
-        if decrease <= best_decrease {
-            best_index    = j;
-            best_split    = split;
-            best_decrease = decrease;
+    let mut ltrain = Vec::new();
+    let mut rtrain = Vec::new();
+    for i in train.into_iter() {
+        match rule.split(data, i) {
+            LR::Left  => { ltrain.push(i); },
+            LR::Right => { rtrain.push(i); },
         }
     }
 
 
-    let rule = SplitRule::Stump(StumpSplit::from((best_index, best_split)));
-
-
-    let (ltrain, rtrain) = train.into_iter()
-        .fold((Vec::new(), Vec::new()), |(mut l, mut r), i| {
-            let (x, _) = &sample[i];
-            match rule.split(x) {
-                LR::Left  => { l.push(i); },
-                LR::Right => { r.push(i); }
-            }
-            (l, r)
-        });
-    let (ltest, rtest) = test.into_iter()
-        .fold((Vec::new(), Vec::new()), |(mut l, mut r), i| {
-            let (x, _) = &sample[i];
-            match rule.split(x) {
-                LR::Left  => { l.push(i); },
-                LR::Right => { r.push(i); }
-            }
-            (l, r)
-        });
+    let mut ltest = Vec::new();
+    let mut rtest = Vec::new();
+    for i in test.into_iter() {
+        match rule.split(data, i) {
+            LR::Left  => { ltest.push(i); },
+            LR::Right => { rtest.push(i); },
+        }
+    }
 
 
     // If the split has no meaning, construct a leaf node.
     if ltrain.is_empty() || rtrain.is_empty() {
-        let leaf = TrainNode::leaf(label, node_err);
+        let leaf = TrainNode::leaf(pred, node_err);
         return Rc::new(RefCell::new(leaf));
     }
 
 
-    let left = stump_fulltree(sample, dist, ltrain, ltest, criterion);
-    let right = stump_fulltree(sample, dist, rtrain, rtest, criterion);
+    let left = stump_fulltree(data, target, dist, ltrain, ltest, criterion);
+    let right = stump_fulltree(data, target, dist, rtrain, rtest, criterion);
 
 
     Rc::new(RefCell::new(TrainNode::branch(
-        rule, left, right, label, node_err
+        rule, left, right, pred, node_err
     )))
 }
 
@@ -237,47 +218,63 @@ fn stump_fulltree<O, D, L>(sample:     &Sample<D, L>,
 /// Returns the best split
 /// that maximizes the decrease of impurity.
 #[inline]
-fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
-                            dist:    &[f64],
-                            indices: &[usize],
-                            index:    usize)
-    -> (O, Impurity)
-    where D: Data<Output = O>,
-          O: PartialOrd + DataBounds,
-          L: PartialEq + Eq + std::hash::Hash + Clone,
+fn find_best_split(data: &Series,
+                   label: &Series,
+                   dist: &[f64],
+                   indices: &[usize])
+    -> (f64, Impurity)
 {
-    // Sort the indices by the values in `sample` of type `D`.
-    let mut indices = indices.into_iter()
-        .map(|&i| i)
-        .collect::<Vec<_>>();
+    let label = label.i64()
+        .expect("The target class is not an dtype i64");
 
+
+    let data = data.f64().unwrap();
+
+
+    let mut indices = indices.to_vec();
     indices.sort_by(|&i, &j| {
-        let (xi, _) = &sample[i];
-        let (xj, _) = &sample[j];
-        xi.value_at(index)
-            .partial_cmp(&xj.value_at(index))
-            .unwrap()
+        let xi = data.get(i).unwrap();
+        let xj = data.get(j).unwrap();
+        xi.partial_cmp(&xj).unwrap()
     });
 
 
     let total_weight = indices.iter()
         .fold(0.0, |acc, &i| acc + dist[i]);
-    let mut left  = TempNodeInfo::empty();
-    let mut right = TempNodeInfo::new(sample, dist, &indices[..]);
+    let mut left = TempNodeInfo::empty();
+    let mut right = TempNodeInfo::new(label, dist, &indices[..]);
 
 
     // These variables are used for the best splitting rules.
     let mut best_decrease = right.entropic_impurity();
-    let mut best_split = O::min_value();
+    let mut best_split = f64::MIN;
 
 
     let mut iter = indices.into_iter().peekable();
 
     while let Some(i) = iter.next() {
-        let (_, y) = &sample[i];
+        let old_val = data.get(i).unwrap();
+        let y = label.get(i).unwrap();
         let weight = dist[i];
-        left.insert(y.clone(), weight);
-        right.delete(y.clone(), weight);
+        left.insert(y, weight);
+        right.delete(y, weight);
+
+
+        let mut new_val = f64::MAX;
+        while let Some(&j) = iter.peek() {
+            new_val = data.get(j).unwrap();
+            if new_val != old_val { break; }
+
+            let yj = label.get(j).unwrap();
+            let wj = dist[j];
+            left.insert(yj, wj);
+            right.delete(yj, wj);
+
+            iter.next();
+        }
+
+
+        let threshold = old_val * 0.5 + new_val * 0.5;
 
 
         let lp = left.total / total_weight;
@@ -290,13 +287,7 @@ fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
 
         if decrease < best_decrease {
             best_decrease = decrease;
-            best_split = match iter.peek() {
-                Some(&j) => {
-                    let (data, _) = &sample[j];
-                    data.value_at(index)
-                },
-                None => O::max_value()
-            };
+            best_split = threshold;
         }
     }
 
@@ -306,22 +297,18 @@ fn find_best_split<D, O, L>(sample:  &Sample<D, L>,
 
 
 /// Some informations that are useful in `produce(..)`.
-struct TempNodeInfo<L>
-    where L: std::hash::Hash + PartialEq + Eq
-{
-    map:   HashMap<L, f64>,
+struct TempNodeInfo {
+    map: HashMap<i64, f64>,
     total: f64,
 }
 
 
-impl<L> TempNodeInfo<L>
-    where L: std::hash::Hash + PartialEq + Eq + Clone
-{
+impl TempNodeInfo {
     /// Build an empty instance of `TempNodeInfo`.
     #[inline(always)]
     pub(self) fn empty() -> Self {
         Self {
-            map:   HashMap::new(),
+            map: HashMap::new(),
             total: 0.0_f64,
         }
     }
@@ -329,15 +316,14 @@ impl<L> TempNodeInfo<L>
 
     /// Build an instance of `TempNodeInfo`.
     #[inline(always)]
-    pub(self) fn new<D>(sample:  &Sample<D, L>,
-                        dist:    &[f64],
-                        indices: &[usize])
+    pub(self) fn new(label: &ChunkedArray<Int64Type>,
+                     dist: &[f64],
+                     indices: &[usize])
         -> Self
     {
         let map = indices.iter()
             .fold(HashMap::new(), |mut mp, &i| {
-                let (_, l) = &sample[i];
-                let l = l.clone();
+                let l = label.get(i).unwrap();
                 let cnt = mp.entry(l).or_insert(0.0);
                 *cnt += dist[i];
                 mp
@@ -365,7 +351,7 @@ impl<L> TempNodeInfo<L>
 
 
     /// Increase the number of positive examples by one.
-    pub(self) fn insert(&mut self, label: L, weight: f64) {
+    pub(self) fn insert(&mut self, label: i64, weight: f64) {
         let cnt = self.map.entry(label).or_insert(0.0);
         *cnt += weight;
         self.total += weight;
@@ -374,7 +360,7 @@ impl<L> TempNodeInfo<L>
 
 
     /// Decrease the number of positive examples by one.
-    pub(self) fn delete(&mut self, label: L, weight: f64) {
+    pub(self) fn delete(&mut self, label: i64, weight: f64) {
         match self.map.get_mut(&label) {
             Some(key) => { *key -= weight; },
             None => { return; }
@@ -390,18 +376,18 @@ impl<L> TempNodeInfo<L>
 
 
 
-/// Returns the training error
+/// Returns
+/// - a label that minimizes the training error,
+/// - the error.
 #[inline]
-fn calc_train_err<D, L>(sample:  &Sample<D, L>,
-                        dist:    &[f64],
-                        indices: &[usize])
-    -> (L, f64)
-    where L: Eq + std::hash::Hash + Clone
+fn calc_train_err(target: &Series, dist: &[f64], indices: &[usize])
+    -> (i64, f64)
 {
+    let target = target.i64()
+        .expect("The target class df[{s}] is not an dtype i64");
     let mut counter = HashMap::new();
     for &i in indices {
-        let (_, l) = &sample[i];
-        let l = l.clone();
+        let l = target.get(i).unwrap();
         let cnt = counter.entry(l).or_insert(0.0);
         *cnt += dist[i];
     }
@@ -412,7 +398,15 @@ fn calc_train_err<D, L>(sample:  &Sample<D, L>,
 
     // Compute the max (key, val) that has maximal p(j, t)
     let (l, p) = counter.into_iter()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        // .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .max_by(|a, b| {
+            match a.1.partial_cmp(&b.1) {
+                Some(res) => res,
+                None => {
+                    panic!("a.1 is: {}, b.1 is: {}", a.1, b.1);
+                }
+            }
+        })
         .unwrap();
 
 
@@ -430,13 +424,11 @@ fn calc_train_err<D, L>(sample:  &Sample<D, L>,
 
 
 #[inline]
-fn calc_test_err<D, L>(sample:  &Sample<D, L>,
-                       dist:    &[f64],
-                       indices: &[usize],
-                       pred:    &L)
+fn calc_test_err(target: &Series, dist: &[f64], indices: &[usize], pred: i64)
     -> f64
-    where L: Eq
 {
+    let target = target.i64()
+        .expect("The target class df[{s}] is not an dtype i64");
     let total = indices.iter().map(|&i| dist[i]).sum::<f64>();
 
 
@@ -447,7 +439,7 @@ fn calc_test_err<D, L>(sample:  &Sample<D, L>,
 
     let wrong = indices.iter()
         .filter_map(|&i| {
-            let (_, l) = &sample[i];
+            let l = target.get(i).unwrap();
             if l != pred { Some(dist[i]) } else { None }
         })
         .sum::<f64>();
@@ -459,9 +451,7 @@ fn calc_test_err<D, L>(sample:  &Sample<D, L>,
 
 /// Prune the full-binary tree.
 #[inline]
-fn prune<O, L>(root: &mut Rc<RefCell<TrainNode<O, L>>>)
-    where L: Clone
-{
+fn prune(root: &mut Rc<RefCell<TrainNode>>) {
     // Construct the sub-tree that achieves the same training error
     // with fewer leaves.
     Rc::get_mut(root).unwrap()
@@ -491,9 +481,8 @@ fn prune<O, L>(root: &mut Rc<RefCell<TrainNode<O, L>>>)
 
 
 #[inline]
-fn weak_links<O, L>(root: &Rc<RefCell<TrainNode<O, L>>>)
-    -> Vec<Rc<RefCell<TrainNode<O, L>>>>
-    where L: Clone
+fn weak_links(root: &Rc<RefCell<TrainNode>>)
+    -> Vec<Rc<RefCell<TrainNode>>>
 {
     let mut links = Vec::new();
     let mut stack = Vec::from([Rc::clone(root)]);
@@ -524,13 +513,13 @@ fn weak_links<O, L>(root: &Rc<RefCell<TrainNode<O, L>>>)
 use std::cell::Ref;
 use std::ops::Deref;
 
-struct TrainNodeGuard<'a, O, L> {
-    guard: Ref<'a, TrainNode<O, L>>
+struct TrainNodeGuard<'a> {
+    guard: Ref<'a, TrainNode>
 }
 
 
-impl<'b, O, L> Deref for TrainNodeGuard<'b, O, L> {
-    type Target = TrainNode<O, L>;
+impl<'b> Deref for TrainNodeGuard<'b> {
+    type Target = TrainNode;
 
     fn deref(&self) -> &Self::Target {
         &self.guard
@@ -538,10 +527,11 @@ impl<'b, O, L> Deref for TrainNodeGuard<'b, O, L> {
 }
 
 
-pub(self) fn get_ref<O, L>(node: &Rc<RefCell<TrainNode<O, L>>>)
-    -> TrainNodeGuard<O, L>
+pub(self) fn get_ref(node: &Rc<RefCell<TrainNode>>) -> TrainNodeGuard
 {
     TrainNodeGuard {
         guard: node.borrow()
     }
 }
+
+

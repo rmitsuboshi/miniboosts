@@ -1,6 +1,6 @@
 //! Defines the inner representation 
 //! of the Decision Tree class.
-use crate::Data;
+use polars::prelude::*;
 use crate::Classifier;
 
 
@@ -74,40 +74,40 @@ impl From<NodeError> for TreeError {
 
 /// Enumeration of `TrainBranchNode` and `TrainLeafNode`.
 #[derive(Debug)]
-pub enum TrainNode<O, L> {
+pub enum TrainNode {
     /// A node that have two childrens.
-    Branch(TrainBranchNode<O, L>),
+    Branch(TrainBranchNode),
 
 
     /// A node that have no child.
-    Leaf(TrainLeafNode<L>),
+    Leaf(TrainLeafNode),
 }
 
 
 /// Represents the branch nodes of decision tree.
 /// Each `TrainBranchNode` must have two childrens
 #[derive(Debug)]
-pub struct TrainBranchNode<O, L> {
-    pub(super) split_rule: SplitRule<O>,
-    pub(super) left:  Rc<RefCell<TrainNode<O, L>>>,
-    pub(super) right: Rc<RefCell<TrainNode<O, L>>>,
+pub struct TrainBranchNode {
+    pub(super) split_rule: SplitRule,
+    pub(super) left:  Rc<RefCell<TrainNode>>,
+    pub(super) right: Rc<RefCell<TrainNode>>,
 
     // Common members
-    pub(super) prediction: L,
+    pub(super) prediction: i64,
     pub(self) node_err: NodeError,
     pub(self) tree_err: TreeError,
     pub(self) leaves:   usize,
 }
 
 
-impl<O, L> TrainBranchNode<O, L> {
+impl TrainBranchNode {
     /// Returns the `TrainBranchNode` from the given components.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(super) fn from_raw(split_rule: SplitRule<O>,
-                           left:  Rc<RefCell<TrainNode<O, L>>>,
-                           right: Rc<RefCell<TrainNode<O, L>>>,
-                           prediction: L,
+    pub(super) fn from_raw(split_rule: SplitRule,
+                           left:  Rc<RefCell<TrainNode>>,
+                           right: Rc<RefCell<TrainNode>>,
+                           prediction: i64,
                            node_err: NodeError)
         -> Self
     {
@@ -154,7 +154,7 @@ impl<O, L> TrainBranchNode<O, L> {
     /// the construction of a leaf.
     #[inline]
     pub(self) fn into_leaf_component(self)
-        -> (L, NodeError)
+        -> (i64, NodeError)
     {
         (self.prediction, self.node_err)
     }
@@ -163,19 +163,18 @@ impl<O, L> TrainBranchNode<O, L> {
 
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug)]
-pub struct TrainLeafNode<L> {
-    pub(super) prediction: L,
+pub struct TrainLeafNode {
+    pub(super) prediction: i64,
     pub(self) node_err: NodeError,
 }
 
 
-impl<L> TrainLeafNode<L> {
+impl TrainLeafNode {
     /// Returns a `TrainLeafNode` that predicts the label
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(super) fn from_raw(prediction: L,
-                           node_err: NodeError)
+    pub(super) fn from_raw(prediction: i64, node_err: NodeError)
         -> Self
     {
         Self {
@@ -186,19 +185,19 @@ impl<L> TrainLeafNode<L> {
 }
 
 
-impl<O, L> From<TrainBranchNode<O, L>> for TrainLeafNode<L> {
+impl From<TrainBranchNode> for TrainLeafNode {
     #[inline]
-    fn from(branch: TrainBranchNode<O, L>) -> TrainLeafNode<L> {
+    fn from(branch: TrainBranchNode) -> TrainLeafNode {
         let (p, node_err) = branch.into_leaf_component();
         TrainLeafNode::from_raw(p, node_err)
     }
 }
 
 
-impl<O, L> TrainNode<O, L> {
+impl TrainNode {
     /// Construct a leaf node from the given arguments.
     #[inline]
-    pub(super) fn leaf(prediction: L, node_err: NodeError)
+    pub(super) fn leaf(prediction: i64, node_err: NodeError)
         -> Self
     {
         let leaf = TrainLeafNode::from_raw(
@@ -210,10 +209,10 @@ impl<O, L> TrainNode<O, L> {
 
     /// Construct a branch node from the arguments.
     #[inline]
-    pub(super) fn branch(rule: SplitRule<O>,
-                         left:  Rc<RefCell<TrainNode<O, L>>>,
-                         right: Rc<RefCell<TrainNode<O, L>>>,
-                         prediction: L,
+    pub(super) fn branch(rule: SplitRule,
+                         left:  Rc<RefCell<TrainNode>>,
+                         right: Rc<RefCell<TrainNode>>,
+                         prediction: i64,
                          node_err: NodeError)
         -> Self
     {
@@ -280,9 +279,7 @@ impl<O, L> TrainNode<O, L> {
     /// This method removes the leaves that do not affect
     /// the training error.
     #[inline]
-    pub(super) fn pre_process(&mut self)
-        where L: Clone
-    {
+    pub(super) fn pre_process(&mut self) {
 
         if let TrainNode::Branch(ref mut branch) = self {
             let left  = branch.left.borrow().node_error();
@@ -291,7 +288,7 @@ impl<O, L> TrainNode<O, L> {
 
             if branch.node_err.train == left.train + right.train {
                 *self = TrainNode::leaf(
-                    branch.prediction.clone(),
+                    branch.prediction,
                     branch.node_err,
                 );
             } else {
@@ -303,12 +300,10 @@ impl<O, L> TrainNode<O, L> {
 
 
     #[inline]
-    pub(super) fn prune(&mut self)
-        where L: Clone
-    {
+    pub(super) fn prune(&mut self) {
         if let TrainNode::Branch(ref mut branch) = self {
             *self = TrainNode::leaf(
-                branch.prediction.clone(),
+                branch.prediction,
                 branch.node_err,
             );
         }
@@ -316,42 +311,31 @@ impl<O, L> TrainNode<O, L> {
 }
 
 
-impl<D, L> Classifier<D, L> for TrainLeafNode<L>
-    where D: Data,
-          L: PartialEq + Clone,
-{
+impl Classifier for TrainLeafNode {
     #[inline]
-    fn predict(&self, _data: &D) -> L {
-        self.prediction.clone()
+    fn predict(&self, _data: &DataFrame, _row: usize) -> i64 {
+        self.prediction
     }
 }
 
 
-impl<D, L, O> Classifier<D, L> for TrainBranchNode<O, L>
-    where D: Data<Output = O>,
-          L: PartialEq + Clone,
-          O: PartialOrd,
-{
+impl Classifier for TrainBranchNode {
     #[inline]
-    fn predict(&self, data: &D) -> L {
-        match self.split_rule.split(data) {
-            LR::Left  => self.left.borrow().predict(data),
-            LR::Right => self.right.borrow().predict(data)
+    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
+        match self.split_rule.split(data, row) {
+            LR::Left  => self.left.borrow().predict(data, row),
+            LR::Right => self.right.borrow().predict(data, row)
         }
     }
 }
 
 
-impl<D, L, O> Classifier<D, L> for TrainNode<O, L>
-    where D: Data<Output = O>,
-          L: PartialEq + Clone,
-          O: PartialOrd,
-{
+impl Classifier for TrainNode {
     #[inline]
-    fn predict(&self, data: &D) -> L {
+    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
         match self {
-            TrainNode::Branch(ref node) => node.predict(data),
-            TrainNode::Leaf(ref node)   => node.predict(data)
+            TrainNode::Branch(ref node) => node.predict(data, row),
+            TrainNode::Leaf(ref node) => node.predict(data, row)
         }
     }
 }

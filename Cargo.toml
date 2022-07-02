@@ -12,3 +12,4 @@ rand       = "*"
 rayon      = "*"
 serde      = { version = "1.0", features = ["rc", "derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+polars     = { git = "https://github.com/pola-rs/polars" }

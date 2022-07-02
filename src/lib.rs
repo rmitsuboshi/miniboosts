@@ -105,19 +105,18 @@
 //! I'm working on for implementing the LP & QP solver.
 //! Please looking forward to the future updates.
 
-pub mod data_type;
-pub mod data_reader;
+// pub mod data_type;
+// pub mod data_reader;
 pub mod classifier;
 pub mod booster;
 pub mod base_learner;
 
 // Export struct `Sample`.
-pub use data_type::{Sample, Data, DataBounds};
-// pub use data_type::{Sample, Data, Label, DataBounds};
+// pub use data_type::{Sample, Data, DataBounds};
 
 
 // Export functions that reads file with some format.
-pub use data_reader::{read_csv, read_libsvm};
+// pub use data_reader::{read_csv, read_libsvm};
 
 
 // Export the `Classifier` trait.
@@ -130,28 +129,28 @@ pub use booster::Booster;
 
 // Export the boosting algorithms that minimizes the empirical loss.
 pub use booster::AdaBoost;
-
-
-// // Export the boosting algorithms that maximizes the hard margin.
-pub use booster::{AdaBoostV, TotalBoost};
 // 
 // 
-// Export the boosting algorithms that maximizes the soft margin.
-pub use booster::{LPBoost, ERLPBoost, SoftBoost, CERLPBoost};
-// 
-// 
+// // // Export the boosting algorithms that maximizes the hard margin.
+// pub use booster::{AdaBoostV, TotalBoost};
+// // 
+// // 
+// // Export the boosting algorithms that maximizes the soft margin.
+// pub use booster::{LPBoost, ERLPBoost, SoftBoost, CERLPBoost};
+// // 
+// // 
 // Export the `BaseLearner` trait.
 pub use base_learner::BaseLearner;
-// 
-// 
+// // 
+// // 
 // Export the instances of the `BaseLearner` trait.
-pub use base_learner::DStump;
 pub use base_learner::DTree;
-
-
-// Export the instances of the `Classifier` trait.
-// The `CombinedClassifier` is the output of the `Boosting::run(..)`.
-pub use base_learner::DStumpClassifier;
-pub use base_learner::DTreeClassifier;
+// pub use base_learner::DStump;
+// 
+// 
+// // Export the instances of the `Classifier` trait.
+// // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
+// pub use base_learner::DStumpClassifier;
+// pub use base_learner::DTreeClassifier;
 
 
