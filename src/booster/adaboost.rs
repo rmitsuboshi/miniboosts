@@ -1,8 +1,8 @@
 //! Provides `AdaBoost` by Freund & Schapire, 1995.
+use polars::prelude::*;
 use rayon::prelude::*;
 
 
-use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -33,9 +33,10 @@ impl AdaBoost {
     /// 
     /// let booster = AdaBoost::init(&sample);
     /// ```
-    pub fn init<D, L>(sample: &Sample<D, L>) -> AdaBoost {
-        let m = sample.len();
-        assert!(m != 0);
+    pub fn init(df: &DataFrame) -> Self {
+        assert!(!df.is_empty());
+        let (m, _) = df.shape();
+
         let uni = 1.0 / m as f64;
         AdaBoost {
             dist: vec![uni; m],
@@ -74,7 +75,7 @@ impl AdaBoost {
     pub fn max_loop(&self, eps: f64) -> u64 {
         let m = self.dist.len();
 
-        ((m as f64).ln() / (eps * eps)) as u64
+        ((m as f64).ln() / eps.powi(2)) as u64
     }
 
 
@@ -83,7 +84,7 @@ impl AdaBoost {
     #[inline]
     fn update_params(&mut self,
                      margins: Vec<f64>,
-                     edge:    f64)
+                     edge: f64)
         -> f64
     {
         let m = self.dist.len();
@@ -120,6 +121,7 @@ impl AdaBoost {
         }
 
 
+
         // Update the distribution
         self.dist.par_iter_mut()
             .for_each(|d| *d = (*d - normalizer).exp());
@@ -130,20 +132,19 @@ impl AdaBoost {
 }
 
 
-impl<D, L, C> Booster<D, L, C> for AdaBoost
-    where D: Data,
-          L: PartialEq,
-          C: Classifier<D, L> + Eq + PartialEq,
+impl<C> Booster<C> for AdaBoost
+    where C: Classifier,
 {
-    fn run<B>(&mut self, 
+    fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, L>,
-              eps:          f64)
-        -> CombinedClassifier<D, L, C>
-        where B: BaseLearner<D, L, Clf = C>,
+              data: &DataFrame,
+              target: &Series,
+              eps: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>,
     {
         // Initialize parameters
-        let m = sample.len();
+        let (m, _) = data.shape();
         let uni = 1.0 / m as f64;
         self.dist = vec![uni; m];
 
@@ -155,15 +156,16 @@ impl<D, L, C> Booster<D, L, C> for AdaBoost
 
         for _t in 1..=max_loop {
             // Get a new hypothesis
-            let h = base_learner.produce(sample, &self.dist);
+            let h = base_learner.produce(data, &target, &self.dist);
 
 
             // Each element in `margins` is the product of
             // the predicted vector and the correct vector
-            let margins = sample.iter()
-                .map(|(dat, lab)|
-                    if *lab == h.predict(dat) { 1.0 } else { -1.0 }
-                )
+            let margins = target.i64()
+                .expect("The target class is not an dtype i64")
+                .into_iter()
+                .enumerate()
+                .map(|(i, y)| (y.unwrap() * h.predict(data, i)) as f64)
                 .collect::<Vec<f64>>();
 
 
@@ -175,8 +177,9 @@ impl<D, L, C> Booster<D, L, C> for AdaBoost
 
             // If `h` predicted all the examples in `sample` correctly,
             // use it as the combined classifier.
-            if edge >= 1.0 {
-                weighted_classifier = vec![(1.0, h)];
+            println!("edge: {}", edge);
+            if edge.abs() >= 1.0 {
+                weighted_classifier = vec![(edge.signum(), h)];
                 println!("Break loop after: {_t} iterations");
                 break;
             }

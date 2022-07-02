@@ -14,67 +14,62 @@
 //! 
 //! I'm planning to implement the code for the general base learner setting.
 //! 
-// use crate::{Data, Label};
-use crate::Data;
+use polars::prelude::*;
 use serde::{Serialize, Deserialize};
 
 
 
 /// A trait that defines the function used in the combined classifier
 /// of the boosting algorithms.
-pub trait Classifier<D, L> {
+pub trait Classifier {
 
     /// Predicts the label of the given example of type `T`.
-    fn predict(&self, example: &D) -> L;
+    fn predict(&self, df: &DataFrame, row: usize) -> i64;
 
 
     /// Predicts the labels of the given examples of type `T`.
-    fn predict_all(&self, examples: &[D]) -> Vec<L>
+    fn predict_all(&self, df: &DataFrame) -> Vec<i64>
     {
-        examples.iter()
-                .map(|example| self.predict(example))
-                .collect()
+        let (h, _) = df.shape();
+        (0..h).into_iter()
+            .map(|row| self.predict(df, row))
+            .collect::<Vec<_>>()
     }
 }
 
-
-use std::marker::PhantomData;
 
 /// A struct that the boosting algorithms in this library return.
 /// You can read/write this struct by `Serde` trait.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CombinedClassifier<D, L, C>
-{
+pub struct CombinedClassifier<C> {
     /// Each element is the pair of hypothesis and its weight
     pub inner: Vec<(f64, C)>,
-    _phantom:  PhantomData<(D, L)>,
 }
 
 
-impl<D, L, C> From<Vec<(f64, C)>> for CombinedClassifier<D, L, C>
+impl<C> From<Vec<(f64, C)>> for CombinedClassifier<C>
 {
     fn from(inner: Vec<(f64, C)>) -> Self {
-        CombinedClassifier {
-            inner,
-            _phantom: PhantomData
-        }
+        CombinedClassifier { inner }
     }
 }
 
 
-impl<D, L, C> Classifier<D, L> for CombinedClassifier<D, L, C>
-    where D: Data,
-          L: Into<f64> + From<f64>,
-          C: Classifier<D, L>,
+use std::collections::HashMap;
+impl<C> Classifier for CombinedClassifier<C>
+    where C: Classifier,
 {
-    fn predict(&self, example: &D) -> L
+    fn predict(&self, df: &DataFrame, row: usize) -> i64
     {
-        let p = self.inner
-            .iter()
-            .fold(0.0, |acc, (w, h)| acc + *w * h.predict(example).into())
-            .signum();
+        let mut map: HashMap<i64, f64> = HashMap::new();
+        for (w, h) in self.inner.iter() {
+            let p = h.predict(df, row);
+            *map.entry(p).or_insert(0.0) += *w;
+        }
 
-        L::from(p)
+        map.into_iter()
+            .max_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
+            .expect("No hypothesis in `self`").0
     }
 }
 

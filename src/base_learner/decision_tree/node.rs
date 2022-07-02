@@ -1,6 +1,6 @@
 //! Defines the inner representation 
 //! of the Decision Tree class.
-use crate::Data;
+use polars::prelude::*;
 use crate::Classifier;
 
 
@@ -79,33 +79,33 @@ pub enum Criterion {
 
 /// Enumeration of `BranchNode` and `LeafNode`.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum Node<O, L> {
+pub enum Node {
     /// A node that have two childrens.
-    Branch(BranchNode<O, L>),
+    Branch(BranchNode),
 
 
     /// A node that have no child.
-    Leaf(LeafNode<L>),
+    Leaf(LeafNode),
 }
 
 
 /// Represents the branch nodes of decision tree.
 /// Each `BranchNode` must have two childrens
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct BranchNode<O, L> {
-    pub(self) split_rule: SplitRule<O>,
-    pub(self) left_node:  Box<Node<O, L>>,
-    pub(self) right_node: Box<Node<O, L>>,
+pub struct BranchNode {
+    pub(self) split_rule: SplitRule,
+    pub(self) left_node:  Box<Node>,
+    pub(self) right_node: Box<Node>,
 }
 
 
-impl<O, L> BranchNode<O, L> {
+impl BranchNode {
     /// Returns the `BranchNode` from the given components.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(split_rule: SplitRule<O>,
-                           left_node:  Box<Node<O, L>>,
-                           right_node: Box<Node<O, L>>)
+    pub(crate) fn from_raw(split_rule: SplitRule,
+                           left_node:  Box<Node>,
+                           right_node: Box<Node>)
         -> Self
     {
         Self {
@@ -119,25 +119,25 @@ impl<O, L> BranchNode<O, L> {
 
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct LeafNode<L> {
-    pub(self) prediction: L,
+pub struct LeafNode {
+    pub(self) prediction: i64,
 }
 
 
-impl<L> LeafNode<L> {
+impl LeafNode {
     /// Returns a `LeafNode` that predicts the label
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(prediction: L) -> Self {
+    pub(crate) fn from_raw(prediction: i64) -> Self {
         Self { prediction }
     }
 }
 
 
-impl<O, L> From<TrainBranchNode<O, L>> for BranchNode<O, L> {
+impl From<TrainBranchNode> for BranchNode {
     #[inline]
-    fn from(branch: TrainBranchNode<O, L>) -> Self {
+    fn from(branch: TrainBranchNode) -> Self {
 
         let left = match Rc::try_unwrap(branch.left) {
             Ok(l) => l.into_inner().into(),
@@ -157,17 +157,17 @@ impl<O, L> From<TrainBranchNode<O, L>> for BranchNode<O, L> {
 }
 
 
-impl<L> From<TrainLeafNode<L>> for LeafNode<L> {
+impl From<TrainLeafNode> for LeafNode {
     #[inline]
-    fn from(leaf: TrainLeafNode<L>) -> Self {
+    fn from(leaf: TrainLeafNode) -> Self {
         Self::from_raw(leaf.prediction)
     }
 }
 
 
-impl<O, L> From<TrainNode<O, L>> for Node<O, L> {
+impl From<TrainNode> for Node {
     #[inline]
-    fn from(train_node: TrainNode<O, L>) -> Self {
+    fn from(train_node: TrainNode) -> Self {
         match train_node {
             TrainNode::Branch(node) => {
                 Node::Branch(node.into())
@@ -180,42 +180,31 @@ impl<O, L> From<TrainNode<O, L>> for Node<O, L> {
 }
 
 
-impl<D, L> Classifier<D, L> for LeafNode<L>
-    where D: Data,
-          L: PartialEq + Clone,
-{
+impl Classifier for LeafNode {
     #[inline]
-    fn predict(&self, _data: &D) -> L {
-        self.prediction.clone()
+    fn predict(&self, _data: &DataFrame, _row: usize) -> i64 {
+        self.prediction
     }
 }
 
 
-impl<D, L, O> Classifier<D, L> for BranchNode<O, L>
-    where D: Data<Output = O>,
-          L: PartialEq + Clone,
-          O: PartialOrd,
-{
+impl Classifier for BranchNode {
     #[inline]
-    fn predict(&self, data: &D) -> L {
-        match self.split_rule.split(data) {
-            LR::Left  => self.left_node.predict(data),
-            LR::Right => self.right_node.predict(data)
+    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
+        match self.split_rule.split(data, row) {
+            LR::Left => self.left_node.predict(data, row),
+            LR::Right => self.right_node.predict(data, row)
         }
     }
 }
 
 
-impl<D, L, O> Classifier<D, L> for Node<O, L>
-    where D: Data<Output = O>,
-          L: PartialEq + Clone,
-          O: PartialOrd,
-{
+impl Classifier for Node {
     #[inline]
-    fn predict(&self, data: &D) -> L {
+    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
         match self {
-            Node::Branch(ref node) => node.predict(data),
-            Node::Leaf(ref node)   => node.predict(data)
+            Node::Branch(ref node) => node.predict(data, row),
+            Node::Leaf(ref node)   => node.predict(data, row)
         }
     }
 }
