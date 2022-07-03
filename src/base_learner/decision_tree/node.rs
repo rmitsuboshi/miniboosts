@@ -94,8 +94,8 @@ pub enum Node {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BranchNode {
     pub(self) split_rule: SplitRule,
-    pub(self) left_node:  Box<Node>,
-    pub(self) right_node: Box<Node>,
+    pub(self) left: Box<Node>,
+    pub(self) right: Box<Node>,
 }
 
 
@@ -104,14 +104,14 @@ impl BranchNode {
     /// Note that this function does not assign the impurity.
     #[inline]
     pub(crate) fn from_raw(split_rule: SplitRule,
-                           left_node:  Box<Node>,
-                           right_node: Box<Node>)
+                           left: Box<Node>,
+                           right: Box<Node>)
         -> Self
     {
         Self {
             split_rule,
-            left_node,
-            right_node,
+            left,
+            right,
         }
     }
 }
@@ -192,8 +192,8 @@ impl Classifier for BranchNode {
     #[inline]
     fn predict(&self, data: &DataFrame, row: usize) -> i64 {
         match self.split_rule.split(data, row) {
-            LR::Left => self.left_node.predict(data, row),
-            LR::Right => self.right_node.predict(data, row)
+            LR::Left => self.left.predict(data, row),
+            LR::Right => self.right.predict(data, row)
         }
     }
 }
@@ -204,7 +204,7 @@ impl Classifier for Node {
     fn predict(&self, data: &DataFrame, row: usize) -> i64 {
         match self {
             Node::Branch(ref node) => node.predict(data, row),
-            Node::Leaf(ref node)   => node.predict(data, row)
+            Node::Leaf(ref node) => node.predict(data, row)
         }
     }
 }

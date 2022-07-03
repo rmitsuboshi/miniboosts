@@ -1,8 +1,8 @@
 //! Provides the `AdaBoost*` by Rätsch & Warmuth, 2005.
+use polars::prelude::*;
 use rayon::prelude::*;
 
 
-use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -17,16 +17,16 @@ use crate::Booster;
 /// - `dist` is the distribution over training examples,
 pub struct AdaBoostV {
     tolerance: f64,
-    rho:       f64,
-    gamma:     f64,
-    dist:      Vec<f64>,
+    rho: f64,
+    gamma: f64,
+    dist: Vec<f64>,
 }
 
 
 impl AdaBoostV {
     /// Initialize the `AdaBoostV<D, L>`.
-    pub fn init<D, L>(sample: &Sample<D, L>) -> AdaBoostV {
-        let m = sample.len();
+    pub fn init(df: &DataFrame) -> Self {
+        let (m, _) = df.shape();
         assert!(m != 0);
 
 
@@ -56,7 +56,7 @@ impl AdaBoostV {
     /// of the `AdaBoostV` to find a combined hypothesis
     /// that has error at most `eps`.
     /// After the `self.max_loop()` iterations,
-    /// `AdaBoostV` guarantees no miss-classification on `sample<T>`
+    /// `AdaBoostV` guarantees no miss-classification on `data`
     /// if the training examples are linearly separable.
     /// 
     /// # Example
@@ -99,7 +99,7 @@ impl AdaBoostV {
 
         // Update edge & margin estimation parameters
         self.gamma = edge.min(self.gamma);
-        self.rho   = self.gamma - self.tolerance;
+        self.rho = self.gamma - self.tolerance;
 
 
         let weight = {
@@ -143,22 +143,21 @@ impl AdaBoostV {
 }
 
 
-impl<D, L, C> Booster<D, L, C> for AdaBoostV
-    where D: Data,
-          L: Clone + Into<f64>,
-          C: Classifier<D, L> + Eq + PartialEq,
+impl<C> Booster<C> for AdaBoostV
+    where C: Classifier,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, L>,
-              eps:          f64)
-        -> CombinedClassifier<D, L, C>
-        where B: BaseLearner<D, L, Clf = C>,
+              data: &DataFrame,
+              target: &Series,
+              eps: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>,
     {
         // Initialize parameters
-        let m = sample.len();
+        let (m, _) = data.shape();
         self.dist = vec![1.0 / m as f64; m];
         self.set_tolerance(eps);
 
@@ -170,31 +169,29 @@ impl<D, L, C> Booster<D, L, C> for AdaBoostV
 
         for _t in 1..=max_loop {
             // Get a new hypothesis
-            let h = base_learner.produce(sample, &self.dist);
+            let h = base_learner.produce(data, target, &self.dist);
 
 
             // Each element in `predictions` is the product of
             // the predicted vector and the correct vector
-            let margins = sample.iter()
-                .map(|(dat, lab)| {
-                    let l: f64 = lab.clone().into();
-                    let p: f64 = h.predict(dat).into();
-                    l * p
-                })
+            let margins = target.i64()
+                .expect("The target class is not an dtype i64")
+                .into_iter()
+                .enumerate()
+                .map(|(i, y)| (y.unwrap() * h.predict(data, i)) as f64)
                 .collect::<Vec<f64>>();
 
 
-            let edge = margins.par_iter()
-                .zip(self.dist.par_iter())
+            let edge = margins.iter()
+                .zip(&self.dist[..])
                 .map(|(&yh, &d)| yh * d)
                 .sum::<f64>();
 
 
-            // If `h` predicted all the examples in `sample` correctly,
+            // If `h` predicted all the examples in `data` correctly,
             // use it as the combined classifier.
             if edge.abs() >= 1.0 {
-                let sgn = edge.signum();
-                weighted_classifier = vec![(sgn, h)];
+                weighted_classifier = vec![(edge.signum(), h)];
                 println!("Break loop after: {_t} iterations");
                 break;
             }
@@ -202,9 +199,7 @@ impl<D, L, C> Booster<D, L, C> for AdaBoostV
 
             // Compute the weight on the new hypothesis
             let weight = self.update_params(margins, edge);
-            weighted_classifier.push(
-                (weight, h)
-            );
+            weighted_classifier.push((weight, h));
         }
 
         CombinedClassifier::from(weighted_classifier)

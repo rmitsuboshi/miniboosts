@@ -1,4 +1,5 @@
 use polars::prelude::*;
+use rayon::prelude::*;
 
 use rand::prelude::*;
 use rand::rngs::StdRng;
@@ -13,7 +14,8 @@ use super::train_node::*;
 
 
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::ops::Deref;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 
 
@@ -164,7 +166,7 @@ fn stump_fulltree(data: &DataFrame,
 
 
     let (_, feature, threshold) = data.get_columns()
-        .into_iter()
+        .into_par_iter()
         .map(|column| {
             let (thr, dec) = find_best_split(
                 column, target, &dist[..], &train[..]
@@ -219,62 +221,69 @@ fn stump_fulltree(data: &DataFrame,
 /// that maximizes the decrease of impurity.
 #[inline]
 fn find_best_split(data: &Series,
-                   label: &Series,
+                   target: &Series,
                    dist: &[f64],
                    indices: &[usize])
     -> (f64, Impurity)
 {
-    let label = label.i64()
+    let target = target.i64()
         .expect("The target class is not an dtype i64");
 
 
-    let data = data.f64().unwrap();
+    let data = data.f64()
+        .unwrap();
 
 
-    let mut indices = indices.to_vec();
-    indices.sort_by(|&i, &j| {
-        let xi = data.get(i).unwrap();
-        let xj = data.get(j).unwrap();
-        xi.partial_cmp(&xj).unwrap()
-    });
+    let mut triplets = indices.into_iter()
+        .copied()
+        .map(|i| {
+            let val = data.get(i).unwrap();
+            let lab = target.get(i).unwrap();
+            (val, dist[i], lab)
+        })
+        .collect::<Vec<(f64, f64, i64)>>();
+
+    triplets.sort_by(|(x, _, _), (y, _, _)| x.partial_cmp(&y).unwrap());
 
 
-    let total_weight = indices.iter()
-        .fold(0.0, |acc, &i| acc + dist[i]);
+    let total_weight = triplets.par_iter()
+        .map(|(_, d, _)| d)
+        .sum::<f64>();
     let mut left = TempNodeInfo::empty();
-    let mut right = TempNodeInfo::new(label, dist, &indices[..]);
+    let mut right = TempNodeInfo::new(&triplets[..]);
 
 
     // These variables are used for the best splitting rules.
     let mut best_decrease = right.entropic_impurity();
-    let mut best_split = f64::MIN;
+    let mut best_threshold = f64::MIN;
 
 
-    let mut iter = indices.into_iter().peekable();
+    let mut iter = triplets.into_iter().peekable();
 
-    while let Some(i) = iter.next() {
-        let old_val = data.get(i).unwrap();
-        let y = label.get(i).unwrap();
-        let weight = dist[i];
-        left.insert(y, weight);
-        right.delete(y, weight);
+    while let Some((x, d, y)) = iter.next() {
+        let old_val = x;
+        left.insert(y, d);
+        right.delete(y, d);
 
 
-        let mut new_val = f64::MAX;
-        while let Some(&j) = iter.peek() {
-            new_val = data.get(j).unwrap();
-            if new_val != old_val { break; }
+        while let Some(&(xx, dd, yy)) = iter.peek() {
+            if xx != old_val { break; }
 
-            let yj = label.get(j).unwrap();
-            let wj = dist[j];
-            left.insert(yj, wj);
-            right.delete(yj, wj);
+            left.insert(yy, dd);
+            right.delete(yy, dd);
 
             iter.next();
         }
 
+        let new_val = iter.peek()
+            .map(|(xx, _, _)| *xx)
+            .unwrap_or(f64::MAX);
 
-        let threshold = old_val * 0.5 + new_val * 0.5;
+
+        let mut threshold = f64::MAX;
+        if new_val != f64::MAX {
+            threshold = (old_val + new_val) / 2.0;
+        }
 
 
         let lp = left.total / total_weight;
@@ -287,12 +296,12 @@ fn find_best_split(data: &Series,
 
         if decrease < best_decrease {
             best_decrease = decrease;
-            best_split = threshold;
+            best_threshold = threshold;
         }
     }
 
 
-    (best_split, best_decrease)
+    (best_threshold, best_decrease)
 }
 
 
@@ -316,21 +325,14 @@ impl TempNodeInfo {
 
     /// Build an instance of `TempNodeInfo`.
     #[inline(always)]
-    pub(self) fn new(label: &ChunkedArray<Int64Type>,
-                     dist: &[f64],
-                     indices: &[usize])
-        -> Self
-    {
-        let map = indices.iter()
-            .fold(HashMap::new(), |mut mp, &i| {
-                let l = label.get(i).unwrap();
-                let cnt = mp.entry(l).or_insert(0.0);
-                *cnt += dist[i];
-                mp
-            });
-
-        let total = indices.iter()
-            .fold(0.0_f64, |acc, &i| acc + dist[i]);
+    pub(self) fn new(triplets: &[(f64, f64, i64)]) -> Self {
+        let mut total = 0.0_f64;
+        let mut map = HashMap::new();
+        for (_, d, l) in triplets {
+            total += *d;
+            let cnt = map.entry(*l).or_insert(0.0);
+            *cnt += *d;
+        }
         Self { map, total }
     }
 
@@ -340,7 +342,7 @@ impl TempNodeInfo {
     pub(self) fn entropic_impurity(&self) -> Impurity {
         if self.total == 0.0 || self.map.is_empty() { return 0.0.into(); }
 
-        self.map.iter()
+        self.map.par_iter()
             .map(|(_, &p)| {
                 let r = p / self.total;
                 -r * r.ln()
@@ -365,7 +367,7 @@ impl TempNodeInfo {
             Some(key) => { *key -= weight; },
             None => { return; }
         }
-        if *self.map.get(&label).unwrap() <= 0.0 {
+        if *self.map.get(&label).unwrap() <= 1e-9 {
             self.map.remove(&label);
         }
 
@@ -397,16 +399,8 @@ fn calc_train_err(target: &Series, dist: &[f64], indices: &[usize])
 
 
     // Compute the max (key, val) that has maximal p(j, t)
-    let (l, p) = counter.into_iter()
-        // .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-        .max_by(|a, b| {
-            match a.1.partial_cmp(&b.1) {
-                Some(res) => res,
-                None => {
-                    panic!("a.1 is: {}, b.1 is: {}", a.1, b.1);
-                }
-            }
-        })
+    let (l, p) = counter.into_par_iter()
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .unwrap();
 
 
@@ -429,7 +423,7 @@ fn calc_test_err(target: &Series, dist: &[f64], indices: &[usize], pred: i64)
 {
     let target = target.i64()
         .expect("The target class df[{s}] is not an dtype i64");
-    let total = indices.iter().map(|&i| dist[i]).sum::<f64>();
+    let total = indices.par_iter().map(|&i| dist[i]).sum::<f64>();
 
 
     if total == 0.0 {
@@ -510,8 +504,6 @@ fn weak_links(root: &Rc<RefCell<TrainNode>>)
 }
 
 
-use std::cell::Ref;
-use std::ops::Deref;
 
 struct TrainNodeGuard<'a> {
     guard: Ref<'a, TrainNode>

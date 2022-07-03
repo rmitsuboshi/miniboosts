@@ -2,7 +2,7 @@
 
 pub mod core;
 pub mod adaboost;
-// pub mod adaboostv;
+pub mod adaboostv;
 // pub mod lpboost;
 // pub mod cerlpboost;
 // pub mod erlpboost;
@@ -15,11 +15,12 @@ pub mod adaboost;
 /// Booster trait
 pub use self::core::Booster;
 
-// /// Empirical Risk Minimization
+/// Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
-// 
-// /// Hard Margin Maximization
-// pub use self::adaboostv::AdaBoostV;
+
+
+/// Hard Margin Maximization
+pub use self::adaboostv::AdaBoostV;
 // pub use self::totalboost::TotalBoost;
 // 
 // 

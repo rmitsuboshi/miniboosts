@@ -10,7 +10,7 @@ use crate::Booster;
 
 /// Defines `AdaBoost`.
 pub struct AdaBoost {
-    pub(self) dist: Vec<f64>,
+    dist: Vec<f64>,
 }
 
 
@@ -156,7 +156,7 @@ impl<C> Booster<C> for AdaBoost
 
         for _t in 1..=max_loop {
             // Get a new hypothesis
-            let h = base_learner.produce(data, &target, &self.dist);
+            let h = base_learner.produce(data, target, &self.dist);
 
 
             // Each element in `margins` is the product of
@@ -169,15 +169,14 @@ impl<C> Booster<C> for AdaBoost
                 .collect::<Vec<f64>>();
 
 
-            let edge = margins.par_iter()
-                .zip(self.dist.par_iter())
+            let edge = margins.iter()
+                .zip(&self.dist[..])
                 .map(|(&yh, &d)| yh * d)
                 .sum::<f64>();
 
 
             // If `h` predicted all the examples in `sample` correctly,
             // use it as the combined classifier.
-            println!("edge: {}", edge);
             if edge.abs() >= 1.0 {
                 weighted_classifier = vec![(edge.signum(), h)];
                 println!("Break loop after: {_t} iterations");
@@ -187,9 +186,7 @@ impl<C> Booster<C> for AdaBoost
 
             // Compute the weight on the new hypothesis
             let weight = self.update_params(margins, edge);
-            weighted_classifier.push(
-                (weight, h)
-            );
+            weighted_classifier.push((weight, h));
         }
 
         CombinedClassifier::from(weighted_classifier)
