@@ -210,7 +210,7 @@ impl TrainNode {
     /// Construct a branch node from the arguments.
     #[inline]
     pub(super) fn branch(rule: SplitRule,
-                         left:  Rc<RefCell<TrainNode>>,
+                         left: Rc<RefCell<TrainNode>>,
                          right: Rc<RefCell<TrainNode>>,
                          prediction: i64,
                          node_err: NodeError)
@@ -287,10 +287,7 @@ impl TrainNode {
 
 
             if branch.node_err.train == left.train + right.train {
-                *self = TrainNode::leaf(
-                    branch.prediction,
-                    branch.node_err,
-                );
+                *self = TrainNode::leaf(branch.prediction, branch.node_err);
             } else {
                 branch.left.borrow_mut().pre_process();
                 branch.right.borrow_mut().pre_process();
@@ -323,7 +320,7 @@ impl Classifier for TrainBranchNode {
     #[inline]
     fn predict(&self, data: &DataFrame, row: usize) -> i64 {
         match self.split_rule.split(data, row) {
-            LR::Left  => self.left.borrow().predict(data, row),
+            LR::Left => self.left.borrow().predict(data, row),
             LR::Right => self.right.borrow().predict(data, row)
         }
     }

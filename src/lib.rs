@@ -129,10 +129,13 @@ pub use booster::Booster;
 
 // Export the boosting algorithms that minimizes the empirical loss.
 pub use booster::AdaBoost;
-// 
-// 
-// // // Export the boosting algorithms that maximizes the hard margin.
-// pub use booster::{AdaBoostV, TotalBoost};
+
+
+// // Export the boosting algorithms that maximizes the hard margin.
+pub use booster::{
+    AdaBoostV,
+    // TotalBoost
+};
 // // 
 // // 
 // // Export the boosting algorithms that maximizes the soft margin.
