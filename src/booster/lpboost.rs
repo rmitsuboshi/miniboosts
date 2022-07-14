@@ -5,7 +5,6 @@
 use polars::prelude::*;
 // use rayon::prelude::*;
 
-// use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -34,8 +33,7 @@ pub struct LPBoost {
 
 impl LPBoost {
     /// Initialize the `LPBoost`.
-    pub fn init(df: &DataFrame) -> LPBoost {
-        // let m = sample.len();
+    pub fn init(df: &DataFrame) -> Self {
         let (m, _) = df.shape();
         assert!(m != 0);
 
@@ -50,8 +48,9 @@ impl LPBoost {
 
         // Set GRBVars
         let vars = (0..m).map(|i| {
-                let name = format!("w{}", i);
-                add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
+                let name = format!("w[{i}]");
+                add_ctsvar!(model, name: &name, bounds: 0.0..1.0)
+                    .unwrap()
             }).collect::<Vec<_>>();
 
         let gamma = add_ctsvar!(model, name: &"gamma", bounds: ..)
@@ -87,13 +86,6 @@ impl LPBoost {
     }
 
 
-    // /// Specify the number of threads used in `grb`.
-    // pub fn with_threads(mut self, num: i32) -> Self {
-    //     self.model.get_env_mut().set(param::Threads, num).unwrap();
-    //     self
-    // }
-
-
     /// This method updates the capping parameter.
     /// Once the capping parameter changed,
     /// we need to update the `model` of the Gurobi.
@@ -117,7 +109,7 @@ impl LPBoost {
             .unwrap();
         self.vars = (0..m).into_iter()
             .map(|i| {
-                let name = format!("w{}", i);
+                let name = format!("w[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..ub)
                     .unwrap()
             }).collect::<Vec<Var>>();
@@ -155,24 +147,34 @@ impl LPBoost {
     /// `update_params` updates `self.distribution` and `self.gamma_hat`
     /// by solving a linear program
     #[inline(always)]
-    fn update_params(&mut self, margins: Vec<f64>, edge: f64)
+    fn update_params(&mut self, margins: &[f64])
         -> f64
     {
+        let edge = margins.into_iter()
+            .copied()
+            .zip(self.dist.iter().copied())
+            .map(|(yh, d)| yh * d)
+            .sum::<f64>();
+
+
         // update `self.gamma_hat`
         if self.gamma_hat > edge {
             self.gamma_hat = edge;
         }
 
 
-
         // Add a new constraint
-        let expr = margins.iter()
+        let expr = margins.into_iter()
+            .copied()
             .zip(self.vars.iter())
-            .map(|(&yh, &v)| v * yh)
+            .map(|(yh, &v)| v * yh)
             .grb_sum();
 
+
+        let t = self.constrs.len();
+        let name = format!("{t}-th hypothesis");
         let constr = self.model
-            .add_constr(&"", c!(expr <= self.gamma))
+            .add_constr(&name, c!(expr <= self.gamma))
             .unwrap();
         self.model.update().unwrap();
 
@@ -210,8 +212,6 @@ impl LPBoost {
 impl<C> Booster<C> for LPBoost
     where C: Classifier,
 {
-
-
     fn run<B>(&mut self,
               base_learner: &B,
               data: &DataFrame,
@@ -233,12 +233,6 @@ impl<C> Booster<C> for LPBoost
 
             // Each element in `margins` is the product of
             // the predicted vector and the correct vector
-            // let margins = sample.iter()
-            //     .map(|(dat, lab)|
-            //         if *lab == h.predict(dat) { 1.0 } else { -1.0 }
-            //     )
-            //     .collect::<Vec<f64>>();
-
             let margins = target.i64()
                 .expect("The target class is not a dtype of i64")
                 .into_iter()
@@ -249,12 +243,7 @@ impl<C> Booster<C> for LPBoost
                 .collect::<Vec<f64>>();
 
 
-            let edge = margins.iter()
-                .zip(self.dist.iter())
-                .fold(0.0, |acc, (&yh, &d)| acc + yh * d);
-
-
-            let gamma_star = self.update_params(margins, edge);
+            let gamma_star = self.update_params(&margins[..]);
 
             clfs.push(h);
 

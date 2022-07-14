@@ -4,13 +4,14 @@ use rayon::prelude::*;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 
+
 use crate::BaseLearner;
 
 
-use super::dtree_classifier::DTreeClassifier;
-use super::split_rule::*;
 use super::node::*;
+use super::split_rule::*;
 use super::train_node::*;
+use super::dtree_classifier::DTreeClassifier;
 
 
 use std::rc::Rc;
@@ -248,7 +249,6 @@ fn find_best_split(data: &Series,
             (val, dist[i], lab)
         })
         .collect::<Vec<(f64, f64, i64)>>();
-
     triplets.sort_by(|(x, _, _), (y, _, _)| x.partial_cmp(&y).unwrap());
 
 
@@ -259,15 +259,17 @@ fn find_best_split(data: &Series,
     let mut right = TempNodeInfo::new(&triplets[..]);
 
 
-    // These variables are used for the best splitting rules.
-    let mut best_decrease = right.entropic_impurity();
-    let mut best_threshold = f64::MIN;
 
 
     let mut iter = triplets.into_iter().peekable();
 
-    while let Some((x, d, y)) = iter.next() {
-        let old_val = x;
+    // These variables are used for the best splitting rules.
+    let mut best_decrease = right.entropic_impurity();
+    let mut best_threshold = iter.peek()
+        .map(|(v, _, _)| *v - 2.0_f64)
+        .unwrap_or(f64::MIN);
+
+    while let Some((old_val, d, y)) = iter.next() {
         left.insert(y, d);
         right.delete(y, d);
 
@@ -283,13 +285,9 @@ fn find_best_split(data: &Series,
 
         let new_val = iter.peek()
             .map(|(xx, _, _)| *xx)
-            .unwrap_or(f64::MAX);
+            .unwrap_or(old_val + 2.0_f64);
 
-
-        let mut threshold = f64::MAX;
-        if new_val != f64::MAX {
-            threshold = (old_val + new_val) / 2.0;
-        }
+        let threshold = (old_val + new_val) / 2.0;
 
 
         let lp = left.total / total_weight;
@@ -305,6 +303,7 @@ fn find_best_split(data: &Series,
             best_threshold = threshold;
         }
     }
+
 
 
     (best_threshold, best_decrease)
@@ -351,7 +350,7 @@ impl TempNodeInfo {
         self.map.par_iter()
             .map(|(_, &p)| {
                 let r = p / self.total;
-                -r * r.ln()
+                if p == 0.0 { 0.0 } else { -r * r.ln() }
             })
             .sum::<f64>()
             .into()
@@ -363,22 +362,18 @@ impl TempNodeInfo {
         let cnt = self.map.entry(label).or_insert(0.0);
         *cnt += weight;
         self.total += weight;
-
     }
 
 
     /// Decrease the number of positive examples by one.
     pub(self) fn delete(&mut self, label: i64, weight: f64) {
-        match self.map.get_mut(&label) {
-            Some(key) => { *key -= weight; },
-            None => { return; }
+        if let Some(key) = self.map.get_mut(&label) {
+            *key -= weight;
+            if *self.map.get(&label).unwrap() == 0.0 {
+                self.map.remove(&label);
+            }
+            self.total -= weight;
         }
-        if *self.map.get(&label).unwrap() <= 1e-9 {
-            self.map.remove(&label);
-        }
-
-
-        self.total -= weight;
     }
 }
 

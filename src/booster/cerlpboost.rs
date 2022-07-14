@@ -286,17 +286,6 @@ impl<C> Booster<C> for CERLPBoost
         let mut classifiers: Vec<(C, f64)> = Vec::new();
 
 
-        // Get a new hypothesis and assign 1.0 as its weight.
-        // This block does not exist in the original paper.
-        // The stopping criterion does not work without this block.
-        // since the sum of weights on hypotheses is not equals to one.
-        // If we can ensure the weight on the first hypothesis equals one,
-        // we can eliminate this block.
-        // classifiers.push(
-        //     (base_learner.produce(data, target, &self.dist), 1.0)
-        // );
-
-
         for t in 1..=max_iter {
             // Update the distribution over examples
             self.update_distribution_mut(&classifiers, data, target);
@@ -321,7 +310,7 @@ impl<C> Booster<C> for CERLPBoost
             // Compute the difference between the new hypothesis
             // and the current combined hypothesis
             let diff = gap_vec.par_iter()
-                .zip(self.dist.par_iter())
+                .zip(&self.dist[..])
                 .map(|(v, d)| v * d)
                 .sum::<f64>();
 

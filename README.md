@@ -68,13 +68,13 @@ lycaon = { git = "https://github.com/rmitsuboshi/lycaon" }
 Here is a sample code:
 
 ```rust
+use polars::prelude::*;
 
 use lycaon::{
-    Classifier,
     Booster,
     AdaBoost, // You can use other boosters enumerated above.
-    DStump,   // You can use `DTree`.
-    read_csv
+    DTree,   // You can use `DTree`.
+    Classifier,
 };
 
 
@@ -82,35 +82,48 @@ fn main() {
     // Set file name
     let file = "/path/to/input/data.csv";
 
-    // Read file
-    let sample = read_csv(file).unwrap();
+    // Read a CSV file
+    let mut data = CsvReader::from_path(file)
+        .unwrap()
+        .has_header(true)
+        .finish()
+        .unwrap();
+
+
+    // Pick the target class. Each element is 1 or -1.
+    let target: Series = data.drop_in_place(&"class").unwrap();
+
 
     // Initialize Booster
-    let mut adaboost = AdaBoost::init(&sample);
+    let mut booster = AdaBoost::init(&sample)
+
 
     // Initialize Base Learner
-    let dstump = DStump::init(&sample);
+    let base_learner = DTree::init(&data);
+
 
     // Set tolerance parameter
     let tolerance = 0.01;
 
+
     // Run boosting algorithm
-    let f = adaboost.run(&dstump, &sample, tolerance);
+    // Each booster returns a combined hypothesis.
+    let f = booster.run(&base_learner, &data, &target, tolerance);
 
 
     // These assertion may fail if the dataset are not linearly separable.
-    for (x, y) in sample.iter() {
-        // Check the predictions
-        assert_eq!(f.predict(x), *y);
-    }
+    let predictions = f.predict_all(&data);
+
+
+    // You can predict `i`th instance by `let p = f.predict(&data, i);`
 }
 ```
 
 
 If you use soft margin maximizing boosting, initialize booster like this:
 ```rust
-let m = sample.len() as f64;
-let capping_param = m * 0.2;
+let (m, _) = df.shape();
+let capping_param = m as f64 * 0.2;
 let lpboost = LPBoost::init(&sample).capping(capping_param);
 ```
 
