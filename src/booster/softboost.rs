@@ -2,7 +2,10 @@
 //! "Boosting Algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use crate::{Data, Sample};
+use polars::prelude::*;
+// use rayon::prelude::*;
+
+
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -17,11 +20,11 @@ pub struct SoftBoost {
     pub(crate) dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})
-    gamma_hat:       f64,
-    tolerance:       f64,
+    gamma_hat: f64,
+    tolerance: f64,
     // an accuracy parameter for the sub-problems
-    sub_tolerance:   f64,
-    capping_param:   f64,
+    sub_tolerance: f64,
+    capping_param: f64,
 
     env: Env,
 }
@@ -29,8 +32,8 @@ pub struct SoftBoost {
 
 impl SoftBoost {
     /// Initialize the `SoftBoost`.
-    pub fn init<D, L>(sample: &Sample<D, L>) -> SoftBoost {
-        let m = sample.len();
+    pub fn init(df: &DataFrame) -> Self {
+        let (m, _) = df.shape();
         assert!(m != 0);
 
         let mut env = Env::new("").unwrap();
@@ -110,41 +113,45 @@ impl SoftBoost {
 impl SoftBoost {
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
-    fn set_weights<C, D, L>(&mut self, sample: &Sample<D, L>, clfs: &[C])
-        -> Result<Vec<f64>, grb::Error>
-        where C: Classifier<D, L>,
-              D: Data,
-              L: Clone + Into<f64>,
+    fn set_weights<C>(&mut self,
+                      data: &DataFrame,
+                      target: &Series,
+                      classifiers: &[C])
+        -> std::result::Result<Vec<f64>, grb::Error>
+        where C: Classifier,
     {
         let mut model = Model::with_env("", &self.env)?;
 
         let m = self.dist.len();
-        let t = clfs.len();
+        let t = classifiers.len();
 
         // Initialize GRBVars
         let wt_vec = (0..t).map(|i| {
-                let name = format!("w{}", i);
+                let name = format!("w[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..1.0).unwrap()
             }).collect::<Vec<_>>();
         let xi_vec = (0..m).map(|i| {
-                let name = format!("xi{}", i);
+                let name = format!("xi[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
             }).collect::<Vec<_>>();
         let rho = add_ctsvar!(model, name: &"rho", bounds: ..)?;
 
 
         // Set constraints
-        for ((dat, lab), &x) in sample.iter().zip(xi_vec.iter()) {
-            let expr = wt_vec.iter()
-                .zip(clfs.iter())
-                .map(|(&w, h)| {
-                    let l: f64 = lab.clone().into();
-                    let p: f64 = h.predict(dat).into();
-                    l * p * w
-                })
-                .grb_sum();
+        let iter = target.i64()
+            .expect("The target class is not a dtype i64")
+            .into_iter()
+            .zip(xi_vec.iter())
+            .enumerate();
 
-            model.add_constr(&"", c!(expr >= rho - x))?;
+        for (i, (y, &xi)) in iter {
+            let y = y.unwrap() as f64;
+            let expr = wt_vec.iter()
+                .zip(classifiers)
+                .map(|(&w, h)| w * h.predict(data, i) as f64)
+                .grb_sum();
+            let name = format!("sample[{i}]");
+            model.add_constr(&name, c!(y * expr >= rho - xi))?;
         }
 
         model.add_constr(
@@ -154,8 +161,8 @@ impl SoftBoost {
 
 
         // Set the objective function
-        let temp = 1.0 / self.capping_param;
-        let objective = rho - temp * xi_vec.iter().grb_sum();
+        let param = 1.0 / self.capping_param;
+        let objective = rho - param * xi_vec.iter().grb_sum();
         model.set_objective(objective, Maximize)?;
         model.update()?;
 
@@ -166,10 +173,7 @@ impl SoftBoost {
         let status = model.status()?;
 
         if status != Status::Optimal {
-            panic!(
-                "Failed to finding an optimal solution. Status: {:?}",
-                status
-            );
+            panic!("Cannot solve the primal problem. Status: {status:?}");
         }
 
 
@@ -184,13 +188,12 @@ impl SoftBoost {
 
     /// Updates `self.distribution`
     /// Returns `None` if the stopping criterion satisfied.
-    fn update_params_mut<C, D, L>(&mut self,
-                                  sample: &Sample<D, L>,
-                                  clfs:   &[C])
+    fn update_params_mut<C>(&mut self,
+                            data: &DataFrame,
+                            target: &Series,
+                            classifiers: &[C])
         -> Option<()>
-        where C: Classifier<D, L>,
-              D: Data,
-              L: Clone + Into<f64>,
+        where C: Classifier,
     {
         loop {
             // Initialize GRBModel
@@ -201,7 +204,8 @@ impl SoftBoost {
             let cap = 1.0 / self.capping_param;
 
             let vars = self.dist.iter()
-                .map(|&d| {
+                .copied()
+                .map(|d| {
                     let lb = - d;
                     let ub = cap - d;
                     add_ctsvar!(model, name: &"", bounds: lb..ub)
@@ -212,20 +216,43 @@ impl SoftBoost {
 
 
             // Set constraints
-            for h in clfs.iter() {
-                let expr = sample.iter()
-                    .zip(self.dist.iter())
-                    .zip(vars.iter())
-                    .map(|(((dat, lab), &d), &v)| {
-                        let l: f64 = lab.clone().into();
-                        let p: f64 = h.predict(dat).into();
-                        l * p * (d + v)
-                    }).grb_sum();
+            // for h in clfs.iter() {
+            //     let expr = sample.iter()
+            //         .zip(self.dist.iter())
+            //         .zip(vars.iter())
+            //         .map(|(((dat, lab), &d), &v)| {
+            //             let l: f64 = lab.clone().into();
+            //             let p: f64 = h.predict(dat).into();
+            //             l * p * (d + v)
+            //         }).grb_sum();
 
-                model.add_constr(
-                    &"", c!(expr <= self.gamma_hat - self.tolerance)
-                ).unwrap();
-            }
+            //     model.add_constr(
+            //         &"", c!(expr <= self.gamma_hat - self.tolerance)
+            //     ).unwrap();
+            // }
+            classifiers.iter()
+                .enumerate()
+                .for_each(|(j, h)| {
+                    let iter = target.i64()
+                        .expect("The target class is not a dtype i64");
+                    let expr = vars.iter()
+                        .zip(self.dist.iter().copied())
+                        .zip(iter)
+                        .enumerate()
+                        .map(|(i, ((v, d), y))| {
+                            let y = y.unwrap() as f64;
+                            let p = h.predict(data, i) as f64;
+                            y * p * (d + *v)
+                        })
+                        .grb_sum();
+
+                    let name = format!("h[{j}]");
+                    model.add_constr(
+                        &name, c!(expr <= self.gamma_hat - self.tolerance)
+                    ).unwrap();
+                });
+
+
             model.add_constr(
                 &"zero_sum", c!(vars.iter().grb_sum() == 0.0)
             ).unwrap();
@@ -233,12 +260,12 @@ impl SoftBoost {
 
 
             // Set objective function
-            let m = sample.len() as f64;
+            let m = self.dist.len() as f64;
             let objective = self.dist.iter()
                 .zip(vars.iter())
                 .map(|(&d, &v)| {
-                    let temp = (m * d).ln() + 1.0;
-                    temp * v + (v * v) * (1.0 / (2.0 * d))
+                    let lin_coef = (m * d).ln() + 1.0;
+                    lin_coef * v + (v * v) * (1.0 / (2.0 * d))
                 })
                 .grb_sum();
 
@@ -263,10 +290,8 @@ impl SoftBoost {
 
             // At this point, the status is not `Status::Infeasible`.
             // If the status is not `Status::Optimal`, something wrong.
-            if status != Status::Optimal
-                && status != Status::SubOptimal
-            {
-                panic!("Status is {:?}. something wrong.", status);
+            if status != Status::Optimal {
+                panic!("Status is {status:?}. something wrong.");
             }
 
 
@@ -296,35 +321,43 @@ impl SoftBoost {
 }
 
 
-impl<D, L, C> Booster<D, L, C> for SoftBoost
-    where C: Classifier<D, L>,
-          D: Data<Output = f64>,
-          L: Clone + Into<f64>,
+impl<C> Booster<C> for SoftBoost
+    where C: Classifier,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, L>,
-              tolerance:    f64)
-        -> CombinedClassifier<D, L, C>
-        where B: BaseLearner<D, L, Clf = C>,
+              data: &DataFrame,
+              target: &Series,
+              tolerance: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>,
     {
         let max_iter = self.max_loop(tolerance);
 
-        let mut clfs = Vec::new();
+        let mut classifiers = Vec::new();
         for t in 1..=max_iter {
             // Receive a hypothesis from the base learner
-            let h = base_learner.produce(sample, &self.dist);
+            let h = base_learner.produce(data, target, &self.dist);
 
             // update `self.gamma_hat`
-            let edge = self.dist.iter()
-                .zip(sample.iter())
-                .fold(0.0_f64, |acc, (&d, (dat, lab))| {
-                    let l: f64 = lab.clone().into();
-                    let p: f64 = h.predict(dat).into();
-                    acc + d * l * p
-                });
+            // let edge = self.dist.iter()
+            //     .zip(sample.iter())
+            //     .fold(0.0_f64, |acc, (&d, (dat, lab))| {
+            //         let l: f64 = lab.clone().into();
+            //         let p: f64 = h.predict(dat).into();
+            //         acc + d * l * p
+            //     });
+            let edge = target.i64()
+                .expect("The target class is not a dtype i64")
+                .into_iter()
+                .zip(self.dist.iter().copied())
+                .enumerate()
+                .map(|(i, (y, d))|
+                    d * y.unwrap() as f64 * h.predict(data, i) as f64
+                )
+                .sum::<f64>();
 
 
             if self.gamma_hat > edge {
@@ -334,10 +367,10 @@ impl<D, L, C> Booster<D, L, C> for SoftBoost
 
             // At this point, the stopping criterion is not satisfied.
             // Append a new hypothesis to `self.classifiers`.
-            clfs.push(h);
+            classifiers.push(h);
 
             // Update the parameters
-            if let None = self.update_params_mut(sample, &clfs) {
+            if self.update_params_mut(data, target, &classifiers).is_none() {
                 println!("Break loop at: {t}");
                 break;
             }
@@ -345,19 +378,19 @@ impl<D, L, C> Booster<D, L, C> for SoftBoost
 
         // Set the weights on the hypotheses
         // by solving a linear program
-        let weighted_classifier = match self.set_weights(&sample, &clfs) {
+        let clfs = match self.set_weights(data, target, &classifiers) {
             Err(e) => {
                 panic!("{e}");
             },
             Ok(weights) => {
                 weights.into_iter()
-                    .zip(clfs.into_iter())
+                    .zip(classifiers.into_iter())
                     .filter(|(w, _)| *w != 0.0)
                     .collect::<Vec<(f64, C)>>()
             }
         };
 
-        CombinedClassifier::from(weighted_classifier)
+        CombinedClassifier::from(clfs)
     }
 }
 

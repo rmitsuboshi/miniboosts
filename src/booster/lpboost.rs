@@ -2,7 +2,10 @@
 //! "Boosting algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use crate::{Data, Sample};
+use polars::prelude::*;
+// use rayon::prelude::*;
+
+// use crate::{Data, Sample};
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -22,17 +25,18 @@ pub struct LPBoost {
     tolerance: f64,
 
     // Variables for the Gurobi optimizer
-    model:   Model,
-    vars:    Vec<Var>,
-    gamma:   Var,
+    model: Model,
+    gamma: Var,
+    vars: Vec<Var>,
     constrs: Vec<Constr>
 }
 
 
 impl LPBoost {
     /// Initialize the `LPBoost`.
-    pub fn init<D, L>(sample: &Sample<D, L>) -> LPBoost {
-        let m = sample.len();
+    pub fn init(df: &DataFrame) -> LPBoost {
+        // let m = sample.len();
+        let (m, _) = df.shape();
         assert!(m != 0);
 
         // Set GRBEnv
@@ -83,11 +87,11 @@ impl LPBoost {
     }
 
 
-    /// Specify the number of threads used in `grb`.
-    pub fn with_threads(mut self, num: i32) -> Self {
-        self.model.get_env_mut().set(param::Threads, num).unwrap();
-        self
-    }
+    // /// Specify the number of threads used in `grb`.
+    // pub fn with_threads(mut self, num: i32) -> Self {
+    //     self.model.get_env_mut().set(param::Threads, num).unwrap();
+    //     self
+    // }
 
 
     /// This method updates the capping parameter.
@@ -203,19 +207,18 @@ impl LPBoost {
 }
 
 
-impl<D, L, C> Booster<D, L, C> for LPBoost
-    where D: Data,
-          L: PartialEq,
-          C: Classifier<D, L>,
+impl<C> Booster<C> for LPBoost
+    where C: Classifier,
 {
 
 
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, L>,
-              tolerance:    f64)
-        -> CombinedClassifier<D, L, C>
-        where B: BaseLearner<D, L, Clf = C>,
+              data: &DataFrame,
+              target: &Series,
+              tolerance: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>,
     {
         if self.tolerance != tolerance {
             self.set_tolerance(tolerance);
@@ -226,13 +229,22 @@ impl<D, L, C> Booster<D, L, C> for LPBoost
         // Since the LPBoost does not have non-trivial iteration,
         // we run this until the stopping criterion is satisfied.
         loop {
-            let h = base_learner.produce(sample, &self.dist);
+            let h = base_learner.produce(data, target, &self.dist);
 
             // Each element in `margins` is the product of
             // the predicted vector and the correct vector
-            let margins = sample.iter()
-                .map(|(dat, lab)|
-                    if *lab == h.predict(dat) { 1.0 } else { -1.0 }
+            // let margins = sample.iter()
+            //     .map(|(dat, lab)|
+            //         if *lab == h.predict(dat) { 1.0 } else { -1.0 }
+            //     )
+            //     .collect::<Vec<f64>>();
+
+            let margins = target.i64()
+                .expect("The target class is not a dtype of i64")
+                .into_iter()
+                .enumerate()
+                .map(|(i, y)|
+                    y.unwrap() as f64 * h.predict(data, i) as f64
                 )
                 .collect::<Vec<f64>>();
 
