@@ -2,7 +2,10 @@
 //! "Entropy Regularized LPBoost"
 //! by Warmuth et al.
 //! 
-use crate::{Data, Sample};
+use polars::prelude::*;
+// use rayon::prelude::*;
+
+
 use crate::{Classifier, CombinedClassifier};
 use crate::BaseLearner;
 use crate::Booster;
@@ -21,20 +24,20 @@ pub struct ERLPBoost {
     // `gamma_star` corresponds to $P^{t-1} (d^{t-1})$
     gamma_star: f64,
     // regularization parameter defined in the paper
-    eta:           f64,
+    eta: f64,
 
-    tolerance:     f64,
+    tolerance: f64,
     // an accuracy parameter for the sub-problems
     sub_tolerance: f64,
     capping_param: f64,
-    env:           Env,
+    env: Env,
 }
 
 
 impl ERLPBoost {
     /// Initialize the `ERLPBoost`.
-    pub fn init<D, L>(sample: &Sample<D, L>) -> ERLPBoost {
-        let m = sample.len();
+    pub fn init(df: &DataFrame) -> Self {
+        let (m, _) = df.shape();
         assert!(m != 0);
 
         let mut env = Env::new("").unwrap();
@@ -111,7 +114,8 @@ impl ERLPBoost {
     /// Set `gamma_hat` and `gamma_star`.
     #[inline]
     fn set_gamma(&mut self) {
-        let ln_m = (self.dist.len() as f64).ln();
+        let m = self.dist.len() as f64;
+        let ln_m = (m / self.capping_param).ln();
 
         self.gamma_hat  = 1.0 + (ln_m / self.eta);
         self.gamma_star = f64::MIN;
@@ -149,8 +153,8 @@ impl ERLPBoost {
         let mut max_iter = 8.0 / self.tolerance;
 
 
-        let temp = (m / self.capping_param).ln();
-        let temp = 32.0 * temp / self.tolerance.powi(2);
+        let ln_m = (m / self.capping_param).ln();
+        let temp = 32.0 * ln_m / self.tolerance.powi(2);
 
 
         max_iter = max_iter.max(temp);
@@ -164,27 +168,28 @@ impl ERLPBoost {
     /// Update `self.gamma_hat`.
     /// `self.gamma_hat` holds the minimum value of the objective value.
     #[inline]
-    fn update_gamma_hat_mut<D, L, C>(&mut self,
-                                     clf: &C,
-                                     sample: &Sample<D, L>)
-        where C: Classifier<D, L>,
-              D: Data,
-              L: Clone + Into<f64>,
+    fn update_gamma_hat_mut<C>(&mut self,
+                               h: &C,
+                               data: &DataFrame,
+                               target: &Series)
+        where C: Classifier,
     {
-        let edge = self.dist.iter()
-            .zip(sample.iter())
-            .map(|(d, (x, y))| {
-                let l: f64 = y.clone().into();
-                let p: f64 = clf.predict(x).into();
-                *d * l * p
-            })
+        let edge = target.i64()
+            .expect("The target class is not a dtype i64")
+            .into_iter()
+            .zip(self.dist.iter().copied())
+            .enumerate()
+            .map(|(i, (y, d))|
+                d * y.unwrap() as f64 * h.predict(data, i) as f64
+            )
             .sum::<f64>();
 
 
-        let m = sample.len() as f64;
+        let m = self.dist.len() as f64;
         let entropy = self.dist.iter()
-            .map(|&d| d * (m * d).ln())
-            .sum::<f64>();
+            .copied()
+            .map(|d| d * d.ln())
+            .sum::<f64>() + m.ln();
 
 
         let obj_val = edge + (entropy / self.eta);
@@ -196,32 +201,29 @@ impl ERLPBoost {
     /// Update `self.gamma_star`.
     /// `self.gamma_star` holds the current optimal value.
     #[inline]
-    fn update_gamma_star_mut<D, L, C>(&mut self,
-                                      clfs: &[C],
-                                      sample: &Sample<D, L>)
-        where C: Classifier<D, L>,
-              D: Data,
-              L: Clone + Into<f64>,
+    fn update_gamma_star_mut<C>(&mut self,
+                                classifiers: &[C],
+                                data: &DataFrame,
+                                target: &Series)
+        where C: Classifier,
     {
-        let edge_of = |f: &C| {
-            self.dist.iter()
-                .zip(sample.iter())
-                .map(|(d, (x, y))| {
-                    let l: f64 = y.clone().into();
-                    let p: f64 = f.predict(x).into();
-                    *d * l * p
-                })
-                .sum::<f64>()
-        };
-
-
-        let max_edge = clfs.iter()
-            .map(|f| edge_of(f))
+        let max_edge = classifiers.iter()
+            .map(|h|
+                target.i64()
+                    .expect("The target class is not a dtype i64")
+                    .into_iter()
+                    .zip(self.dist.iter().copied())
+                    .enumerate()
+                    .map(|(i, (y, d))|
+                        d * y.unwrap() as f64 * h.predict(data, i) as f64
+                    )
+                    .sum::<f64>()
+            )
             .reduce(f64::max)
             .unwrap();
 
 
-        let m = sample.len() as f64;
+        let m = self.dist.len() as f64;
         let entropy = self.dist.iter()
             .map(|&d| d * (m * d).ln())
             .sum::<f64>();
@@ -232,16 +234,17 @@ impl ERLPBoost {
 
 
     /// Compute the weight on hypotheses
-    fn set_weights<C, D, L>(&mut self, sample: &Sample<D, L>, clfs: &[C])
-        -> Result<Vec<f64>, grb::Error>
-        where C: Classifier<D, L>,
-              D: Data,
-              L: Clone + Into<f64>,
+    fn set_weights<C>(&mut self,
+                      data: &DataFrame,
+                      target: &Series,
+                      classifiers: &[C])
+        -> std::result::Result<Vec<f64>, grb::Error>
+        where C: Classifier,
     {
         let mut model = Model::with_env("", &self.env)?;
 
-        let m = sample.len();
-        let t = clfs.len();
+        let m = self.dist.len();
+        let t = classifiers.len();
 
         // Initialize GRBVars
         let wt_vec = (0..t).map(|i| {
@@ -256,18 +259,20 @@ impl ERLPBoost {
 
 
         // Set constraints
-        for ((dat, lab), &xi) in sample.iter().zip(xi_vec.iter()) {
-            let y: f64 = lab.clone().into();
+        let iter = target.i64()
+            .expect("The target class is not a dtype i64")
+            .into_iter()
+            .zip(xi_vec.iter())
+            .enumerate();
 
+        for (i, (y, &xi)) in iter {
+            let y = y.unwrap() as f64;
             let expr = wt_vec.iter()
-                .zip(clfs.iter())
-                .map(|(&w, h)| {
-                    let p: f64 = h.predict(dat).into();
-                    w * p
-                })
+                .zip(classifiers)
+                .map(|(&w, h)| w * h.predict(data, i) as f64)
                 .grb_sum();
-
-            model.add_constr(&"", c!(y * expr >= rho - xi))?;
+            let name = format!("sample[{i}]");
+            model.add_constr(&name, c!(y * expr >= rho - xi))?;
         }
 
         model.add_constr(
@@ -302,13 +307,12 @@ impl ERLPBoost {
     }
 
 
-    /// Updates `self.distribution`
-    fn update_params_mut<C, D, L>(&mut self,
-                                  clfs: &[C],
-                                  sample: &Sample<D, L>)
-        where C: Classifier<D, L>,
-              D: Data,
-              L: Clone + Into<f64>,
+    /// Updates `self.dist`
+    fn update_params_mut<C>(&mut self,
+                            classifiers: &[C],
+                            data: &DataFrame,
+                            target: &Series)
+        where C: Classifier,
     {
         loop {
             // Initialize GRBModel
@@ -334,19 +338,27 @@ impl ERLPBoost {
             model.update().unwrap();
 
             // Set constraints
-            for h in clfs.iter() {
-                let expr = sample.iter()
-                    .zip(self.dist.iter())
-                    .zip(vars.iter())
-                    .map(|(((dat, lab), &d), &v)| {
-                        let l: f64 = lab.clone().into();
-                        let p: f64 = h.predict(dat).into();
-                        l * p * (d + v)
-                    })
-                    .grb_sum();
+            classifiers.iter()
+                .enumerate()
+                .for_each(|(j, h)| {
+                    let iter = target.i64()
+                        .expect("The target class is not a dtype i64");
+                    let expr = vars.iter()
+                        .zip(self.dist.iter().copied())
+                        .zip(iter)
+                        .enumerate()
+                        .map(|(i, ((v, d), y))| {
+                            let y = y.unwrap() as f64;
+                            let p = h.predict(data, i) as f64;
+                            y * p * (d + *v)
+                        })
+                        .grb_sum();
 
-                model.add_constr(&"", c!(expr <= gamma)).unwrap();
-            }
+                    let name = format!("h[{j}]");
+                    model.add_constr(&name, c!(expr <= gamma)).unwrap();
+                });
+
+
             model.add_constr(
                 &"zero_sum",
                 c!(vars.iter().grb_sum() == 0.0_f64)
@@ -355,12 +367,13 @@ impl ERLPBoost {
 
 
             // Set objective function
-            let m = sample.len() as f64;
+            let m = self.dist.len() as f64;
             let objective = self.dist.iter()
+                .copied()
                 .zip(vars.iter())
-                .map(|(&d, &v)| {
-                    let temp = (m * d).ln() + 1.0;
-                    let linear = temp * v;
+                .map(|(d, &v)| {
+                    let lin_coef = (m * d).ln() + 1.0;
+                    let linear = lin_coef * v;
                     let quad = (1.0 / (2.0 * d)) * (v * v);
 
                     linear + quad
@@ -398,8 +411,7 @@ impl ERLPBoost {
             let l2 = l2.sqrt();
 
             if l2 < self.sub_tolerance {
-                // self.gamma_star = model.get_attr(attr::ObjVal).unwrap();
-                self.update_gamma_star_mut(clfs, sample);
+                self.update_gamma_star_mut(classifiers, data, target);
                 break;
             }
         }
@@ -407,17 +419,16 @@ impl ERLPBoost {
 }
 
 
-impl<D, L, C> Booster<D, L, C> for ERLPBoost
-    where C: Classifier<D, L>,
-          D: Data<Output = f64>,
-          L: Clone + Into<f64>,
+impl<C> Booster<C> for ERLPBoost
+    where C: Classifier,
 {
     fn run<B>(&mut self,
               base_learner: &B,
-              sample:       &Sample<D, L>,
-              tolerance:    f64)
-        -> CombinedClassifier<D, L, C>
-        where B: BaseLearner<D, L, Clf = C>,
+              data: &DataFrame,
+              target: &Series,
+              tolerance: f64)
+        -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>,
     {
         // Initialize all parameters
         self.init_params(tolerance);
@@ -433,11 +444,11 @@ impl<D, L, C> Booster<D, L, C> for ERLPBoost
 
         for t in 1..=max_iter {
             // Receive a hypothesis from the base learner
-            let h = base_learner.produce(sample, &self.dist);
+            let h = base_learner.produce(data, target, &self.dist);
 
 
             // update `self.gamma_hat`
-            self.update_gamma_hat_mut(&h, &sample);
+            self.update_gamma_hat_mut(&h, data, target);
 
 
             // Check the stopping criterion
@@ -452,12 +463,12 @@ impl<D, L, C> Booster<D, L, C> for ERLPBoost
             clfs.push(h);
 
             // Update the parameters
-            self.update_params_mut(&clfs, sample);
+            self.update_params_mut(&clfs, data, target);
         }
 
         // Set the weights on the hypotheses
         // by solving a linear program
-        let weighted_classifier = match self.set_weights(&sample, &clfs) {
+        let clfs = match self.set_weights(data, target, &clfs) {
             Err(e) => {
                 panic!("{e}");
             },
@@ -469,7 +480,7 @@ impl<D, L, C> Booster<D, L, C> for ERLPBoost
             }
         };
 
-        CombinedClassifier::from(weighted_classifier)
+        CombinedClassifier::from(clfs)
     }
 }
 

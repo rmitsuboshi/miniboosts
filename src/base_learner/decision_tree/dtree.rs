@@ -165,6 +165,12 @@ fn stump_fulltree(data: &DataFrame,
     let node_err = NodeError::from((train_err, test_err));
 
 
+    if train_err == 0.0 {
+        let leaf = TrainNode::leaf(pred, node_err);
+        return Rc::new(RefCell::new(leaf));
+    }
+
+
     let (_, feature, threshold) = data.get_columns()
         .into_par_iter()
         .map(|column| {
@@ -227,11 +233,11 @@ fn find_best_split(data: &Series,
     -> (f64, Impurity)
 {
     let target = target.i64()
-        .expect("The target class is not an dtype i64");
+        .expect("The target class is not a dtype i64");
 
 
     let data = data.f64()
-        .unwrap();
+        .expect("The data is not a dtype f64");
 
 
     let mut triplets = indices.into_iter()
@@ -386,7 +392,7 @@ fn calc_train_err(target: &Series, dist: &[f64], indices: &[usize])
     -> (i64, f64)
 {
     let target = target.i64()
-        .expect("The target class df[{s}] is not an dtype i64");
+        .expect("The target class df[{s}] is not a dtype i64");
     let mut counter = HashMap::new();
     for &i in indices {
         let l = target.get(i).unwrap();
@@ -422,7 +428,7 @@ fn calc_test_err(target: &Series, dist: &[f64], indices: &[usize], pred: i64)
     -> f64
 {
     let target = target.i64()
-        .expect("The target class df[{s}] is not an dtype i64");
+        .expect("The target class df[{s}] is not a dtype i64");
     let total = indices.par_iter().map(|&i| dist[i]).sum::<f64>();
 
 
