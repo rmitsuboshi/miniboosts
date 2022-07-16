@@ -21,21 +21,11 @@ use std::collections::HashMap;
 
 
 
-/// Enumerate of split rule.
-/// This enumeration will be updated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Split {
-    /// Split based on feature (decision stump).
-    Feature,
-}
-
-
 /// Generates a `DTreeClassifier` for a given distribution
 /// over examples.
 pub struct DTree {
     rng: RefCell<StdRng>,
     criterion: Criterion,
-    split_rule: Split,
     train_ratio: f64,
     max_depth: Option<usize>,
 }
@@ -48,13 +38,11 @@ impl DTree {
         let seed: u64 = 0;
         let rng = RefCell::new(SeedableRng::seed_from_u64(seed));
         let criterion   = Criterion::Entropy;
-        let split_rule  = Split::Feature;
         let train_ratio = 0.8_f64;
         let max_depth   = None;
         Self {
             rng,
             criterion,
-            split_rule,
             train_ratio,
             max_depth,
         }
@@ -126,24 +114,21 @@ impl BaseLearner for DTree {
         indices.shuffle(rng);
 
 
-        let train_size = (self.train_ratio * m as f64).floor() as usize;
+        let train_size = (self.train_ratio * m as f64).ceil() as usize;
         let train_indices = indices.drain(..train_size)
             .collect::<Vec<_>>();
         let test_indices = indices;
 
 
-        let mut tree = match self.split_rule {
-            Split::Feature =>
-                stump_fulltree(
-                    data,
-                    target,
-                    distribution,
-                    train_indices,
-                    test_indices,
-                    self.criterion,
-                    self.max_depth.clone(),
-                ),
-        };
+        let mut tree = full_tree(
+            data,
+            target,
+            distribution,
+            train_indices,
+            test_indices,
+            self.criterion,
+            self.max_depth.clone(),
+        );
 
 
         prune(&mut tree);
@@ -164,13 +149,13 @@ impl BaseLearner for DTree {
 /// Construct a full binary tree
 /// that perfectly classify the given examples.
 #[inline]
-fn stump_fulltree(data: &DataFrame,
-                  target: &Series,
-                  dist: &[f64],
-                  train: Vec<usize>,
-                  test: Vec<usize>,
-                  criterion: Criterion,
-                  max_depth: Option<usize>)
+fn full_tree(data: &DataFrame,
+             target: &Series,
+             dist: &[f64],
+             train: Vec<usize>,
+             test: Vec<usize>,
+             criterion: Criterion,
+             max_depth: Option<usize>)
     -> Rc<RefCell<TrainNode>>
 {
     // Compute the best prediction that minimizes the training error
@@ -203,7 +188,7 @@ fn stump_fulltree(data: &DataFrame,
         .expect("No feature that descrease impurity");
 
 
-    let rule = SplitRule::create_stump(feature, threshold);
+    let rule = Splitter::new(feature, threshold);
 
 
     let mut ltrain = Vec::new();
@@ -238,31 +223,31 @@ fn stump_fulltree(data: &DataFrame,
     match max_depth {
         Some(depth) => {
             if depth == 1 {
+                // If `depth == 1`,
+                // the childs from this node must be leaves.
                 left = construct_leaf(target, dist, ltrain, ltest);
                 right = construct_leaf(target, dist, rtrain, rtest);
             } else {
+                // If `depth > 1`,
+                // the childs from this node might be branches.
                 let d = Some(depth - 1);
-                left = stump_fulltree(
+                left = full_tree(
                     data, target, dist, ltrain, ltest, criterion, d
                 );
-                right = stump_fulltree(
+                right = full_tree(
                     data, target, dist, rtrain, rtest, criterion, d
                 );
             }
         },
         None => {
-                left = stump_fulltree(
-                    data, target, dist, ltrain, ltest, criterion, None
-                );
-                right = stump_fulltree(
-                    data, target, dist, rtrain, rtest, criterion, None
-                );
+            left = full_tree(
+                data, target, dist, ltrain, ltest, criterion, None
+            );
+            right = full_tree(
+                data, target, dist, rtrain, rtest, criterion, None
+            );
         }
     }
-
-
-    // let left = stump_fulltree(data, target, dist, ltrain, ltest, criterion);
-    // let right = stump_fulltree(data, target, dist, rtrain, rtest, criterion);
 
 
     Rc::new(RefCell::new(TrainNode::branch(
@@ -296,6 +281,9 @@ fn construct_leaf(target: &Series,
 
 /// Returns the best split
 /// that maximizes the decrease of impurity.
+/// Here, the impurity is
+/// `- \sum_{l} p(l) \ln [ p(l) ]`,
+/// where `p(l)` is the total weight of class `l`.
 #[inline]
 fn find_best_split(data: &Series,
                    target: &Series,
@@ -311,7 +299,7 @@ fn find_best_split(data: &Series,
         .expect("The data is not a dtype f64");
 
 
-    let mut triplets = indices.into_iter()
+    let mut triplets = indices.into_par_iter()
         .copied()
         .map(|i| {
             let val = data.get(i).unwrap();
@@ -325,6 +313,8 @@ fn find_best_split(data: &Series,
     let total_weight = triplets.par_iter()
         .map(|(_, d, _)| d)
         .sum::<f64>();
+
+
     let mut left = TempNodeInfo::empty();
     let mut right = TempNodeInfo::new(&triplets[..]);
 
@@ -525,6 +515,12 @@ fn prune(root: &mut Rc<RefCell<TrainNode>>) {
 
     // Sort the nodes in the tree by the `alpha` value.
     let links = weak_links(root);
+
+
+    // Decision tree must have at least one branch node.
+    if links.len() == 1 {
+        return;
+    }
 
 
     // Prune the nodes 

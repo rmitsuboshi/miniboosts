@@ -12,4 +12,3 @@ mod split_rule;
 
 pub use dtree_classifier::DTreeClassifier;
 pub use dtree::DTree;
-pub use split_rule::{SplitRule, StumpSplit};

@@ -93,7 +93,7 @@ pub enum Node {
 /// Each `BranchNode` must have two childrens
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BranchNode {
-    pub(self) split_rule: SplitRule,
+    pub(self) rule: Splitter,
     pub(self) left: Box<Node>,
     pub(self) right: Box<Node>,
 }
@@ -103,13 +103,11 @@ impl BranchNode {
     /// Returns the `BranchNode` from the given components.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(split_rule: SplitRule,
-                           left: Box<Node>,
-                           right: Box<Node>)
+    pub(super) fn from_raw(rule: Splitter, left: Box<Node>, right: Box<Node>)
         -> Self
     {
         Self {
-            split_rule,
+            rule,
             left,
             right,
         }
@@ -149,7 +147,7 @@ impl From<TrainBranchNode> for BranchNode {
         };
 
         Self::from_raw(
-            branch.split_rule,
+            branch.rule,
             Box::new(left),
             Box::new(right),
         )
@@ -191,7 +189,7 @@ impl Classifier for LeafNode {
 impl Classifier for BranchNode {
     #[inline]
     fn predict(&self, data: &DataFrame, row: usize) -> i64 {
-        match self.split_rule.split(data, row) {
+        match self.rule.split(data, row) {
             LR::Left => self.left.predict(data, row),
             LR::Right => self.right.predict(data, row)
         }

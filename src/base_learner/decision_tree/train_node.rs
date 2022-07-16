@@ -88,7 +88,7 @@ pub enum TrainNode {
 /// Each `TrainBranchNode` must have two childrens
 #[derive(Debug)]
 pub struct TrainBranchNode {
-    pub(super) split_rule: SplitRule,
+    pub(super) rule: Splitter,
     pub(super) left:  Rc<RefCell<TrainNode>>,
     pub(super) right: Rc<RefCell<TrainNode>>,
 
@@ -104,7 +104,7 @@ impl TrainBranchNode {
     /// Returns the `TrainBranchNode` from the given components.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(super) fn from_raw(split_rule: SplitRule,
+    pub(super) fn from_raw(rule: Splitter,
                            left:  Rc<RefCell<TrainNode>>,
                            right: Rc<RefCell<TrainNode>>,
                            prediction: i64,
@@ -139,7 +139,7 @@ impl TrainBranchNode {
 
 
         Self {
-            split_rule,
+            rule,
             left,
             right,
 
@@ -210,7 +210,7 @@ impl TrainNode {
 
     /// Construct a branch node from the arguments.
     #[inline]
-    pub(super) fn branch(rule: SplitRule,
+    pub(super) fn branch(rule: Splitter,
                          left: Rc<RefCell<TrainNode>>,
                          right: Rc<RefCell<TrainNode>>,
                          prediction: i64,
@@ -316,7 +316,7 @@ impl Classifier for TrainLeafNode {
 impl Classifier for TrainBranchNode {
     #[inline]
     fn predict(&self, data: &DataFrame, row: usize) -> i64 {
-        match self.split_rule.split(data, row) {
+        match self.rule.split(data, row) {
             LR::Left => self.left.borrow().predict(data, row),
             LR::Right => self.right.borrow().predict(data, row)
         }

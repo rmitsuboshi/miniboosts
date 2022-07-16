@@ -261,6 +261,8 @@ impl<C> Booster<C> for LPBoost
                 .collect::<Vec<f64>>();
         }
 
+        println!("gstar: {}", self.gamma_hat);
+
 
         let clfs = self.constrs[1..].iter()
             .zip(classifiers.into_iter())
