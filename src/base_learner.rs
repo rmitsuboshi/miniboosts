@@ -8,6 +8,4 @@ pub use self::core::BaseLearner;
 pub use self::decision_tree::{
     DTree,
     DTreeClassifier,
-    SplitRule,
-    StumpSplit
 };
