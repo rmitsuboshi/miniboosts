@@ -205,10 +205,12 @@ impl SoftBoost {
 
             let vars = self.dist.iter()
                 .copied()
-                .map(|d| {
+                .enumerate()
+                .map(|(i, d)| {
                     let lb = - d;
                     let ub = cap - d;
-                    add_ctsvar!(model, name: &"", bounds: lb..ub)
+                    let name = format!("delta[{i}]");
+                    add_ctsvar!(model, name: &name, bounds: lb..ub)
                         .unwrap()
                 })
                 .collect::<Vec<Var>>();
@@ -216,20 +218,6 @@ impl SoftBoost {
 
 
             // Set constraints
-            // for h in clfs.iter() {
-            //     let expr = sample.iter()
-            //         .zip(self.dist.iter())
-            //         .zip(vars.iter())
-            //         .map(|(((dat, lab), &d), &v)| {
-            //             let l: f64 = lab.clone().into();
-            //             let p: f64 = h.predict(dat).into();
-            //             l * p * (d + v)
-            //         }).grb_sum();
-
-            //     model.add_constr(
-            //         &"", c!(expr <= self.gamma_hat - self.tolerance)
-            //     ).unwrap();
-            // }
             classifiers.iter()
                 .enumerate()
                 .for_each(|(j, h)| {
