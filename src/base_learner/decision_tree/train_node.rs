@@ -27,7 +27,7 @@ impl Add for NodeError {
     fn add(self, other: Self) -> Self {
         Self {
             train: self.train + other.train,
-            test:  self.test + other.test,
+            test:  self.test  + other.test,
         }
     }
 }
@@ -116,6 +116,7 @@ impl TrainBranchNode {
         let leaves = left.borrow().leaves() + right.borrow().leaves();
 
 
+        // DEBUG
         if !tree_err.train.is_finite() {
             println!("tree error: {}", tree_err.train);
             let l = left.borrow().leaves() == 1;
@@ -133,7 +134,7 @@ impl TrainBranchNode {
             );
 
             assert!(tree_err.train.is_finite());
-
+            assert!(tree_err.test.is_finite());
         }
 
 
@@ -217,11 +218,7 @@ impl TrainNode {
         -> Self
     {
         let node = TrainBranchNode::from_raw(
-            rule,
-            left,
-            right,
-            prediction,
-            node_err,
+            rule, left, right, prediction, node_err,
         );
 
 

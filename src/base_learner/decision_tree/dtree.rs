@@ -37,6 +37,7 @@ pub struct DTree {
     criterion: Criterion,
     split_rule: Split,
     train_ratio: f64,
+    max_depth: Option<usize>,
 }
 
 
@@ -46,14 +47,16 @@ impl DTree {
     pub fn init(_df: &DataFrame) -> Self {
         let seed: u64 = 0;
         let rng = RefCell::new(SeedableRng::seed_from_u64(seed));
-        let criterion = Criterion::Entropy;
-        let split_rule = Split::Feature;
+        let criterion   = Criterion::Entropy;
+        let split_rule  = Split::Feature;
         let train_ratio = 0.8_f64;
+        let max_depth   = None;
         Self {
             rng,
             criterion,
             split_rule,
             train_ratio,
+            max_depth,
         }
     }
 
@@ -61,9 +64,21 @@ impl DTree {
     /// Initialize the RNG by `seed`.
     /// If you don't use this method, 
     /// `DTree` initializes RNG by `0_u64`.
-    pub fn seed(&self, seed: u64) {
+    pub fn seed(self, seed: u64) -> Self {
         let rng: StdRng = SeedableRng::seed_from_u64(seed);
         *self.rng.borrow_mut() = rng;
+
+        self
+    }
+
+
+    /// Specify the maximal depth of the tree.
+    /// Default maximul depth is `None`.
+    pub fn max_depth(mut self, depth: usize) -> Self {
+        assert!(depth > 0);
+        self.max_depth = Some(depth);
+
+        self
     }
 
 
@@ -125,7 +140,8 @@ impl BaseLearner for DTree {
                     distribution,
                     train_indices,
                     test_indices,
-                    self.criterion
+                    self.criterion,
+                    self.max_depth.clone(),
                 ),
         };
 
@@ -133,10 +149,11 @@ impl BaseLearner for DTree {
         prune(&mut tree);
 
 
-        let root = match Rc::try_unwrap(tree) {
-            Ok(train_node) => Node::from(train_node.into_inner()),
-            Err(_) => panic!("Root node has reference counter >= 1")
-        };
+        let root = Node::from(
+            Rc::try_unwrap(tree)
+                .expect("Root node has reference counter >= 1")
+                .into_inner()
+        );
 
         DTreeClassifier::from(root)
     }
@@ -152,7 +169,8 @@ fn stump_fulltree(data: &DataFrame,
                   dist: &[f64],
                   train: Vec<usize>,
                   test: Vec<usize>,
-                  criterion: Criterion)
+                  criterion: Criterion,
+                  max_depth: Option<usize>)
     -> Rc<RefCell<TrainNode>>
 {
     // Compute the best prediction that minimizes the training error
@@ -166,6 +184,7 @@ fn stump_fulltree(data: &DataFrame,
     let node_err = NodeError::from((train_err, test_err));
 
 
+    // If sum of `dist` over `train` is zero, construct a leaf node.
     if train_err == 0.0 {
         let leaf = TrainNode::leaf(pred, node_err);
         return Rc::new(RefCell::new(leaf));
@@ -214,13 +233,64 @@ fn stump_fulltree(data: &DataFrame,
     }
 
 
-    let left = stump_fulltree(data, target, dist, ltrain, ltest, criterion);
-    let right = stump_fulltree(data, target, dist, rtrain, rtest, criterion);
+    let left;
+    let right;
+    match max_depth {
+        Some(depth) => {
+            if depth == 1 {
+                left = construct_leaf(target, dist, ltrain, ltest);
+                right = construct_leaf(target, dist, rtrain, rtest);
+            } else {
+                let d = Some(depth - 1);
+                left = stump_fulltree(
+                    data, target, dist, ltrain, ltest, criterion, d
+                );
+                right = stump_fulltree(
+                    data, target, dist, rtrain, rtest, criterion, d
+                );
+            }
+        },
+        None => {
+                left = stump_fulltree(
+                    data, target, dist, ltrain, ltest, criterion, None
+                );
+                right = stump_fulltree(
+                    data, target, dist, rtrain, rtest, criterion, None
+                );
+        }
+    }
+
+
+    // let left = stump_fulltree(data, target, dist, ltrain, ltest, criterion);
+    // let right = stump_fulltree(data, target, dist, rtrain, rtest, criterion);
 
 
     Rc::new(RefCell::new(TrainNode::branch(
         rule, left, right, pred, node_err
     )))
+}
+
+
+#[inline]
+fn construct_leaf(target: &Series,
+                  dist: &[f64],
+                  train: Vec<usize>,
+                  test: Vec<usize>)
+    -> Rc<RefCell<TrainNode>>
+{
+    // Compute the best prediction that minimizes the training error
+    // on this node.
+    let (pred, train_err) = calc_train_err(target, dist, &train[..]);
+
+
+    let test_err = calc_test_err(target, dist, &test[..], pred);
+
+
+    let node_err = NodeError::from((train_err, test_err));
+
+
+    let leaf = TrainNode::leaf(pred, node_err);
+    Rc::new(RefCell::new(leaf))
 }
 
 
@@ -259,9 +329,8 @@ fn find_best_split(data: &Series,
     let mut right = TempNodeInfo::new(&triplets[..]);
 
 
-
-
     let mut iter = triplets.into_iter().peekable();
+
 
     // These variables are used for the best splitting rules.
     let mut best_decrease = right.entropic_impurity();
@@ -310,7 +379,7 @@ fn find_best_split(data: &Series,
 }
 
 
-/// Some informations that are useful in `produce(..)`.
+/// Some information that are useful in `produce(..)`.
 struct TempNodeInfo {
     map: HashMap<i64, f64>,
     total: f64,
@@ -408,10 +477,10 @@ fn calc_train_err(target: &Series, dist: &[f64], indices: &[usize])
     // From the update rule of boosting algorithm,
     // the sum of `dist` over `indices` may become zero,
     let node_err = if total > 0.0 {
-        total * (1.0 - (p / total))
-    } else {
-        0.0
-    };
+            total * (1.0 - (p / total))
+        } else {
+            0.0
+        };
 
 
     (l, node_err)

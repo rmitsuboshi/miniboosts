@@ -24,6 +24,7 @@ pub struct LPBoost {
     tolerance: f64,
 
     // Variables for the Gurobi optimizer
+    env: Env,
     model: Model,
     gamma: Var,
     vars: Vec<Var>,
@@ -43,7 +44,7 @@ impl LPBoost {
 
 
         // Set GRBModel
-        let mut model = Model::with_env("", env).unwrap();
+        let mut model = Model::with_env("", &env).unwrap();
 
 
         // Set GRBVars
@@ -78,6 +79,7 @@ impl LPBoost {
             dist:      vec![uni; m],
             gamma_hat: 1.0,
             tolerance: uni,
+            env,
             model,
             vars,
             gamma,
@@ -100,16 +102,16 @@ impl LPBoost {
         let m = self.vars.len();
 
         // Initialize GRBModel
-        let mut env = Env::new("").unwrap();
-        env.set(param::OutputFlag, 0).unwrap();
-        let mut model = Model::with_env("", env).unwrap();
+        // let mut env = Env::new("").unwrap();
+        // env.set(param::OutputFlag, 0).unwrap();
+        let mut model = Model::with_env("", &self.env).unwrap();
 
         // Initialize GRBVars
         self.gamma = add_ctsvar!(model, name: &"gamma", bounds: ..)
             .unwrap();
         self.vars = (0..m).into_iter()
             .map(|i| {
-                let name = format!("w[{i}]");
+                let name = format!("d[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..ub)
                     .unwrap()
             }).collect::<Vec<Var>>();
@@ -224,7 +226,7 @@ impl<C> Booster<C> for LPBoost
             self.set_tolerance(tolerance);
         }
 
-        let mut clfs = Vec::new();
+        let mut classifiers = Vec::new();
 
         // Since the LPBoost does not have non-trivial iteration,
         // we run this until the stopping criterion is satisfied.
@@ -238,17 +240,18 @@ impl<C> Booster<C> for LPBoost
                 .into_iter()
                 .enumerate()
                 .map(|(i, y)|
-                    y.unwrap() as f64 * h.predict(data, i) as f64
+                    (y.unwrap() * h.predict(data, i)) as f64
                 )
                 .collect::<Vec<f64>>();
 
 
             let gamma_star = self.update_params(&margins[..]);
 
-            clfs.push(h);
+
+            classifiers.push(h);
 
             if gamma_star >= self.gamma_hat - self.tolerance {
-                println!("Break loop at: {t}", t = clfs.len());
+                println!("Break loop at: {t}", t = classifiers.len());
                 break;
             }
 
@@ -259,14 +262,14 @@ impl<C> Booster<C> for LPBoost
         }
 
 
-        let weighted_classifier = self.constrs[1..].iter()
-            .zip(clfs.into_iter())
-            .filter_map(|(constr, clf)| {
+        let clfs = self.constrs[1..].iter()
+            .zip(classifiers.into_iter())
+            .filter_map(|(constr, classifiers)| {
                 let weight = self.model.get_obj_attr(attr::Pi, constr)
                     .unwrap()
                     .abs();
                 if weight != 0.0 {
-                    Some((weight, clf))
+                    Some((weight, classifiers))
                 } else {
                     None
                 }
@@ -274,7 +277,7 @@ impl<C> Booster<C> for LPBoost
             .collect::<Vec<(f64, C)>>();
 
 
-        CombinedClassifier::from(weighted_classifier)
+        CombinedClassifier::from(clfs)
     }
 }
 

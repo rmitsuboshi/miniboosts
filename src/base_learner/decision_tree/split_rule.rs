@@ -53,7 +53,7 @@ impl SplitRule {
                 let name = stump.feature.as_ref();
                 let value = data[name]
                     .f64()
-                    .expect("The target class is not an dtype f64")
+                    .expect("The target class is not a dtype f64")
                     .get(row).unwrap();
 
                 if value < stump.threshold {
