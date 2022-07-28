@@ -57,7 +57,7 @@ impl ERLPBoost {
 
 
         // Set regularization parameter
-        let eta = (1.0_f64 / 2.0_f64).max(2.0_f64 * ln_m / tolerance);
+        let eta = 0.5_f64.max(2.0_f64 * ln_m / tolerance);
 
         // Set gamma_hat and gamma_star
         let gamma_hat  = 1.0 + (ln_m / eta);
@@ -113,7 +113,7 @@ impl ERLPBoost {
     /// Set `gamma_hat` and `gamma_star`.
     #[inline]
     fn set_gamma(&mut self) {
-        self.gamma_hat  = 1.0;
+        self.gamma_hat = 1.0;
         self.gamma_star = -1.0;
     }
 
@@ -166,13 +166,12 @@ impl ERLPBoost {
             .enumerate()
             .map(|(i, (y, d))| d * (y.unwrap() * h.predict(data, i)) as f64)
             .sum::<f64>();
-        println!("edge: {edge}");
 
 
         let m = self.dist.len() as f64;
         let entropy = self.dist.iter()
             .copied()
-            .map(|d| d * d.ln())
+            .map(|d| if d == 0.0 { 0.0 } else { d * d.ln() })
             .sum::<f64>() + m.ln();
 
 
@@ -214,7 +213,6 @@ impl ERLPBoost {
 
         let m = self.dist.len() as f64;
         self.gamma_star = max_edge + (entropy + m.ln()) / self.eta;
-        println!("gamma star: {}", self.gamma_star);
     }
 
 
@@ -232,8 +230,8 @@ impl ERLPBoost {
         let t = classifiers.len();
 
         // Initialize GRBVars
-        let wt_vec = (0..t).map(|i| {
-                let name = format!("w[{i}]");
+        let wt_vec = (0..t).map(|j| {
+                let name = format!("w[{j}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
             }).collect::<Vec<_>>();
         let xi_vec = (0..m).map(|i| {
@@ -254,7 +252,7 @@ impl ERLPBoost {
             let y = y.unwrap() as f64;
             let expr = wt_vec.iter()
                 .zip(classifiers)
-                .map(|(&w, h)| w * h.predict(data, i) as f64)
+                .map(|(&w, h)| w * h.predict(data, i))
                 .grb_sum();
             let name = format!("S[{i}]");
             model.add_constr(&name, c!(y * expr >= rho - xi))?;
@@ -284,10 +282,8 @@ impl ERLPBoost {
 
 
         // Assign weights over the hypotheses
-        let weights = wt_vec.into_iter()
-            .map(|w| model.get_obj_attr(attr::X, &w).unwrap())
-            .collect::<Vec<_>>();
 
+        let weights = model.get_obj_attr_batch(attr::X, wt_vec).unwrap();
         Ok(weights)
     }
 
@@ -299,8 +295,8 @@ impl ERLPBoost {
                               target: &Series)
         where C: Classifier,
     {
+        let mut old_objval: f64 = 1e6;
         loop {
-            println!("Running QP...");
             // Initialize GRBModel
             let mut model = Model::with_env("", &self.env).unwrap();
             let gamma = add_ctsvar!(model, name: &"gamma", bounds: ..)
@@ -366,7 +362,7 @@ impl ERLPBoost {
                 })
                 .grb_sum();
 
-            let objective = gamma + ((1.0 / self.eta) * regularizer);
+            let objective = gamma + ((1.0_f64 / self.eta) * regularizer);
             model.set_objective(objective, Minimize).unwrap();
             model.update().unwrap();
 
@@ -386,20 +382,22 @@ impl ERLPBoost {
 
             // At this point, there exists an optimal solution in `vars`
             // Check the stopping criterion 
-            let mut l2 = 0.0;
+            let objval = model.get_attr(attr::ObjVal).unwrap();
+
 
             self.dist.iter_mut()
                 .zip(deltas)
                 .for_each(|(d, delta)| {
                     let dlt = model.get_obj_attr(attr::X, &delta).unwrap();
                     *d += dlt;
-                    l2 += dlt.powi(2);
                 });
-            let l2 = l2.sqrt();
 
-            if l2 < self.sub_tolerance {
+
+            if old_objval - objval < self.sub_tolerance {
                 break;
             }
+
+            old_objval = objval;
         }
     }
 }
@@ -426,7 +424,7 @@ impl<C> Booster<C> for ERLPBoost
 
         // This vector holds the classifiers
         // obtained from the `base_learner`.
-        let mut clfs = Vec::new();
+        let mut classifiers = Vec::new();
 
         for step in 1..=max_iter {
             // Receive a hypothesis from the base learner
@@ -447,28 +445,26 @@ impl<C> Booster<C> for ERLPBoost
 
             // At this point, the stopping criterion is not satisfied.
             // Append a new hypothesis to `clfs`.
-            clfs.push(h);
+            classifiers.push(h);
+
 
             // Update the parameters
-            self.update_distribution(&clfs, data, target);
+            self.update_distribution(&classifiers, data, target);
 
 
             // update `self.gamma_star`.
-            self.update_gamma_star_mut(&clfs, data, target);
-
-
-            println!("gstar: {}", self.gamma_star);
+            self.update_gamma_star_mut(&classifiers, data, target);
         }
 
         // Set the weights on the hypotheses
         // by solving a linear program
-        let clfs = match self.set_weights(data, target, &clfs) {
+        let clfs = match self.set_weights(data, target, &classifiers) {
             Err(e) => {
                 panic!("{e}");
             },
             Ok(weights) => {
                 weights.into_iter()
-                    .zip(clfs.into_iter())
+                    .zip(classifiers.into_iter())
                     .filter(|(w, _)| *w != 0.0)
                     .collect::<Vec<_>>()
             }

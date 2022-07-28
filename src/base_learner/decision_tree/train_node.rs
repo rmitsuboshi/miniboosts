@@ -117,7 +117,7 @@ impl TrainBranchNode {
 
 
         // DEBUG
-        if !tree_err.train.is_finite() {
+        if !tree_err.train.is_finite() || !tree_err.test.is_finite() {
             println!("tree error: {}", tree_err.train);
             let l = left.borrow().leaves() == 1;
             let r = right.borrow().leaves() == 1;
@@ -201,9 +201,7 @@ impl TrainNode {
     pub(super) fn leaf(prediction: i64, node_err: NodeError)
         -> Self
     {
-        let leaf = TrainLeafNode::from_raw(
-            prediction, node_err
-        );
+        let leaf = TrainLeafNode::from_raw(prediction, node_err);
         TrainNode::Leaf(leaf)
     }
 
@@ -251,13 +249,14 @@ impl TrainNode {
                 let node_err = self.node_error();
                 let tree_err = self.tree_error();
                 let leaves   = self.leaves() as f64;
+
+                // DEBUG
+                assert!(leaves > 1.0);
                 assert!(node_err.train.is_finite());
                 assert!(tree_err.train.is_finite());
                 (node_err.train - tree_err.train) / (leaves - 1.0)
             },
-            TrainNode::Leaf(_) => {
-                f64::INFINITY
-            }
+            TrainNode::Leaf(_) => f64::MAX
         }
     }
 
