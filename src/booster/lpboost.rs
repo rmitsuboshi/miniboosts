@@ -102,8 +102,6 @@ impl LPBoost {
         let m = self.vars.len();
 
         // Initialize GRBModel
-        // let mut env = Env::new("").unwrap();
-        // env.set(param::OutputFlag, 0).unwrap();
         let mut model = Model::with_env("", &self.env).unwrap();
 
         // Initialize GRBVars
@@ -260,8 +258,6 @@ impl<C> Booster<C> for LPBoost
                 .map(|var| self.model.get_obj_attr(attr::X, var).unwrap())
                 .collect::<Vec<f64>>();
         }
-
-        println!("gstar: {}", self.gamma_hat);
 
 
         let clfs = self.constrs[1..].iter()

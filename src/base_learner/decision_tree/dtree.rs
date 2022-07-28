@@ -120,6 +120,8 @@ impl BaseLearner for DTree {
         let test_indices = indices;
 
 
+
+        // Construct a full-tree
         let mut tree = full_tree(
             data,
             target,
@@ -131,6 +133,7 @@ impl BaseLearner for DTree {
         );
 
 
+        // Prune the tree
         prune(&mut tree);
 
 
