@@ -94,6 +94,7 @@ pub struct TrainBranchNode {
 
     // Common members
     pub(super) prediction: i64,
+    pub(self) total_weight: f64, 
     pub(self) node_err: NodeError,
     pub(self) tree_err: TreeError,
     pub(self) leaves:   usize,
@@ -108,6 +109,7 @@ impl TrainBranchNode {
                            left:  Rc<RefCell<TrainNode>>,
                            right: Rc<RefCell<TrainNode>>,
                            prediction: i64,
+                           total_weight: f64,
                            node_err: NodeError)
         -> Self
     {
@@ -116,34 +118,13 @@ impl TrainBranchNode {
         let leaves = left.borrow().leaves() + right.borrow().leaves();
 
 
-        // DEBUG
-        if !tree_err.train.is_finite() || !tree_err.test.is_finite() {
-            println!("tree error: {}", tree_err.train);
-            let l = left.borrow().leaves() == 1;
-            let r = right.borrow().leaves() == 1;
-            println!(
-                "Left: {}, right: {}",
-                if l { "leaf" } else { "branch" },
-                if r { "leaf" } else { "branch" },
-            );
-
-            println!(
-                "left.tree_err.train: {}, right.tree_err.train: {}",
-                left.borrow().tree_error().train,
-                right.borrow().tree_error().train,
-            );
-
-            assert!(tree_err.train.is_finite());
-            assert!(tree_err.test.is_finite());
-        }
-
-
         Self {
             rule,
             left,
             right,
 
             prediction,
+            total_weight,
             node_err,
             tree_err,
             leaves
@@ -155,9 +136,9 @@ impl TrainBranchNode {
     /// the construction of a leaf.
     #[inline]
     pub(self) fn into_leaf_component(self)
-        -> (i64, NodeError)
+        -> (i64, f64, NodeError)
     {
-        (self.prediction, self.node_err)
+        (self.prediction, self.total_weight, self.node_err)
     }
 }
 
@@ -166,6 +147,7 @@ impl TrainBranchNode {
 #[derive(Debug)]
 pub struct TrainLeafNode {
     pub(super) prediction: i64,
+    pub(self) total_weight: f64,
     pub(self) node_err: NodeError,
 }
 
@@ -175,11 +157,14 @@ impl TrainLeafNode {
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(super) fn from_raw(prediction: i64, node_err: NodeError)
+    pub(super) fn from_raw(prediction: i64,
+                           total_weight: f64,
+                           node_err: NodeError)
         -> Self
     {
         Self {
             prediction,
+            total_weight,
             node_err,
         }
     }
@@ -189,8 +174,8 @@ impl TrainLeafNode {
 impl From<TrainBranchNode> for TrainLeafNode {
     #[inline]
     fn from(branch: TrainBranchNode) -> TrainLeafNode {
-        let (p, node_err) = branch.into_leaf_component();
-        TrainLeafNode::from_raw(p, node_err)
+        let (p, total_weight, node_err) = branch.into_leaf_component();
+        TrainLeafNode::from_raw(p, total_weight, node_err)
     }
 }
 
@@ -198,10 +183,14 @@ impl From<TrainBranchNode> for TrainLeafNode {
 impl TrainNode {
     /// Construct a leaf node from the given arguments.
     #[inline]
-    pub(super) fn leaf(prediction: i64, node_err: NodeError)
+    pub(super) fn leaf(prediction: i64,
+                       total_weight: f64,
+                       node_err: NodeError)
         -> Self
     {
-        let leaf = TrainLeafNode::from_raw(prediction, node_err);
+        let leaf = TrainLeafNode::from_raw(
+            prediction, total_weight, node_err
+        );
         TrainNode::Leaf(leaf)
     }
 
@@ -212,15 +201,29 @@ impl TrainNode {
                          left: Rc<RefCell<TrainNode>>,
                          right: Rc<RefCell<TrainNode>>,
                          prediction: i64,
+                         total_weight: f64,
                          node_err: NodeError)
         -> Self
     {
         let node = TrainBranchNode::from_raw(
-            rule, left, right, prediction, node_err,
+            rule, left, right, prediction, total_weight, node_err,
         );
 
 
         TrainNode::Branch(node)
+    }
+
+
+    #[inline]
+    pub(super) fn train_node_error(&self) -> f64 {
+        match self {
+            TrainNode::Branch(ref branch) => {
+                branch.node_err.train * branch.total_weight
+            }
+            TrainNode::Leaf(ref leaf) => {
+                leaf.node_err.train * leaf.total_weight
+            }
+        }
     }
 
 
@@ -233,11 +236,29 @@ impl TrainNode {
     }
 
 
+    /// TODO fix tree error
     #[inline]
     pub(super) fn tree_error(&self) -> TreeError {
         match self {
             TrainNode::Branch(ref branch) => branch.tree_err,
             TrainNode::Leaf(ref leaf) => leaf.node_err.into(),
+        }
+    }
+
+
+    pub(super) fn set_tree_error_train(&mut self) -> f64 {
+        match self {
+            TrainNode::Branch(branch) => {
+                let l = branch.left.borrow_mut()
+                    .set_tree_error_train();
+                let r = branch.right.borrow_mut()
+                    .set_tree_error_train();
+                branch.tree_err.train = l + r;
+                branch.tree_err.train
+            },
+            TrainNode::Leaf(leaf) => {
+                leaf.total_weight * leaf.node_err.train
+            },
         }
     }
 
@@ -278,16 +299,35 @@ impl TrainNode {
     pub(super) fn pre_process(&mut self) {
 
         if let TrainNode::Branch(ref mut branch) = self {
-            let left  = branch.left.borrow().node_error();
-            let right = branch.right.borrow().node_error();
+            let t = branch.node_err.train * branch.total_weight;
+            let l = branch.left.borrow().train_node_error();
+            let r = branch.right.borrow().train_node_error();
 
 
-            if branch.node_err.train == left.train + right.train {
-                *self = TrainNode::leaf(branch.prediction, branch.node_err);
+            if t == l + r {
+                self.prune();
             } else {
                 branch.left.borrow_mut().pre_process();
                 branch.right.borrow_mut().pre_process();
             }
+        }
+    }
+
+
+    /// After `pre_process()`, the total number of leaves changes.
+    /// This method modifies the leaves for all nodes.
+    #[inline]
+    pub(super) fn reassign_leaves(&mut self) -> usize {
+        match self {
+            TrainNode::Branch(branch) => {
+                let l = branch.left.borrow_mut()
+                    .reassign_leaves();
+                let r = branch.right.borrow_mut()
+                    .reassign_leaves();
+                branch.leaves = l + r;
+                branch.leaves
+            },
+            TrainNode::Leaf(_) => 1_usize,
         }
     }
 
@@ -297,6 +337,7 @@ impl TrainNode {
         if let TrainNode::Branch(ref mut branch) = self {
             *self = TrainNode::leaf(
                 branch.prediction,
+                branch.total_weight,
                 branch.node_err,
             );
         }

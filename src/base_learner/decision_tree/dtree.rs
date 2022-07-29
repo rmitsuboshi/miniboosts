@@ -1,3 +1,6 @@
+// TODO
+// set_tree_error_train ?
+// test/tree errors are redundant?
 use polars::prelude::*;
 use rayon::prelude::*;
 
@@ -116,9 +119,10 @@ impl BaseLearner for DTree {
 
         let train_size = (self.train_ratio * m as f64).ceil() as usize;
         let train_indices = indices.drain(..train_size)
+            .into_iter()
+            .filter(|&i| distribution[i] > 0.0)
             .collect::<Vec<_>>();
         let test_indices = indices;
-
 
 
         // Construct a full-tree
@@ -133,7 +137,6 @@ impl BaseLearner for DTree {
         );
 
 
-        // Prune the tree
         prune(&mut tree);
 
 
@@ -172,9 +175,15 @@ fn full_tree(data: &DataFrame,
     let node_err = NodeError::from((train_err, test_err));
 
 
+    let total_weight = train.iter()
+        .copied()
+        .map(|i| dist[i])
+        .sum::<f64>();
+
+
     // If sum of `dist` over `train` is zero, construct a leaf node.
     if train_err == 0.0 {
-        let leaf = TrainNode::leaf(pred, node_err);
+        let leaf = TrainNode::leaf(pred, total_weight, node_err);
         return Rc::new(RefCell::new(leaf));
     }
 
@@ -216,7 +225,7 @@ fn full_tree(data: &DataFrame,
 
     // If the split has no meaning, construct a leaf node.
     if ltrain.is_empty() || rtrain.is_empty() {
-        let leaf = TrainNode::leaf(pred, node_err);
+        let leaf = TrainNode::leaf(pred, total_weight, node_err);
         return Rc::new(RefCell::new(leaf));
     }
 
@@ -254,7 +263,7 @@ fn full_tree(data: &DataFrame,
 
 
     Rc::new(RefCell::new(TrainNode::branch(
-        rule, left, right, pred, node_err
+        rule, left, right, pred, total_weight, node_err
     )))
 }
 
@@ -277,7 +286,13 @@ fn construct_leaf(target: &Series,
     let node_err = NodeError::from((train_err, test_err));
 
 
-    let leaf = TrainNode::leaf(pred, node_err);
+    let total_weight = train.iter()
+        .copied()
+        .map(|i| dist[i])
+        .sum::<f64>();
+
+
+    let leaf = TrainNode::leaf(pred, total_weight, node_err);
     Rc::new(RefCell::new(leaf))
 }
 
@@ -449,7 +464,7 @@ fn calc_train_err(target: &Series, dist: &[f64], indices: &[usize])
     -> (i64, f64)
 {
     let target = target.i64()
-        .expect("The target class df[{s}] is not a dtype i64");
+        .expect("The target class is not a dtype i64");
     let mut counter = HashMap::new();
     for &i in indices {
         let l = target.get(i).unwrap();
@@ -509,6 +524,9 @@ fn calc_test_err(target: &Series, dist: &[f64], indices: &[usize], pred: i64)
 /// Prune the full-binary tree.
 #[inline]
 fn prune(root: &mut Rc<RefCell<TrainNode>>) {
+    Rc::get_mut(root).unwrap()
+        .borrow_mut()
+        .set_tree_error_train();
     // Construct the sub-tree that achieves the same training error
     // with fewer leaves.
     Rc::get_mut(root).unwrap()
@@ -516,26 +534,23 @@ fn prune(root: &mut Rc<RefCell<TrainNode>>) {
         .pre_process();
 
 
-    // Sort the nodes in the tree by the `alpha` value.
-    let links = weak_links(root);
+    loop {
+        Rc::get_mut(root).unwrap()
+            .borrow_mut()
+            .reassign_leaves();
 
+        if root.borrow().leaves() <= 2 {
+            break;
+        }
 
-    // Decision tree must have at least one branch node.
-    if links.len() == 1 {
-        return;
-    }
+        let node = weakest_link(root);
 
-
-    // Prune the nodes 
-    // while node error is lower than or equals to tree error
-    for node in links {
         let node_err = node.borrow().node_error();
         let tree_err = node.borrow().tree_error();
 
         if node_err.test >= tree_err.test {
             break;
         }
-
 
         node.borrow_mut().prune();
     }
@@ -544,8 +559,8 @@ fn prune(root: &mut Rc<RefCell<TrainNode>>) {
 
 
 #[inline]
-fn weak_links(root: &Rc<RefCell<TrainNode>>)
-    -> Vec<Rc<RefCell<TrainNode>>>
+fn weakest_link(root: &Rc<RefCell<TrainNode>>)
+    -> Rc<RefCell<TrainNode>>
 {
     let mut links = Vec::new();
     let mut stack = Vec::from([Rc::clone(root)]);
@@ -566,12 +581,11 @@ fn weak_links(root: &Rc<RefCell<TrainNode>>)
 
 
     links.sort_by(|u, v|
-        u.borrow().alpha().partial_cmp(&v.borrow().alpha()).unwrap()
+        v.borrow().alpha().partial_cmp(&u.borrow().alpha()).unwrap()
     );
 
-    links
+    links.pop().unwrap()
 }
-
 
 
 struct TrainNodeGuard<'a> {
