@@ -152,7 +152,10 @@ pub use base_learner::BaseLearner;
 
 
 // Export the instances of the `BaseLearner` trait.
-pub use base_learner::DTree;
+pub use base_learner::{
+    DTree,
+    Criterion,
+};
 // pub use base_learner::DStump;
 // 
 // 
