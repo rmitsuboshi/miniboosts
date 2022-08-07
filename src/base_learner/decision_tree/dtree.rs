@@ -215,6 +215,7 @@ fn full_tree(data: &DataFrame,
 
     // If sum of `dist` over `train` is zero, construct a leaf node.
     if train_err == 0.0 {
+        println!("zero train err");
         return TrainNode::leaf(
             pred, train_total_weight, train_err, test_total_weight, test_err
         );
@@ -480,11 +481,6 @@ fn find_best_split_edge(data: &Series,
     triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(&x2).unwrap());
 
 
-    let total_weight = triplets.par_iter()
-        .map(|(_, d, _)| d)
-        .sum::<f64>();
-
-
     // Compute the edge of the hypothesis that predicts `+1`
     // for all instances.
     let mut edge = triplets.iter()
@@ -492,8 +488,6 @@ fn find_best_split_edge(data: &Series,
         .sum::<f64>();
 
 
-    // best edge
-    let mut best_edge = edge.abs();
 
 
     let mut iter = triplets.into_iter().peekable();
@@ -505,6 +499,8 @@ fn find_best_split_edge(data: &Series,
         .map(|(v, _, _)| *v - 2.0_f64)
         .unwrap_or(f64::MIN);
 
+    // best edge
+    let mut best_edge = edge.abs();
 
     while let Some((left, d, y)) = iter.next() {
         edge -= 2.0 * d * y;
@@ -524,14 +520,12 @@ fn find_best_split_edge(data: &Series,
 
         let threshold = (left + right) / 2.0;
 
-        assert!(total_weight > 0.0);
 
-        if best_edge < edge {
-            best_edge = edge;
+        if best_edge < edge.abs() {
+            best_edge = edge.abs();
             best_threshold = threshold;
         }
     }
-
 
 
     (best_threshold, Edge::from(best_edge))
