@@ -126,7 +126,7 @@ impl CERLPBoost {
     fn regularization_param(&mut self) {
         let m = self.dist.len() as f64;
         let ln_part = (m / self.capping_param).ln();
-        self.eta = 2.0 * ln_part / self.tolerance;
+        self.eta = ln_part / self.tolerance;
     }
 
 
@@ -140,9 +140,8 @@ impl CERLPBoost {
 
         let m = self.dist.len() as f64;
 
-        let numer = 32.0 * (m / self.capping_param).ln();
-        let denom = self.tolerance.powi(2);
-        let max_iter = numer / denom;
+        let ln_m = (m / self.capping_param).ln();
+        let max_iter = 8.0 * ln_m / self.tolerance.powi(2);
 
         max_iter.ceil() as u64
     }
@@ -268,7 +267,7 @@ impl CERLPBoost {
 
 
 impl<C> Booster<C> for CERLPBoost
-    where C: Classifier + PartialEq
+    where C: Classifier + PartialEq + std::fmt::Debug
 {
 
 
@@ -286,12 +285,21 @@ impl<C> Booster<C> for CERLPBoost
         let mut classifiers: Vec<(C, f64)> = Vec::new();
 
 
+        // {
+        //     let h = base_learner.produce(data, target, &self.dist);
+        //     classifiers.push((h, 1.0));
+        // }
+
+
         for t in 1..=max_iter {
             // Update the distribution over examples
             self.update_distribution_mut(&classifiers, data, target);
 
+
             // Receive a hypothesis from the base learner
             let h = base_learner.produce(data, target, &self.dist);
+
+            // println!("h: {h:?}");
 
 
             let gap_vec = target.i64()
@@ -314,9 +322,12 @@ impl<C> Booster<C> for CERLPBoost
                 .map(|(v, d)| v * d)
                 .sum::<f64>();
 
+            if t % 100 == 0 {
+                println!("iter: {t}, diff: {diff}");
+            }
 
             // Update the parameters
-            if diff <= self.tolerance {
+            if diff <= self.tolerance * 2.0 {
                 println!("Break loop at: {t}");
                 break;
             }
@@ -347,5 +358,5 @@ fn prediction<C>(i: usize, data: &DataFrame, classifiers: &[(C, f64)])
 {
     classifiers.iter()
         .map(|(h, w)| w * h.predict(data, i) as f64)
-        .sum::<_>()
+        .sum()
 }

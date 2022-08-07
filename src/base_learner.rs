@@ -6,6 +6,7 @@ pub mod decision_tree;
 
 pub use self::core::BaseLearner;
 pub use self::decision_tree::{
+    Criterion,
     DTree,
     DTreeClassifier,
 };

@@ -102,7 +102,7 @@ impl ERLPBoost {
     #[inline(always)]
     fn regularization_param(&mut self) {
         let ln_m = (self.dist.len() as f64 / self.capping_param).ln();
-        let temp = 2.0 * ln_m / self.tolerance;
+        let temp = ln_m / self.tolerance;
 
 
         self.eta = 0.5_f64.max(temp);
@@ -135,11 +135,11 @@ impl ERLPBoost {
     fn max_loop(&mut self) -> u64 {
         let m = self.dist.len() as f64;
 
-        let mut max_iter = 8.0 / self.tolerance;
+        let mut max_iter = 4.0 / self.tolerance;
 
 
         let ln_m = (m / self.capping_param).ln();
-        let temp = 32.0 * ln_m / self.tolerance.powi(2);
+        let temp = 8.0 * ln_m / self.tolerance.powi(2);
 
 
         max_iter = max_iter.max(temp);

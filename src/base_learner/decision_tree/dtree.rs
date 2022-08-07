@@ -12,6 +12,7 @@ use crate::BaseLearner;
 
 
 use super::node::*;
+use super::criterion::*;
 use super::split_rule::*;
 use super::train_node::*;
 use super::dtree_classifier::DTreeClassifier;
@@ -19,7 +20,7 @@ use super::dtree_classifier::DTreeClassifier;
 
 use std::rc::Rc;
 use std::ops::Deref;
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 
@@ -31,6 +32,7 @@ pub struct DTree {
     criterion: Criterion,
     train_ratio: f64,
     max_depth: Option<usize>,
+    prune: bool,
 }
 
 
@@ -41,13 +43,16 @@ impl DTree {
         let seed: u64 = 0;
         let rng = RefCell::new(SeedableRng::seed_from_u64(seed));
         let criterion   = Criterion::Entropy;
-        let train_ratio = 0.8_f64;
+        let train_ratio = 1.0_f64;
         let max_depth   = None;
+        let prune = false;
+
         Self {
             rng,
             criterion,
             train_ratio,
             max_depth,
+            prune,
         }
     }
 
@@ -75,7 +80,7 @@ impl DTree {
 
     /// Set the ratio used for growing a tree.
     /// The rest examples are for pruning.
-    /// Default ratio is `0.8`.
+    /// Default ratio is `1.0`.
     #[inline]
     pub fn with_grow_ratio(mut self, ratio: f64) -> Self {
         assert!(0.0 <= ratio && ratio <= 1.0);
@@ -92,6 +97,24 @@ impl DTree {
     pub fn with_criterion(mut self, criterion: Criterion) -> Self {
         self.criterion = criterion;
 
+        self
+    }
+
+
+    /// Set the pruning parameter.
+    /// If `true`, the resulting tree is the pruned one.
+    /// Default value is `false.`
+    #[inline]
+    pub fn prune(mut self, p: bool) -> Self {
+        self.prune = p;
+        self
+    }
+
+
+    /// Set criterion for node splitting.
+    #[inline]
+    pub fn criterion(mut self, criterion: Criterion) -> Self {
+        self.criterion = criterion;
         self
     }
 }
@@ -125,7 +148,7 @@ impl BaseLearner for DTree {
         let test_indices = indices;
 
 
-        // Construct a full-tree
+        // Construct a large binary tree
         let mut tree = full_tree(
             data,
             target,
@@ -137,7 +160,13 @@ impl BaseLearner for DTree {
         );
 
 
-        prune(&mut tree);
+        // Prune the nodes
+        if self.prune {
+            prune(&mut tree);
+        }
+
+
+        tree.borrow_mut().remove_parent();
 
 
         let root = Node::from(
@@ -145,6 +174,7 @@ impl BaseLearner for DTree {
                 .expect("Root node has reference counter >= 1")
                 .into_inner()
         );
+
 
         DTreeClassifier::from(root)
     }
@@ -164,45 +194,68 @@ fn full_tree(data: &DataFrame,
              max_depth: Option<usize>)
     -> Rc<RefCell<TrainNode>>
 {
-    // Compute the best prediction that minimizes the training error
-    // on this node.
-    let (pred, train_err) = calc_train_err(target, dist, &train[..]);
-
-
-    let test_err = calc_test_err(target, dist, &test[..], pred);
-
-
-    let node_err = NodeError::from((train_err, test_err));
-
-
-    let total_weight = train.iter()
+    let train_total_weight = train.iter()
         .copied()
         .map(|i| dist[i])
         .sum::<f64>();
 
+    let test_total_weight = test.iter()
+        .copied()
+        .map(|i| dist[i])
+        .sum::<f64>();
+    // Compute the best prediction that minimizes the training error
+    // on this node.
+    let (pred, train_err) = calc_train_error_as_leaf(
+        target, dist, &train[..]
+    );
+
+
+    let test_err = calc_test_error_as_leaf(target, dist, &test[..], pred);
+
 
     // If sum of `dist` over `train` is zero, construct a leaf node.
     if train_err == 0.0 {
-        let leaf = TrainNode::leaf(pred, total_weight, node_err);
-        return Rc::new(RefCell::new(leaf));
+        return TrainNode::leaf(
+            pred, train_total_weight, train_err, test_total_weight, test_err
+        );
     }
 
 
-    let (_, feature, threshold) = data.get_columns()
-        .into_par_iter()
-        .map(|column| {
-            let (thr, dec) = find_best_split(
-                column, target, &dist[..], &train[..]
-            );
-            (dec, column.name(), thr)
-        })
-        .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
-        .expect("No feature that descrease impurity");
-
-
+    // Find the best splitting rule.
+    let (feature, threshold) = match criterion {
+        // FInd a split that minimizes the entropic impurity
+        Criterion::Entropy => {
+            let (_, feature, threshold) = data.get_columns()
+                .into_par_iter()
+                .map(|column| {
+                    let (thr, dec) = find_best_split_entropy(
+                        column, target, &dist[..], &train[..]
+                    );
+                    (dec, column.name(), thr)
+                })
+                .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                .expect("No feature that descrease impurity");
+            (feature, threshold)
+        },
+        // Find a split that maximizes the edge
+        Criterion::Edge => {
+            let (_, feature, threshold) = data.get_columns()
+                .into_par_iter()
+                .map(|column| {
+                    let (thr, edge) = find_best_split_edge(
+                        column, target, &dist[..], &train[..]
+                    );
+                    (edge, column.name(), thr)
+                })
+                .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                .expect("No feature that that maximizes the edge");
+            (feature, threshold)
+        },
+    };
     let rule = Splitter::new(feature, threshold);
 
 
+    // Split the train data for left/right childrens
     let mut ltrain = Vec::new();
     let mut rtrain = Vec::new();
     for i in train.into_iter() {
@@ -213,6 +266,8 @@ fn full_tree(data: &DataFrame,
     }
 
 
+
+    // Split the test data for left/right childrens
     let mut ltest = Vec::new();
     let mut rtest = Vec::new();
     for i in test.into_iter() {
@@ -225,11 +280,13 @@ fn full_tree(data: &DataFrame,
 
     // If the split has no meaning, construct a leaf node.
     if ltrain.is_empty() || rtrain.is_empty() {
-        let leaf = TrainNode::leaf(pred, total_weight, node_err);
-        return Rc::new(RefCell::new(leaf));
+        return TrainNode::leaf(
+            pred, train_total_weight, train_err, test_total_weight, test_err
+        );
     }
 
 
+    // grow the tree.
     let left;
     let right;
     match max_depth {
@@ -262,9 +319,10 @@ fn full_tree(data: &DataFrame,
     }
 
 
-    Rc::new(RefCell::new(TrainNode::branch(
-        rule, left, right, pred, total_weight, node_err
-    )))
+    TrainNode::branch(
+        rule, left, right, pred,
+        train_total_weight, train_err, test_total_weight, test_err
+    )
 }
 
 
@@ -277,23 +335,25 @@ fn construct_leaf(target: &Series,
 {
     // Compute the best prediction that minimizes the training error
     // on this node.
-    let (pred, train_err) = calc_train_err(target, dist, &train[..]);
+    let (pred, train_err) = calc_train_error_as_leaf(target, dist, &train[..]);
 
 
-    let test_err = calc_test_err(target, dist, &test[..], pred);
+    let test_err = calc_test_error_as_leaf(target, dist, &test[..], pred);
 
 
-    let node_err = NodeError::from((train_err, test_err));
-
-
-    let total_weight = train.iter()
+    let train_total_weight = train.iter()
         .copied()
         .map(|i| dist[i])
         .sum::<f64>();
 
+    let test_total_weight = test.iter()
+        .copied()
+        .map(|i| dist[i])
+        .sum::<f64>();
 
-    let leaf = TrainNode::leaf(pred, total_weight, node_err);
-    Rc::new(RefCell::new(leaf))
+    TrainNode::leaf(
+        pred, train_total_weight, train_err, test_total_weight, test_err
+    )
 }
 
 
@@ -303,10 +363,10 @@ fn construct_leaf(target: &Series,
 /// `- \sum_{l} p(l) \ln [ p(l) ]`,
 /// where `p(l)` is the total weight of class `l`.
 #[inline]
-fn find_best_split(data: &Series,
-                   target: &Series,
-                   dist: &[f64],
-                   indices: &[usize])
+fn find_best_split_entropy(data: &Series,
+                           target: &Series,
+                           dist: &[f64],
+                           indices: &[usize])
     -> (f64, Impurity)
 {
     let target = target.i64()
@@ -320,12 +380,12 @@ fn find_best_split(data: &Series,
     let mut triplets = indices.into_par_iter()
         .copied()
         .map(|i| {
-            let val = data.get(i).unwrap();
-            let lab = target.get(i).unwrap();
-            (val, dist[i], lab)
+            let x = data.get(i).unwrap();
+            let y = target.get(i).unwrap();
+            (x, dist[i], y)
         })
         .collect::<Vec<(f64, f64, i64)>>();
-    triplets.sort_by(|(x, _, _), (y, _, _)| x.partial_cmp(&y).unwrap());
+    triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(&x2).unwrap());
 
 
     let total_weight = triplets.par_iter()
@@ -366,6 +426,7 @@ fn find_best_split(data: &Series,
 
         let threshold = (old_val + new_val) / 2.0;
 
+        assert!(total_weight > 0.0);
 
         let lp = left.total / total_weight;
         let rp = 1.0 - lp;
@@ -384,6 +445,96 @@ fn find_best_split(data: &Series,
 
 
     (best_threshold, best_decrease)
+}
+
+
+/// Returns the best split
+/// that maximizes the edge.
+/// Here, edge is the weighted accuracy.
+/// Given a distribution `dist[..]` over the training examples,
+/// the edge is `\sum_{i} dist[i] y[i] h(x[i])`
+/// where `(x[i], y[i])` is the `i`th training example.
+#[inline]
+fn find_best_split_edge(data: &Series,
+                        target: &Series,
+                        dist: &[f64],
+                        indices: &[usize])
+    -> (f64, Edge)
+{
+    let target = target.i64()
+        .expect("The target class is not a dtype i64");
+
+
+    let data = data.f64()
+        .expect("The data is not a dtype f64");
+
+
+    let mut triplets = indices.into_par_iter()
+        .copied()
+        .map(|i| {
+            let x = data.get(i).unwrap();
+            let y = target.get(i).unwrap() as f64;
+            (x, dist[i], y)
+        })
+        .collect::<Vec<(f64, f64, f64)>>();
+    triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(&x2).unwrap());
+
+
+    let total_weight = triplets.par_iter()
+        .map(|(_, d, _)| d)
+        .sum::<f64>();
+
+
+    // Compute the edge of the hypothesis that predicts `+1`
+    // for all instances.
+    let mut edge = triplets.iter()
+        .map(|(_, d, y)| *d * *y)
+        .sum::<f64>();
+
+
+    // best edge
+    let mut best_edge = edge.abs();
+
+
+    let mut iter = triplets.into_iter().peekable();
+
+
+    // best threshold is the smallest value.
+    // we define the initial threshold as the smallest value minus 2.0
+    let mut best_threshold = iter.peek()
+        .map(|(v, _, _)| *v - 2.0_f64)
+        .unwrap_or(f64::MIN);
+
+
+    while let Some((left, d, y)) = iter.next() {
+        edge -= 2.0 * d * y;
+
+
+        while let Some(&(xx, dd, yy)) = iter.peek() {
+            if xx != left { break; }
+
+            edge -= 2.0 * dd * yy;
+
+            iter.next();
+        }
+
+        let right = iter.peek()
+            .map(|(xx, _, _)| *xx)
+            .unwrap_or(left + 2.0_f64);
+
+        let threshold = (left + right) / 2.0;
+
+        assert!(total_weight > 0.0);
+
+        if best_edge < edge {
+            best_edge = edge;
+            best_threshold = threshold;
+        }
+    }
+
+
+
+    (best_threshold, Edge::from(best_edge))
 }
 
 
@@ -427,7 +578,7 @@ impl TempNodeInfo {
         self.map.par_iter()
             .map(|(_, &p)| {
                 let r = p / self.total;
-                if p == 0.0 { 0.0 } else { -r * r.ln() }
+                if r == 0.0 { 0.0 } else { -r * r.ln() }
             })
             .sum::<f64>()
             .into()
@@ -456,11 +607,11 @@ impl TempNodeInfo {
 
 
 
-/// Returns
-/// - a label that minimizes the training error,
-/// - the error.
+/// This function returns a tuple `(y, e)` where
+/// - `y` is the prediction label that minimizes the training error.
+/// - `e` is the training error when the prediction is `y`.
 #[inline]
-fn calc_train_err(target: &Series, dist: &[f64], indices: &[usize])
+fn calc_train_error_as_leaf(target: &Series, dist: &[f64], indices: &[usize])
     -> (i64, f64)
 {
     let target = target.i64()
@@ -496,7 +647,10 @@ fn calc_train_err(target: &Series, dist: &[f64], indices: &[usize])
 
 
 #[inline]
-fn calc_test_err(target: &Series, dist: &[f64], indices: &[usize], pred: i64)
+fn calc_test_error_as_leaf(target: &Series,
+                           dist: &[f64],
+                           indices: &[usize],
+                           pred: i64)
     -> f64
 {
     let target = target.i64()
@@ -524,89 +678,68 @@ fn calc_test_err(target: &Series, dist: &[f64], indices: &[usize], pred: i64)
 /// Prune the full-binary tree.
 #[inline]
 fn prune(root: &mut Rc<RefCell<TrainNode>>) {
-    Rc::get_mut(root).unwrap()
-        .borrow_mut()
-        .set_tree_error_train();
     // Construct the sub-tree that achieves the same training error
     // with fewer leaves.
-    Rc::get_mut(root).unwrap()
-        .borrow_mut()
-        .pre_process();
+    root.borrow_mut().pre_process();
 
+    let mut front = frontier(root);
+    // 1. Get the weakest link node.
+    while let Some(node) = front.pop() {
+        let node_err = node.borrow().train_node_misclassification_cost();
+        let tree_err = node.borrow().test_tree_misclassification_cost();
 
-    loop {
-        Rc::get_mut(root).unwrap()
-            .borrow_mut()
-            .reassign_leaves();
-
-        if root.borrow().leaves() <= 2 {
+        // 2. If the test error increase, then break.
+        // The explession `node_err >= tree_err` implies
+        // the test test error become increasing.
+        if node_err > tree_err {
             break;
         }
 
-        let node = weakest_link(root);
+        // 3. Otherwise, prune the node.
+        let parent = node.borrow_mut().prune();
 
-        let node_err = node.borrow().node_error();
-        let tree_err = node.borrow().tree_error();
 
-        if node_err.test >= tree_err.test {
-            break;
+        // If the pruned node have a parent node, push it to `front`.
+        if let Some(p) = parent {
+            front.push(p);
         }
 
-        node.borrow_mut().prune();
+
+        // Sort them in increasing order.
+        front.sort_by(|x, y| 
+            y.borrow().alpha().partial_cmp(&x.borrow().alpha()).unwrap()
+        );
     }
 }
 
 
 
 #[inline]
-fn weakest_link(root: &Rc<RefCell<TrainNode>>)
-    -> Rc<RefCell<TrainNode>>
-{
-    let mut links = Vec::new();
-    let mut stack = Vec::from([Rc::clone(root)]);
+fn frontier(root: &Rc<RefCell<TrainNode>>) -> Vec<Rc<RefCell<TrainNode>>> {
+    let mut front: Vec<Rc<RefCell<TrainNode>>> = Vec::new();
+    let mut stack = vec![Rc::clone(root)];
+
     while let Some(node) = stack.pop() {
-        match get_ref(&node).deref() {
-            TrainNode::Leaf(_) => {
-                continue;
-            },
-            TrainNode::Branch(ref branch) => {
+        let mut is_frontier = false;
+        if let TrainNode::Branch(branch) = node.borrow().deref() {
+            if !branch.left.borrow().is_leaf() {
                 stack.push(Rc::clone(&branch.left));
+            } else if !branch.right.borrow().is_leaf() {
                 stack.push(Rc::clone(&branch.right));
-            },
+            } else {
+                is_frontier = true;
+            }
         }
 
-
-        links.push(node);
+        if is_frontier {
+            front.push(node);
+        }
     }
-
-
-    links.sort_by(|u, v|
-        v.borrow().alpha().partial_cmp(&u.borrow().alpha()).unwrap()
+    front.sort_by(|x, y| 
+        y.borrow().alpha().partial_cmp(&x.borrow().alpha()).unwrap()
     );
 
-    links.pop().unwrap()
-}
-
-
-struct TrainNodeGuard<'a> {
-    guard: Ref<'a, TrainNode>
-}
-
-
-impl<'b> Deref for TrainNodeGuard<'b> {
-    type Target = TrainNode;
-
-    fn deref(&self) -> &Self::Target {
-        &self.guard
-    }
-}
-
-
-pub(self) fn get_ref(node: &Rc<RefCell<TrainNode>>) -> TrainNodeGuard
-{
-    TrainNodeGuard {
-        guard: node.borrow()
-    }
+    front
 }
 
 
