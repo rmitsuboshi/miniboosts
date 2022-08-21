@@ -72,7 +72,7 @@ impl ERLPBoost {
             tolerance,
             sub_tolerance,
             capping_param: 1.0,
-            env:           env
+            env
         }
     }
 
@@ -238,7 +238,7 @@ impl ERLPBoost {
                 let name = format!("xi[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
             }).collect::<Vec<_>>();
-        let rho = add_ctsvar!(model, name: &"rho", bounds: ..)?;
+        let rho = add_ctsvar!(model, name: "rho", bounds: ..)?;
 
 
         // Set constraints
@@ -259,7 +259,7 @@ impl ERLPBoost {
         }
 
         model.add_constr(
-            &"sum_is_1", c!(wt_vec.iter().grb_sum() == 1.0)
+            "sum_is_1", c!(wt_vec.iter().grb_sum() == 1.0)
         )?;
         model.update()?;
 
@@ -299,7 +299,7 @@ impl ERLPBoost {
         loop {
             // Initialize GRBModel
             let mut model = Model::with_env("", &self.env).unwrap();
-            let gamma = add_ctsvar!(model, name: &"gamma", bounds: ..)
+            let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
                 .unwrap();
 
 
@@ -344,7 +344,7 @@ impl ERLPBoost {
 
 
             model.add_constr(
-                &"zero_sum", c!(deltas.iter().grb_sum() == 0.0_f64)
+                "zero_sum", c!(deltas.iter().grb_sum() == 0.0_f64)
             ).unwrap();
             model.update().unwrap();
 

@@ -50,17 +50,17 @@ impl LPBoost {
         // Set GRBVars
         let vars = (0..m).map(|i| {
                 let name = format!("w[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0..1.0)
+                add_ctsvar!(model, name: &name, bounds: 0_f64..1_f64)
                     .unwrap()
             }).collect::<Vec<_>>();
 
-        let gamma = add_ctsvar!(model, name: &"gamma", bounds: ..)
+        let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
             .unwrap();
 
 
         // Set a constraint
         let constr = model.add_constr(
-            &"sum_is_1", c!(vars.iter().grb_sum() == 1.0)
+            "sum_is_1", c!(vars.iter().grb_sum() == 1.0)
         ).unwrap();
 
         let constrs = vec![constr];
@@ -105,12 +105,12 @@ impl LPBoost {
         let mut model = Model::with_env("", &self.env).unwrap();
 
         // Initialize GRBVars
-        self.gamma = add_ctsvar!(model, name: &"gamma", bounds: ..)
+        self.gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
             .unwrap();
         self.vars = (0..m).into_iter()
             .map(|i| {
                 let name = format!("d[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0..ub)
+                add_ctsvar!(model, name: &name, bounds: 0_f64..ub)
                     .unwrap()
             }).collect::<Vec<Var>>();
         self.model = model;
@@ -118,7 +118,7 @@ impl LPBoost {
 
         // Set GRBConstraint
         let constr = self.model.add_constr(
-            &"sum_is_1", c!(self.vars.iter().grb_sum() == 1.0)
+            "sum_is_1", c!(self.vars.iter().grb_sum() == 1.0)
         ).unwrap();
         self.constrs = vec![constr];
 
@@ -150,7 +150,7 @@ impl LPBoost {
     fn update_params(&mut self, margins: &[f64])
         -> f64
     {
-        let edge = margins.into_iter()
+        let edge = margins.iter()
             .copied()
             .zip(self.dist.iter().copied())
             .map(|(yh, d)| yh * d)
@@ -164,7 +164,7 @@ impl LPBoost {
 
 
         // Add a new constraint
-        let expr = margins.into_iter()
+        let expr = margins.iter()
             .copied()
             .zip(self.vars.iter())
             .map(|(yh, &v)| v * yh)
@@ -199,12 +199,9 @@ impl LPBoost {
         self.constrs.push(constr);
 
 
-        // Check the stopping criterion.
-        let gamma_star = self.model
+        self.model
             .get_obj_attr(attr::X, &self.gamma)
-            .unwrap();
-
-        gamma_star
+            .unwrap()
     }
 }
 

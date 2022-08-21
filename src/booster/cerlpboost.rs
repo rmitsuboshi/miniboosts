@@ -163,7 +163,7 @@ impl CERLPBoost {
             )
             .enumerate()
             .for_each(|(i, (d, y))| {
-                let p = prediction(i, data, &classifiers[..]);
+                let p = prediction(i, data, classifiers);
                 *d = - self.eta * y.unwrap() as f64 * p
             });
 
@@ -193,15 +193,14 @@ impl CERLPBoost {
                 vec
             })
             .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
+            .rev();
 
 
         let ub = 1.0 / self.capping_param;
         let log_cap = self.capping_param.ln();
 
         let mut idx_with_logsum = indices.into_iter()
-            .zip(logsums.into_iter())
+            .zip(logsums)
             .enumerate();
 
         while let Some((i, (i_sorted, logsum))) = idx_with_logsum.next() {

@@ -59,7 +59,7 @@ impl SoftBoost {
             tolerance,
             sub_tolerance,
             capping_param: 1.0,
-            env: env
+            env
         }
     }
 
@@ -128,13 +128,13 @@ impl SoftBoost {
         // Initialize GRBVars
         let wt_vec = (0..t).map(|i| {
                 let name = format!("w[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0..1.0).unwrap()
+                add_ctsvar!(model, name: &name, bounds: 0_f64..).unwrap()
             }).collect::<Vec<_>>();
         let xi_vec = (0..m).map(|i| {
                 let name = format!("xi[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0..).unwrap()
+                add_ctsvar!(model, name: &name, bounds: 0.0_f64..).unwrap()
             }).collect::<Vec<_>>();
-        let rho = add_ctsvar!(model, name: &"rho", bounds: ..)?;
+        let rho = add_ctsvar!(model, name: "rho", bounds: ..)?;
 
 
         // Set constraints
@@ -155,7 +155,7 @@ impl SoftBoost {
         }
 
         model.add_constr(
-            &"sum_is_1", c!(wt_vec.iter().grb_sum() == 1.0)
+            "sum_is_1", c!(wt_vec.iter().grb_sum() == 1.0)
         )?;
         model.update()?;
 
@@ -242,7 +242,7 @@ impl SoftBoost {
 
 
             model.add_constr(
-                &"zero_sum", c!(vars.iter().grb_sum() == 0.0)
+                "zero_sum", c!(vars.iter().grb_sum() == 0.0)
             ).unwrap();
             model.update().unwrap();
 
@@ -287,7 +287,7 @@ impl SoftBoost {
             // Check the stopping criterion
             let mut l2 = 0.0;
             for (v, d) in vars.iter().zip(self.dist.iter_mut()) {
-                let val = model.get_obj_attr(attr::X, &v).unwrap();
+                let val = model.get_obj_attr(attr::X, v).unwrap();
                 *d += val;
                 l2 += val * val;
             }

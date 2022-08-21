@@ -11,7 +11,7 @@ use std::ops::{Mul, Add};
 /// Edge
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Edge(f64);
+pub(super) struct Edge(f64);
 
 
 impl From<f64> for Edge {
@@ -42,7 +42,7 @@ impl PartialOrd for Edge {
 /// Impurity
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Impurity(f64);
+pub(super) struct Impurity(f64);
 
 
 impl From<f64> for Impurity {
@@ -98,6 +98,7 @@ pub enum Criterion {
     /// Binary entropy function.
     Entropy,
     /// Weighted accuracy.
+    /// This criterion is designed for binary classification problems.
     Edge,
     // /// Gini index.
     // Gini,
