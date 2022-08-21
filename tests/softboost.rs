@@ -51,8 +51,6 @@ pub mod softboost_iris {
         let mut booster = SoftBoost::init(&data)
             .capping(nu * m as f64);
         let dtree = DTree::init(&data)
-            .seed(0)
-            .with_grow_ratio(1.0)
             .max_depth(1);
 
 

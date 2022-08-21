@@ -51,8 +51,6 @@ pub mod cerlpboost_iris {
         let mut booster = CERLPBoost::init(&data)
             .capping(nu * m);
         let dtree = DTree::init(&data)
-            .seed(0)
-            .with_grow_ratio(1.0)
             .max_depth(1);
 
 

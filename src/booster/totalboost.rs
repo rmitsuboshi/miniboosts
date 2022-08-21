@@ -23,7 +23,7 @@ pub struct TotalBoost {
 impl TotalBoost {
     /// initialize the `TotalBoost`.
     pub fn init(df: &DataFrame) -> Self {
-        let softboost = SoftBoost::init(&df)
+        let softboost = SoftBoost::init(df)
             .capping(1.0);
 
         TotalBoost { softboost }
