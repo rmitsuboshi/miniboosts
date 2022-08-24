@@ -28,7 +28,10 @@ pub struct LPBoost {
     model: Model,
     gamma: Var,
     vars: Vec<Var>,
-    constrs: Vec<Constr>
+    constrs: Vec<Constr>,
+
+
+    terminated: usize,
 }
 
 
@@ -83,7 +86,9 @@ impl LPBoost {
             model,
             vars,
             gamma,
-            constrs
+            constrs,
+
+            terminated: 0_usize,
         }
     }
 
@@ -141,6 +146,14 @@ impl LPBoost {
     /// Returns a optimal value of the optimization problem LPBoost solves
     pub fn opt_val(&self) -> f64 {
         self.gamma_hat
+    }
+
+
+    /// Returns the break iteration.
+    /// This method returns `0` before the `.run()` call.
+    #[inline(always)]
+    pub fn terminated(&self) -> usize {
+        self.terminated
     }
 
 
@@ -223,6 +236,8 @@ impl<C> Booster<C> for LPBoost
 
         let mut classifiers = Vec::new();
 
+        self.terminated = usize::MAX;
+
         // Since the LPBoost does not have non-trivial iteration,
         // we run this until the stopping criterion is satisfied.
         loop {
@@ -247,6 +262,7 @@ impl<C> Booster<C> for LPBoost
 
             if gamma_star >= self.gamma_hat - self.tolerance {
                 println!("Break loop at: {t}", t = classifiers.len());
+                self.terminated = classifiers.len();
                 break;
             }
 
