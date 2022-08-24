@@ -31,6 +31,9 @@ pub struct ERLPBoost {
     sub_tolerance: f64,
     capping_param: f64,
     env: Env,
+
+
+    terminated: usize,
 }
 
 
@@ -72,7 +75,9 @@ impl ERLPBoost {
             tolerance,
             sub_tolerance,
             capping_param: 1.0,
-            env
+            env,
+
+            terminated: 0_usize,
         }
     }
 
@@ -87,6 +92,14 @@ impl ERLPBoost {
         self.regularization_param();
 
         self
+    }
+
+
+    /// Returns the break iteration.
+    /// This method returns `0` before the `.run()` call.
+    #[inline(always)]
+    pub fn terminated(&self) -> usize {
+        self.terminated
     }
 
 
@@ -421,6 +434,8 @@ impl<C> Booster<C> for ERLPBoost
         // Get max iteration.
         let max_iter = self.max_loop();
 
+        self.terminated = max_iter as usize;
+
 
         // This vector holds the classifiers
         // obtained from the `base_learner`.
@@ -439,6 +454,7 @@ impl<C> Booster<C> for ERLPBoost
             let diff = self.gamma_hat - self.gamma_star;
             if diff <= self.tolerance {
                 println!("Break loop at: {step}");
+                self.terminated = step as usize;
                 break;
             }
 
