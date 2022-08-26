@@ -289,7 +289,7 @@ impl ERLPBoost {
 
         let status = model.status()?;
 
-        if status != Status::Optimal {
+        if status != Status::Optimal && status != Status::SubOptimal {
             panic!("Cannot solve the primal problem. Status: {status:?}");
         }
 
