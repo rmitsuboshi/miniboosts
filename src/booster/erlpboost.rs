@@ -289,7 +289,7 @@ impl ERLPBoost {
 
         let status = model.status()?;
 
-        if status != Status::Optimal && status != Status::SubOptimal {
+        if status != Status::Optimal {
             panic!("Cannot solve the primal problem. Status: {status:?}");
         }
 
@@ -395,7 +395,7 @@ impl ERLPBoost {
             // This will never happen
             // since the domain is a bounded & closed convex set,
             let status = model.status().unwrap();
-            if status != Status::Optimal {
+            if status != Status::Optimal && status != Status::SubOptimal {
                 panic!("Status ({status:?}) is not optimal.");
             }
 
