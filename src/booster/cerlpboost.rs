@@ -326,7 +326,7 @@ impl<C> Booster<C> for CERLPBoost
             }
 
             // Update the parameters
-            if diff <= self.tolerance * 2.0 {
+            if diff <= self.tolerance {
                 println!("Break loop at: {t}");
                 break;
             }

@@ -302,15 +302,28 @@ impl ERLPBoost {
 
 
     /// Updates `self.dist`
+    /// This method repeatedly minimizes the quadratic approximation of 
+    /// ERLPB. objective around current distribution `self.dist`.
+    /// Then update `self.dist` as the optimal solution of 
+    /// the approximate problem. 
+    /// This method continues minimizing the quadratic objective 
+    /// while the decrease of the optimal value is 
+    /// greater than `self.sub_tolerance`.
     fn update_distribution<C>(&mut self,
                               classifiers: &[C],
                               data: &DataFrame,
                               target: &Series)
         where C: Classifier,
     {
+        let m = self.dist.len();
         let mut old_objval: f64 = 1e6;
         loop {
-            assert!(self.dist.iter().all(|&d| 0.0 <= d && d <= 1.0 / self.capping_param));
+            assert!(
+                self.dist.iter()
+                    .all(|&d| 0.0 <= d && d <= 1.0 / self.capping_param)
+            );
+
+
             // Initialize GRBModel
             let mut model = Model::with_env("", &self.env).unwrap();
             let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
@@ -320,18 +333,14 @@ impl ERLPBoost {
             // Set variables that are used in the optimization problem
             let upper_bound = 1.0 / self.capping_param;
 
-            let deltas = self.dist.iter()
-                .copied()
-                .enumerate()
-                .map(|(i, d)| {
-                    let name = format!("delta[{i}]");
-                    // define the i'th lb & ub
-                    let lb = -d;
-                    let ub = upper_bound - d;
-                    add_ctsvar!(model, name: &name, bounds: lb..ub)
+
+            let grb_dist = (0..m).into_iter()
+                .map(|i| {
+                    let name = format!("dist[{i}]");
+                    add_ctsvar!(model, name: &name, bounds: 0.0..upper_bound)
                         .unwrap()
                 })
-                .collect::<Vec<Var>>();
+                .collect::<Vec<_>>();
             model.update().unwrap();
 
 
@@ -341,14 +350,12 @@ impl ERLPBoost {
                 .for_each(|(j, h)| {
                     let iter = target.i64()
                         .expect("The target class is not a dtype i64");
-                    let expr = deltas.iter()
-                        .copied()
-                        .zip(self.dist.iter().copied())
+                    let expr = grb_dist.iter().copied()
                         .zip(iter)
                         .enumerate()
-                        .map(|(i, ((delta, d), y))| {
+                        .map(|(i, (d, y))| {
                             let yh = (y.unwrap() * h.predict(data, i)) as f64;
-                            yh * (d + delta)
+                            d * yh
                         })
                         .grb_sum();
 
@@ -358,19 +365,18 @@ impl ERLPBoost {
 
 
             model.add_constr(
-                "zero_sum", c!(deltas.iter().grb_sum() == 0.0_f64)
+                "sum_is_1", c!(grb_dist.iter().grb_sum() == 1.0_f64)
             ).unwrap();
             model.update().unwrap();
 
 
             // Set objective function
-            let m = self.dist.len() as f64;
             let regularizer = self.dist.iter()
                 .copied()
-                .zip(deltas.iter())
-                .map(|(d, &delta)| {
-                    let linear = ((m * d).ln() + 1.0) * delta;
-                    let quad = (1.0 / (2.0 * d)) * (delta * delta);
+                .zip(grb_dist.iter())
+                .map(|(d, &grb_d)| {
+                    let linear = d.ln() * grb_d;
+                    let quad   = (0.5_f64 / d) * (grb_d * grb_d);
 
                     linear + quad
                 })
@@ -400,14 +406,15 @@ impl ERLPBoost {
 
 
             self.dist.iter_mut()
-                .zip(deltas)
-                .for_each(|(d, delta)| {
-                    let dlt = model.get_obj_attr(attr::X, &delta).unwrap();
-                    *d += dlt;
+                .zip(grb_dist)
+                .for_each(|(d, grb_d)| {
+                    let g = model.get_obj_attr(attr::X, &grb_d).unwrap();
+                    *d = g;
                 });
 
 
-            if old_objval - objval < self.sub_tolerance {
+            let any_zero = self.dist.iter().any(|&d| 0.0 == d);
+            if any_zero || old_objval - objval < self.sub_tolerance {
                 break;
             }
 
