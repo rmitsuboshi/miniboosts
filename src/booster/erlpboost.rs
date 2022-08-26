@@ -27,6 +27,8 @@ pub struct ERLPBoost {
     eta: f64,
 
     tolerance: f64,
+
+
     // an accuracy parameter for the sub-problems
     sub_tolerance: f64,
     capping_param: f64,
@@ -55,8 +57,7 @@ impl ERLPBoost {
 
 
         // Set tolerance, sub_tolerance
-        let tolerance     = uni / 2.0;
-        let sub_tolerance = tolerance / 10.0;
+        let tolerance = uni / 2.0;
 
 
         // Set regularization parameter
@@ -73,7 +74,7 @@ impl ERLPBoost {
             gamma_star,
             eta,
             tolerance,
-            sub_tolerance,
+            sub_tolerance: 1e-9,
             capping_param: 1.0,
             env,
 
@@ -107,7 +108,6 @@ impl ERLPBoost {
     #[inline(always)]
     fn set_tolerance(&mut self, tolerance: f64) {
         self.tolerance = tolerance / 2.0;
-        self.sub_tolerance = self.tolerance / 10.0;
     }
 
 
@@ -310,6 +310,7 @@ impl ERLPBoost {
     {
         let mut old_objval: f64 = 1e6;
         loop {
+            assert!(self.dist.iter().all(|&d| 0.0 <= d && d <= 1.0 / self.capping_param));
             // Initialize GRBModel
             let mut model = Model::with_env("", &self.env).unwrap();
             let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
