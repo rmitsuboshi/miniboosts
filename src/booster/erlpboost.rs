@@ -13,10 +13,10 @@ use grb::prelude::*;
 
 
 
-/// Struct `ERLPBoost` has 3 main parameters.
-/// - `dist` is the distribution over training examples,
+/// ERLPBoost struct. 
+/// See [this paper](https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.141.1759&rep=rep1&type=pdf).
 pub struct ERLPBoost {
-    pub(crate) dist: Vec<f64>,
+    dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
     gamma_hat: f64,
@@ -41,6 +41,9 @@ pub struct ERLPBoost {
 
 impl ERLPBoost {
     /// Initialize the `ERLPBoost`.
+    /// Use `data` for argument.
+    /// This method does not care 
+    /// whether the label is included in `data` or not.
     pub fn init(df: &DataFrame) -> Self {
         let (m, _) = df.shape();
         assert!(m != 0);
@@ -56,7 +59,7 @@ impl ERLPBoost {
         let ln_m = (m as f64).ln();
 
 
-        // Set tolerance, sub_tolerance
+        // Set tolerance
         let tolerance = uni / 2.0;
 
 
@@ -83,7 +86,7 @@ impl ERLPBoost {
     }
 
 
-    /// This method updates the capping parameter.
+    /// Updates the capping parameter.
     pub fn capping(mut self, capping_param: f64) -> Self {
         assert!(
             1.0 <= capping_param

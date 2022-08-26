@@ -16,14 +16,10 @@ use crate::Booster;
 
 
 
-/// Struct `CERLPBoost` has 3 main parameters.
-///     - `dist` is the distribution over training examples,
-///     - `weights` is the weights over `classifiers`
-///        that the CERLPBoost obtained up to iteration `t`.
-///     - `classifiers` is the classifier that the CERLPBoost obtained.
-/// The length of `weights` and `classifiers` must be same.
+/// Corrective ERLPBoost struct.
+/// This algorithm is based on the [paper](https://link.springer.com/content/pdf/10.1007/s10994-010-5173-z.pdf).
 pub struct CERLPBoost {
-    pub(crate) dist: Vec<f64>,
+    dist: Vec<f64>,
     // A regularization parameter defined in the paper
     eta: f64,
 
