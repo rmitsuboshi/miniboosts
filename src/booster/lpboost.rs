@@ -13,7 +13,7 @@ use grb::prelude::*;
 
 
 
-/// Defines `LPBoost`.
+/// LPBoost struct. See [this paper](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf).
 pub struct LPBoost {
     dist: Vec<f64>,
 
@@ -94,8 +94,7 @@ impl LPBoost {
 
 
     /// This method updates the capping parameter.
-    /// Once the capping parameter changed,
-    /// we need to update the `model` of the Gurobi.
+    /// This parameter must be in `[1, sample_size]`.
     pub fn capping(mut self, capping_param: f64) -> Self {
         assert!(
             1.0 <= capping_param
@@ -137,6 +136,8 @@ impl LPBoost {
     }
 
 
+    /// Set the tolerance parameter.
+    /// Default is `1.0 / sample_size`/
     #[inline(always)]
     fn set_tolerance(&mut self, tolerance: f64) {
         self.tolerance = tolerance;
@@ -144,21 +145,23 @@ impl LPBoost {
 
 
     /// Returns a optimal value of the optimization problem LPBoost solves
+    #[inline(always)]
     pub fn opt_val(&self) -> f64 {
         self.gamma_hat
     }
 
 
-    /// Returns the break iteration.
-    /// This method returns `0` before the `.run()` call.
+    /// Returns the terminated iteration.
+    /// This method returns `0` before the boosting step.
     #[inline(always)]
     pub fn terminated(&self) -> usize {
         self.terminated
     }
 
 
-    /// `update_params` updates `self.distribution` and `self.gamma_hat`
+    /// This method updates `self.dist` and `self.gamma_hat`
     /// by solving a linear program
+    /// over the hypotheses obtained in past steps.
     #[inline(always)]
     fn update_params(&mut self, margins: &[f64])
         -> f64
@@ -230,9 +233,7 @@ impl<C> Booster<C> for LPBoost
         -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
-        if self.tolerance != tolerance {
-            self.set_tolerance(tolerance);
-        }
+        self.set_tolerance(tolerance);
 
         let mut classifiers = Vec::new();
 

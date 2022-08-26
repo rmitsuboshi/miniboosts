@@ -10,6 +10,7 @@ In this code, I use the [Gurobi optimizer](https://www.gurobi.com).
 You need to acquire the license to use TotalBoost, LPBoost, ERLPBoost, and SoftBoost.
 I'm planning to write code that solves linear and quadratic programming.
 
+
 ## Implemented:
 You can combine the following boosters and base learners arbitrarily.
 
@@ -27,8 +28,7 @@ You can combine the following boosters and base learners arbitrarily.
 
 
 - Base Learner
-    - Decision stump
-    - Decision tree
+    - Decision tree (`DTree`)
 
 ## What I will implement:
 
@@ -49,7 +49,6 @@ You can combine the following boosters and base learners arbitrarily.
 - Others
     - Parallelization
     - LP/QP solver
-    - Polars support
 
 
 I'm also planning to implement the other booster/base learner in the future.
@@ -73,7 +72,8 @@ use polars::prelude::*;
 use lycaon::{
     Booster,
     AdaBoost, // You can use other boosters enumerated above.
-    DTree,   // You can use `DTree`.
+    DTree,    // Decision Tree
+    Criterion,
     Classifier,
 };
 
@@ -95,11 +95,15 @@ fn main() {
 
 
     // Initialize Booster
-    let mut booster = AdaBoost::init(&sample)
+    let mut booster = AdaBoost::init(&sample);
 
 
     // Initialize Base Learner
-    let base_learner = DTree::init(&data);
+    // For decision tree, the default `max_depth` is `None` so that 
+    // The tree grows extremely large.
+    let base_learner = DTree::init(&data)
+        .max_depth(2)
+        .criterion(Criterion::Edge); // Choose the split rule that maximizes the edge.
 
 
     // Set tolerance parameter
@@ -115,7 +119,9 @@ fn main() {
     let predictions = f.predict_all(&data);
 
 
-    // You can predict `i`th instance by `let p = f.predict(&data, i);`
+    // You can predict the `i`th instance.
+    let i = 0_usize;
+    let prediction = f.predict(&data, i);
 }
 ```
 
@@ -124,7 +130,8 @@ If you use soft margin maximizing boosting, initialize booster like this:
 ```rust
 let (m, _) = df.shape();
 let capping_param = m as f64 * 0.2;
-let lpboost = LPBoost::init(&sample).capping(capping_param);
+let lpboost = LPBoost::init(&sample)
+    .capping(capping_param);
 ```
 
 Note that the capping parameter satisfies `1 <= capping_param && capping_param <= m`.
