@@ -250,9 +250,7 @@ impl<C> Booster<C> for LPBoost
                 .expect("The target class is not a dtype of i64")
                 .into_iter()
                 .enumerate()
-                .map(|(i, y)|
-                    (y.unwrap() * h.predict(data, i)) as f64
-                )
+                .map(|(i, y)| y.unwrap() as f64 * h.confidence(data, i))
                 .collect::<Vec<f64>>();
 
 

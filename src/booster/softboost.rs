@@ -46,7 +46,6 @@ impl SoftBoost {
 
         // Set tolerance, sub_tolerance
         let tolerance = uni;
-        let sub_tolerance = uni / 10.0;
 
 
         // Set gamma_hat
@@ -57,7 +56,7 @@ impl SoftBoost {
             dist:          vec![uni; m],
             gamma_hat,
             tolerance,
-            sub_tolerance,
+            sub_tolerance: 1e-9,
             capping_param: 1.0,
             env
         }
@@ -82,7 +81,6 @@ impl SoftBoost {
     #[inline(always)]
     fn set_tolerance(&mut self, tolerance: f64) {
         self.tolerance = tolerance;
-        self.sub_tolerance = tolerance / 10.0;
     }
 
 
@@ -148,7 +146,7 @@ impl SoftBoost {
             let y = y.unwrap() as f64;
             let expr = wt_vec.iter()
                 .zip(classifiers)
-                .map(|(&w, h)| w * h.predict(data, i) as f64)
+                .map(|(&w, h)| w * h.confidence(data, i))
                 .grb_sum();
             let name = format!("sample[{i}]");
             model.add_constr(&name, c!(y * expr >= rho - xi))?;
@@ -229,7 +227,7 @@ impl SoftBoost {
                         .enumerate()
                         .map(|(i, ((v, d), y))| {
                             let y = y.unwrap() as f64;
-                            let p = h.predict(data, i) as f64;
+                            let p = h.confidence(data, i);
                             y * p * (d + *v)
                         })
                         .grb_sum();
@@ -330,20 +328,13 @@ impl<C> Booster<C> for SoftBoost
             let h = base_learner.produce(data, target, &self.dist);
 
             // update `self.gamma_hat`
-            // let edge = self.dist.iter()
-            //     .zip(sample.iter())
-            //     .fold(0.0_f64, |acc, (&d, (dat, lab))| {
-            //         let l: f64 = lab.clone().into();
-            //         let p: f64 = h.predict(dat).into();
-            //         acc + d * l * p
-            //     });
             let edge = target.i64()
                 .expect("The target class is not a dtype i64")
                 .into_iter()
                 .zip(self.dist.iter().copied())
                 .enumerate()
                 .map(|(i, (y, d))|
-                    d * y.unwrap() as f64 * h.predict(data, i) as f64
+                    d * y.unwrap() as f64 * h.confidence(data, i)
                 )
                 .sum::<f64>();
 

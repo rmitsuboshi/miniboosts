@@ -180,7 +180,7 @@ impl ERLPBoost {
             .into_iter()
             .zip(self.dist.iter().copied())
             .enumerate()
-            .map(|(i, (y, d))| d * (y.unwrap() * h.predict(data, i)) as f64)
+            .map(|(i, (y, d))| d * y.unwrap() as f64 * h.confidence(data, i))
             .sum::<f64>();
 
 
@@ -213,7 +213,7 @@ impl ERLPBoost {
                     .zip(self.dist.iter().copied())
                     .enumerate()
                     .map(|(i, (y, d))|
-                        d * (y.unwrap() * h.predict(data, i)) as f64
+                        d * y.unwrap() as f64 * h.confidence(data, i)
                     )
                     .sum::<f64>()
             )
@@ -268,7 +268,7 @@ impl ERLPBoost {
             let y = y.unwrap() as f64;
             let expr = wt_vec.iter()
                 .zip(classifiers)
-                .map(|(&w, h)| w * h.predict(data, i))
+                .map(|(&w, h)| w * h.confidence(data, i))
                 .grb_sum();
             let name = format!("S[{i}]");
             model.add_constr(&name, c!(y * expr >= rho - xi))?;

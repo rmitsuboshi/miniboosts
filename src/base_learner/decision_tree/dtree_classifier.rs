@@ -24,8 +24,8 @@ impl From<Node> for DTreeClassifier {
 
 
 impl Classifier for DTreeClassifier {
-    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
-        self.root.predict(data, row)
+    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
+        self.root.confidence(data, row)
     }
 }
 

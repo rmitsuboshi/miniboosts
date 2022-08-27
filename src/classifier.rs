@@ -22,16 +22,30 @@ use serde::{Serialize, Deserialize};
 /// A trait that defines the function used in the combined classifier
 /// of the boosting algorithms.
 pub trait Classifier {
+    /// Computes the confidence of the i'th row of the `df`.
+    fn confidence(&self, df: &DataFrame, row: usize) -> f64;
 
-    /// Predicts the label of the given example of type `T`.
-    fn predict(&self, df: &DataFrame, row: usize) -> i64;
+
+    /// Predicts the label of the i'th row of the `df`.
+    fn predict(&self, df: &DataFrame, row: usize) -> i64 {
+        self.confidence(df, row).signum() as i64
+    }
 
 
-    /// Predicts the labels of the given examples of type `T`.
+    /// Computes the confidence of `df`.
+    fn confidence_all(&self, df: &DataFrame) -> Vec<f64> {
+        let m = df.shape().0;
+        (0..m).into_iter()
+            .map(|row| self.confidence(df, row))
+            .collect::<Vec<_>>()
+    }
+
+
+    /// Predicts the labels of `df`.
     fn predict_all(&self, df: &DataFrame) -> Vec<i64>
     {
-        let (h, _) = df.shape();
-        (0..h).into_iter()
+        let m = df.shape().0;
+        (0..m).into_iter()
             .map(|row| self.predict(df, row))
             .collect::<Vec<_>>()
     }
@@ -55,21 +69,13 @@ impl<C> From<Vec<(f64, C)>> for CombinedClassifier<C>
 }
 
 
-use std::collections::HashMap;
 impl<C> Classifier for CombinedClassifier<C>
     where C: Classifier,
 {
-    fn predict(&self, df: &DataFrame, row: usize) -> i64
-    {
-        let mut map: HashMap<i64, f64> = HashMap::new();
-        for (w, h) in self.inner.iter() {
-            let p = h.predict(df, row);
-            *map.entry(p).or_insert(0.0) += *w;
-        }
-
-        map.into_iter()
-            .max_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
-            .expect("No hypothesis in `self`").0
+    fn confidence(&self, df: &DataFrame, row: usize) -> f64 {
+        self.inner.iter()
+            .map(|(w, h)| *w * h.confidence(df, row))
+            .sum::<f64>()
     }
 }
 
