@@ -40,7 +40,7 @@ pub struct TrainBranchNode {
 
 
     // A label that have most weight on this node.
-    pub(super) prediction: i64,
+    pub(super) prediction: f64,
 
 
     // Total mass on this node.
@@ -69,7 +69,7 @@ impl TrainBranchNode {
 
 /// Represents the leaf nodes of decision tree.
 pub struct TrainLeafNode {
-    pub(super) prediction: i64,
+    pub(super) prediction: f64,
     pub(self) total_weight: f64,
     pub(self) loss_as_leaf: f64,
 }
@@ -107,6 +107,7 @@ impl TrainNode {
                        loss_as_leaf: f64)
         -> Rc<RefCell<Self>>
     {
+        let prediction = prediction as f64;
         let leaf = TrainLeafNode {
             prediction,
             total_weight,
@@ -128,6 +129,7 @@ impl TrainNode {
                          loss_as_leaf: f64)
         -> Rc<RefCell<Self>>
     {
+        let prediction = prediction as f64;
         let leaves = left.borrow().leaves() + right.borrow().leaves();
         let node = TrainBranchNode {
             rule,
@@ -225,7 +227,7 @@ impl TrainNode {
 
 impl Classifier for TrainLeafNode {
     #[inline]
-    fn predict(&self, _data: &DataFrame, _row: usize) -> i64 {
+    fn confidence(&self, _data: &DataFrame, _row: usize) -> f64 {
         self.prediction
     }
 }
@@ -233,10 +235,10 @@ impl Classifier for TrainLeafNode {
 
 impl Classifier for TrainBranchNode {
     #[inline]
-    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
+    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
         match self.rule.split(data, row) {
-            LR::Left => self.left.borrow().predict(data, row),
-            LR::Right => self.right.borrow().predict(data, row)
+            LR::Left => self.left.borrow().confidence(data, row),
+            LR::Right => self.right.borrow().confidence(data, row)
         }
     }
 }
@@ -244,10 +246,10 @@ impl Classifier for TrainBranchNode {
 
 impl Classifier for TrainNode {
     #[inline]
-    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
+    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
         match self {
-            TrainNode::Branch(ref node) => node.predict(data, row),
-            TrainNode::Leaf(ref node) => node.predict(data, row)
+            TrainNode::Branch(ref node) => node.confidence(data, row),
+            TrainNode::Leaf(ref node) => node.confidence(data, row)
         }
     }
 }

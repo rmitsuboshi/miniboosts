@@ -28,12 +28,5 @@ pub trait BaseLearner {
     /// on the given distribution `dist`.
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
         -> Self::Clf;
-
-
-    /// Outputs an instance of `Classifier` trait
-    /// that achieves high accuracy
-    /// on the given **logarithmic** distribution `dist`.
-    fn ln_produce(&self, data: &DataFrame, target: &Series, ln_dist: &[f64])
-        -> Self::Clf;
 }
 

@@ -100,7 +100,7 @@ impl CERLPBoost {
                     .zip(self.dist.iter().copied())
                     .enumerate()
                     .map(|(i, (y, d))|
-                        d * y.unwrap() as f64 * h.predict(data, i) as f64
+                        d * y.unwrap() as f64 * h.confidence(data, i)
                     )
                     .sum::<f64>()
             )
@@ -303,7 +303,7 @@ impl<C> Booster<C> for CERLPBoost
                 .enumerate()
                 .map(|(i, y)| {
                     let old_pred = prediction(i, data, &classifiers[..]);
-                    let new_pred = h.predict(data, i) as f64;
+                    let new_pred = h.confidence(data, i);
 
                     y.unwrap() as f64 * (new_pred - old_pred)
                 })
@@ -317,9 +317,6 @@ impl<C> Booster<C> for CERLPBoost
                 .map(|(v, d)| v * d)
                 .sum::<f64>();
 
-            if t % 100 == 0 {
-                println!("iter: {t}, diff: {diff}");
-            }
 
             // Update the parameters
             if diff <= self.tolerance {
@@ -352,6 +349,6 @@ fn prediction<C>(i: usize, data: &DataFrame, classifiers: &[(C, f64)])
     where C: Classifier
 {
     classifiers.iter()
-        .map(|(h, w)| w * h.predict(data, i) as f64)
+        .map(|(h, w)| w * h.confidence(data, i))
         .sum()
 }

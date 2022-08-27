@@ -154,7 +154,7 @@ impl<C> Booster<C> for AdaBoost
         let max_loop = self.max_loop(eps);
         println!("max_loop: {max_loop}");
 
-        for _t in 1..=max_loop {
+        for step in 1..=max_loop {
             // Get a new hypothesis
             let h = base_learner.produce(data, target, &self.dist);
 
@@ -165,7 +165,7 @@ impl<C> Booster<C> for AdaBoost
                 .expect("The target class is not an dtype i64")
                 .into_iter()
                 .enumerate()
-                .map(|(i, y)| (y.unwrap() * h.predict(data, i)) as f64)
+                .map(|(i, y)| (y.unwrap() as f64 * h.confidence(data, i)))
                 .collect::<Vec<f64>>();
 
 
@@ -179,7 +179,7 @@ impl<C> Booster<C> for AdaBoost
             // use it as the combined classifier.
             if edge.abs() >= 1.0 {
                 weighted_classifier = vec![(edge.signum(), h)];
-                println!("Break loop after: {_t} iterations");
+                println!("Break loop at: {step}");
                 break;
             }
 

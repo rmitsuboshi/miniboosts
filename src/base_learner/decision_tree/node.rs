@@ -54,7 +54,7 @@ impl BranchNode {
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode {
-    pub(self) prediction: i64,
+    pub(self) prediction: f64,
 }
 
 
@@ -63,7 +63,7 @@ impl LeafNode {
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(prediction: i64) -> Self {
+    pub(crate) fn from_raw(prediction: f64) -> Self {
         Self { prediction }
     }
 }
@@ -116,7 +116,7 @@ impl From<TrainNode> for Node {
 
 impl Classifier for LeafNode {
     #[inline]
-    fn predict(&self, _data: &DataFrame, _row: usize) -> i64 {
+    fn confidence(&self, _data: &DataFrame, _row: usize) -> f64 {
         self.prediction
     }
 }
@@ -124,10 +124,10 @@ impl Classifier for LeafNode {
 
 impl Classifier for BranchNode {
     #[inline]
-    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
+    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
         match self.rule.split(data, row) {
-            LR::Left => self.left.predict(data, row),
-            LR::Right => self.right.predict(data, row)
+            LR::Left => self.left.confidence(data, row),
+            LR::Right => self.right.confidence(data, row)
         }
     }
 }
@@ -135,10 +135,10 @@ impl Classifier for BranchNode {
 
 impl Classifier for Node {
     #[inline]
-    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
+    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
         match self {
-            Node::Branch(ref node) => node.predict(data, row),
-            Node::Leaf(ref node) => node.predict(data, row)
+            Node::Branch(ref node) => node.confidence(data, row),
+            Node::Leaf(ref node) => node.confidence(data, row)
         }
     }
 }

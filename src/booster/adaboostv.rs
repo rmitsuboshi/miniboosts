@@ -178,7 +178,7 @@ impl<C> Booster<C> for AdaBoostV
                 .expect("The target class is not an dtype i64")
                 .into_iter()
                 .enumerate()
-                .map(|(i, y)| (y.unwrap() * h.predict(data, i)) as f64)
+                .map(|(i, y)| (y.unwrap() as f64 * h.confidence(data, i)))
                 .collect::<Vec<f64>>();
 
 
