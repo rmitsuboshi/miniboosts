@@ -2,12 +2,15 @@
 A collection of boosting algorithms written in Rust.
 This library provides some boosting algorithms for binary classification.
 
-You can implement your original boosting algorithm by implementing the `Booster` trait.
-You can also implement your original base learning algorithm by implementing the `BaseLearner` trait.
+You can implement your original boosting algorithm 
+by implementing the `Booster` trait.
+You can also implement your original base learning algorithm 
+by implementing the `BaseLearner` trait.
 
 
 In this code, I use the [Gurobi optimizer](https://www.gurobi.com).
-You need to acquire the license to use TotalBoost, LPBoost, ERLPBoost, and SoftBoost.
+You need to acquire the license 
+to use TotalBoost, LPBoost, ERLPBoost, and SoftBoost.
 I'm planning to write code that solves linear and quadratic programming.
 
 
@@ -23,7 +26,7 @@ You can combine the following boosters and base learners arbitrarily.
     - Soft Margin Maximization
         * [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf)
         * [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf)
-        * [Corrective ERLPBoost](https://core.ac.uk/download/pdf/207934763.pdf)
+        * [Corrective ERLPBoost](https://core.ac.uk/download/pdf/207934763.pdf) (`CERLPBoost`)
         * [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf)
 
 
@@ -42,8 +45,9 @@ You can combine the following boosters and base learners arbitrarily.
 - Base Learner
     - Bag of words
     - TF-IDF
-    - Two Layer Neural Networks
+    - Two-Layer Neural Networks
     - Regression Tree
+    - [RBF-Net](https://link.springer.com/content/pdf/10.1023/A:1007618119488.pdf)
 
 
 - Others
@@ -55,9 +59,11 @@ I'm also planning to implement the other booster/base learner in the future.
 
 
 ## How to use
+Our boosting algorithms uses 
+the `DataFrame` of [`polars`](https://github.com/pola-rs/polars) crate, 
+so that you need to import `polars`.
 
-
-You need to write the following line to `cargo.toml`.
+You need to write the following line to `Cargo.toml`.
 
 ```TOML
 lycaon = { git = "https://github.com/rmitsuboshi/lycaon" }
@@ -68,14 +74,7 @@ Here is a sample code:
 
 ```rust
 use polars::prelude::*;
-
-use lycaon::{
-    Booster,
-    AdaBoost, // You can use other boosters enumerated above.
-    DTree,    // Decision Tree
-    Criterion,
-    Classifier,
-};
+use lycaon::prelude::*;
 
 
 fn main() {
@@ -83,6 +82,8 @@ fn main() {
     let file = "/path/to/input/data.csv";
 
     // Read a CSV file
+    // Note that each feature of `data`, except the target column,
+    // must be the `f64` type with no missing values.
     let mut data = CsvReader::from_path(file)
         .unwrap()
         .has_header(true)
@@ -90,7 +91,7 @@ fn main() {
         .unwrap();
 
 
-    // Pick the target class. Each element is 1 or -1.
+    // Pick the target class. Each element is 1 or -1 of type `i64`.
     let target: Series = data.drop_in_place(&"class").unwrap();
 
 
