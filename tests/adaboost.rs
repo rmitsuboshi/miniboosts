@@ -2,9 +2,7 @@ use polars::prelude::*;
 
 use std::env;
 
-use lycaon::Booster;
-use lycaon::AdaBoost;
-use lycaon::{Classifier, DTree};
+use lycaon::prelude::*;
 
 
 
