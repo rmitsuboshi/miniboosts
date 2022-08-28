@@ -2,10 +2,7 @@ use polars::prelude::*;
 
 use std::env;
 
-use lycaon::Booster;
-use lycaon::ERLPBoost;
-use lycaon::{Classifier, DTree};
-
+use lycaon::prelude::*;
 
 
 /// Tests for `ERLPBoost`.

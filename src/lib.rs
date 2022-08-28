@@ -2,32 +2,32 @@
 
 //! 
 //! A crate that provides some boosting algorithms.
-//! All the boosting algorithm in this crate has theoretical iteration bound
-//! until finding a combined hypothesis.
+//! All the boosting algorithm in this crate, 
+//! except `LPBoost`, has theoretical iteration bound 
+//! until finding a combined hypothesis. 
 //! 
-//! This crate includes two types of boosting algorithms.
+//! This crate includes three types of boosting algorithms. 
 //! 
-//! - Empirical risk minimizing (ERM) boosting
-//!     The boosting algorithms of this type minimizes the empirical loss
-//!     over the training examples.
-//!     In this crate,
-//!     `AdaBoost` and `AdaBoostV` are correspond to this type.
+//! * Empirical risk minimizing (ERM) boosting
+//!     - `AdaBoost`.
 //! 
 //! 
-//! - Margin maximizing boosting
-//!     The boosting algorithms of this type maximizes the $\ell_1$-margin.
-//!     In other words, minimizes the maximum weighted loss over
-//!     the training examples.
-//!     The resulting combined classifier has nicer generalization error bound
-//!     than the ERM one.
-//!     In this crate,
-//!     `LPBoost`, `ERLPBoost`, `TotalBoost`, and `SoftBoost` are
-//!     correspond to this type.
+//! * Hard margin maximizing boosting
+//!     - `AdaBoostV`,
+//!     - `TotalBoost`.
+//! 
+//! 
+//! * Soft margin maximizing boosting
+//!     - `LPBoost`,
+//!     - `SoftBoost`,
+//!     - `ERLPBoost`,
+//!     - `CERLPBoost`.
 //! 
 
 pub mod classifier;
 pub mod booster;
 pub mod base_learner;
+pub mod prelude;
 
 
 // Export the `Classifier` trait.
