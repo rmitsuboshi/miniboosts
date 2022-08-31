@@ -44,10 +44,10 @@ pub mod lpboost_iris {
         let target = data.drop_in_place(&"class").unwrap();
 
 
-        let nu = 1.0_f64 / m;
+        let ratio = 1.0_f64 / m;
         // let nu = 0.1_f64;
         let mut booster = LPBoost::init(&data)
-            .capping(nu * m);
+            .nu(ratio * m);
 
         let dtree = DTree::init(&data)
             .max_depth(1);
