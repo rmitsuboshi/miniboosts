@@ -130,9 +130,9 @@ fn main() {
 If you use soft margin maximizing boosting, initialize booster like this:
 ```rust
 let (m, _) = df.shape();
-let capping_param = m as f64 * 0.2;
+let nu = m as f64 * 0.2;
 let lpboost = LPBoost::init(&sample)
-    .capping(capping_param);
+    .nu(nu);
 ```
 
-Note that the capping parameter satisfies `1 <= capping_param && capping_param <= m`.
+Note that the capping parameter satisfies `1 <= nu && nu <= m`.
