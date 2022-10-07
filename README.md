@@ -1,4 +1,4 @@
-# Lycaon
+# MiniBoosts
 A collection of boosting algorithms written in Rust.
 This library provides some boosting algorithms for binary classification.
 
@@ -66,7 +66,7 @@ so that you need to import `polars`.
 You need to write the following line to `Cargo.toml`.
 
 ```TOML
-lycaon = { git = "https://github.com/rmitsuboshi/lycaon" }
+miniboosts = { git = "https://github.com/rmitsuboshi/miniboosts" }
 ```
 
 
@@ -74,7 +74,7 @@ Here is a sample code:
 
 ```rust
 use polars::prelude::*;
-use lycaon::prelude::*;
+use miniboosts::prelude::*;
 
 
 fn main() {

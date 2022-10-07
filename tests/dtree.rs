@@ -1,7 +1,5 @@
-extern crate lycaon;
-
-use lycaon::DTree;
-use lycaon::BaseLearner;
+use miniboosts::DTree;
+use miniboosts::BaseLearner;
 
 
 use polars::prelude::*;

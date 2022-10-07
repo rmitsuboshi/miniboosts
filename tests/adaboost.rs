@@ -2,7 +2,7 @@ use polars::prelude::*;
 
 use std::env;
 
-use lycaon::prelude::*;
+use miniboosts::prelude::*;
 
 
 
