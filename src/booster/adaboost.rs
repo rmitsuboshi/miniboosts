@@ -17,22 +17,6 @@ pub struct AdaBoost {
 impl AdaBoost {
     /// Initialize the `AdaBoost`.
     /// This method just sets the parameter `AdaBoost` holds.
-    /// 
-    /// # Example
-    /// 
-    /// ```rust
-    /// use lycaon::{Sample, AdaBoost};
-    /// 
-    /// let examples = vec![
-    ///     vec![1.0, 2.0, 3.0],
-    ///     vec![4.0, 5.0, 6.0],
-    /// ];
-    /// let labels = vec![1.0, -1.0];
-    /// 
-    /// let sample = Sample::from((examples, labels));
-    /// 
-    /// let booster = AdaBoost::init(&sample);
-    /// ```
     pub fn init(df: &DataFrame) -> Self {
         assert!(!df.is_empty());
         let (m, _) = df.shape();
@@ -48,30 +32,8 @@ impl AdaBoost {
     /// of the `AdaBoost` to find a combined hypothesis
     /// that has error at most `eps`.
     /// After the `self.max_loop()` iterations,
-    /// `AdaBoost` guarantees no miss-classification on `sample<T>`
+    /// `AdaBoost` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
-    /// 
-    /// # Example
-    /// 
-    /// ```rust
-    /// use lycaon::{Sample, AdaBoost};
-    /// 
-    /// let examples = vec![
-    ///     vec![1.0, 2.0, 3.0],
-    ///     vec![4.0, 5.0, 6.0],
-    /// ];
-    /// let labels = vec![1.0, -1.0];
-    /// 
-    /// let sample = Sample::from((examples, labels));
-    /// 
-    /// let booster = AdaBoost::init(&sample);
-    /// let eps = 0.01_f64;
-    /// 
-    /// let expected = (sample.len() as f64).ln() / eps.powi(2);
-    /// 
-    /// assert_eq!(booster.max_loop(eps), expected as u64);
-    /// ```
-    /// 
     pub fn max_loop(&self, eps: f64) -> u64 {
         let m = self.dist.len();
 
@@ -80,7 +42,7 @@ impl AdaBoost {
 
 
     /// Returns a weight on the new hypothesis.
-    /// `update_params` also updates `self.distribution`
+    /// `update_params` also updates `self.dist`
     #[inline]
     fn update_params(&mut self,
                      margins: Vec<f64>,
@@ -122,7 +84,7 @@ impl AdaBoost {
 
 
 
-        // Update the distribution
+        // Update self.dist
         self.dist.par_iter_mut()
             .for_each(|d| *d = (*d - normalizer).exp());
 

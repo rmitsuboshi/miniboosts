@@ -56,31 +56,8 @@ impl AdaBoostV {
     /// of the `AdaBoostV` to find a combined hypothesis
     /// that has error at most `eps`.
     /// After the `self.max_loop()` iterations,
-    /// `AdaBoostV` guarantees no miss-classification on `data`
+    /// `AdaBoost` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
-    /// 
-    /// # Example
-    /// 
-    /// ```rust
-    /// use lycaon::{Sample, AdaBoostV};
-    /// 
-    /// let examples = vec![
-    ///     vec![1.0, 2.0, 3.0],
-    ///     vec![4.0, 5.0, 6.0],
-    /// ];
-    /// let labels = vec![1.0, -1.0];
-    /// 
-    /// let sample = Sample::from((examples, labels));
-    /// 
-    /// let mut booster = AdaBoostV::init(&sample);
-    /// let eps = 0.01_f64;
-    /// booster.set_tolerance(eps);
-    /// 
-    /// let expected = 2.0 * (sample.len() as f64).ln() / eps.powi(2);
-    /// 
-    /// assert_eq!(booster.max_loop(), expected as usize);
-    /// ```
-    /// 
     #[inline]
     pub fn max_loop(&self) -> usize {
         let m = self.dist.len();
@@ -90,7 +67,7 @@ impl AdaBoostV {
 
 
     /// Returns a weight on the new hypothesis.
-    /// `update_params` also updates `self.distribution`
+    /// `update_params` also updates `self.dist`
     #[inline]
     fn update_params(&mut self, margins: Vec<f64>, edge: f64)
         -> f64
