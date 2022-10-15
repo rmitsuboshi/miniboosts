@@ -18,6 +18,17 @@ pub use crate::booster::{
     ERLPBoost,
     SoftBoost,
     CERLPBoost,
+
+    MLPBoost,
+};
+
+pub use crate::booster::mlpboost::{
+    Primary,
+    Secondary,
+    StopCondition,
+};
+
+pub use crate::booster::{
 };
 
 
