@@ -108,7 +108,7 @@ fn full_tree(data: &DataFrame,
     -> Rc<RefCell<TrainNode>>
 {
 
-    let total_weight = indices.iter()
+    let total_weight = indices.par_iter()
         .copied()
         .map(|i| dist[i])
         .sum::<f64>();
