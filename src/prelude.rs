@@ -40,6 +40,11 @@ pub use crate::base_learner::{
     DTree,
     DTreeClassifier,
     Criterion,
+
+
+    // Naive Bayes
+    GaussianNB,
+    NBayesClassifier,
 };
 
 

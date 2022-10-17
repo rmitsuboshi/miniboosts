@@ -34,7 +34,8 @@ You can combine the following boosters and weak-learners arbitrarily.
 
 
 - Weak Learners
-    - Decision tree (`DTree`)
+    - DTree (Decision Tree)
+    - GaussianNB (Naive Bayes), **beta version**
 
 ## What I will implement:
 

@@ -66,11 +66,17 @@ pub use base_learner::BaseLearner;
 pub use base_learner::{
     DTree,
     Criterion,
+
+
+    GaussianNB,
 };
 // 
 // 
 // // Export the instances of the `Classifier` trait.
 // // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
-pub use base_learner::DTreeClassifier;
+pub use base_learner::{
+    DTreeClassifier,
+    NBayesClassifier,
+};
 
 
