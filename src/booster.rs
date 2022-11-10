@@ -19,7 +19,6 @@ pub use self::core::Booster;
 
 /// Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
-pub use self::smoothboost::SmoothBoost;
 
 
 /// Hard Margin Maximization
@@ -31,6 +30,7 @@ pub use self::totalboost::TotalBoost;
 pub use self::lpboost::LPBoost;
 pub use self::erlpboost::ERLPBoost;
 pub use self::softboost::SoftBoost;
+pub use self::smoothboost::SmoothBoost;
 pub use self::cerlpboost::CERLPBoost;
 
 pub use self::mlpboost::MLPBoost;

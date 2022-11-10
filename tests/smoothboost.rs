@@ -41,7 +41,7 @@ pub mod smoothboost_iris {
 
 
         let mut smoothboost = SmoothBoost::init(&data)
-            .kappa(0.1)
+            .tolerance(0.1)
             .gamma(0.1);
         let dtree = DTree::init(&data);
 

@@ -41,7 +41,6 @@ pub use booster::Booster;
 // Export the boosting algorithms that minimizes the empirical loss.
 pub use booster::{
     AdaBoost,
-    SmoothBoost,
 };
 
 
@@ -57,7 +56,8 @@ pub use booster::{
     LPBoost,
     ERLPBoost,
     SoftBoost,
-    CERLPBoost
+    SmoothBoost,
+    CERLPBoost,
 };
 
 
