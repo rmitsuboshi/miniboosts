@@ -17,8 +17,18 @@ use crate::{
 /// SmoothBoost. See Figure 1
 /// in [this paper](https://www.jmlr.org/papers/volume4/servedio03a/servedio03a.pdf).
 pub struct SmoothBoost {
+    /// Desired accuracy
     kappa: f64,
+
+    /// Desired margin for the final hypothesis.
+    /// To guarantee the convergence rate, `theta` should be
+    /// `gamma / (2.0 + gamma)`.
     theta: f64,
+
+    /// Weak-learner guarantee;
+    /// for any distribution over the training examples,
+    /// the weak-learner returns a hypothesis
+    /// with edge at least `gamma`.
     gamma: f64,
 
     /// The number of training examples.
@@ -49,7 +59,7 @@ impl SmoothBoost {
 
     /// Set the parameter `kappa`.
     #[inline(always)]
-    pub fn kappa(mut self, kappa: f64) -> Self {
+    pub fn tolerance(mut self, kappa: f64) -> Self {
         self.kappa = kappa;
 
         self
