@@ -39,11 +39,6 @@ You can combine the following boosters and weak-learners arbitrarily.
     - DTree (Decision Tree)
     - GaussianNB (Naive Bayes), **beta version**
 
-### Regression
-- Booster
-    - AdaBoostR
-- Weak Learner
-    - RTree (Regression Tree)
 
 ## What I will implement:
 
