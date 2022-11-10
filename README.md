@@ -19,9 +19,11 @@ I'm planning to write code that solves linear and quadratic programming.
 ## Implemented:
 You can combine the following boosters and weak-learners arbitrarily.
 
+### Classification
 - Boosters
     - Empirical Risk Minimization
         * [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub) by Freynd and Schapire, 1997
+        * [SmoothBoost](https://link.springer.com/chapter/10.1007/3-540-44581-1_31) by Rocco A. Servedio, 2003
     - Hard Margin Optimization
         * [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html) by Rätsch and Warmuth, 2005
         * [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970) by Warmuth, Liao, and Rätsch, 2006
@@ -36,6 +38,12 @@ You can combine the following boosters and weak-learners arbitrarily.
 - Weak Learners
     - DTree (Decision Tree)
     - GaussianNB (Naive Bayes), **beta version**
+
+### Regression
+- Booster
+    - AdaBoostR
+- Weak Learner
+    - RTree (Regression Tree)
 
 ## What I will implement:
 

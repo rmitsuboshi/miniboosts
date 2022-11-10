@@ -6,6 +6,7 @@ pub use crate::booster::{
 
     // ERM boostings
     AdaBoost,
+    SmoothBoost,
 
 
     // Hard margin maximizing boostings
