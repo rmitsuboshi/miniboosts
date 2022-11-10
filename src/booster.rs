@@ -1,6 +1,7 @@
 //! Provides some boosting algorithms.
 
 pub mod core;
+pub mod smoothboost;
 pub mod adaboost;
 pub mod adaboostv;
 pub mod lpboost;
@@ -18,6 +19,7 @@ pub use self::core::Booster;
 
 /// Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
+pub use self::smoothboost::SmoothBoost;
 
 
 /// Hard Margin Maximization

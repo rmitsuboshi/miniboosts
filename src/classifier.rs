@@ -19,8 +19,8 @@ use serde::{Serialize, Deserialize};
 
 
 
-/// A trait that defines the function used in the combined classifier
-/// of the boosting algorithms.
+/// A trait that defines the behavor of classifier.
+/// You only need to implement `confidence` method.
 pub trait Classifier {
     /// Computes the confidence of the i'th row of the `df`.
     fn confidence(&self, df: &DataFrame, row: usize) -> f64;

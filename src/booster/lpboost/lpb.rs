@@ -1,5 +1,5 @@
 //! This file defines `LPBoost` based on the paper
-//! "Boosting algorithms for Maximizing the Soft Margin"
+//! ``Boosting algorithms for Maximizing the Soft Margin''
 //! by Warmuth et al.
 //! 
 use polars::prelude::*;

@@ -100,18 +100,6 @@ impl LPModel {
             }
         }
 
-        // let pos = self.dist.iter()
-        //     .map(|d| self.model.get_obj_attr(attr::X, d).unwrap())
-        //     .enumerate()
-        //     .max_by(|a, b| a.partial_cmp(&b).unwrap())
-        //     .unwrap().0;
-
-        // let n = self.constrs.len();
-        // let mut weights = vec![0.0_f64; n];
-        // weights[pos] = 1.0;
-
-        // weights
-
 
         self.constrs.iter()
             .map(|c| self.model.get_obj_attr(attr::Pi, c).unwrap().abs())
