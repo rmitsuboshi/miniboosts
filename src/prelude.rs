@@ -1,12 +1,13 @@
 //! Exports the standard boosting algorithms and traits.
 //! 
 pub use crate::booster::{
+    // Booster trait
     Booster,
 
 
+    // Classification ---------------------------
     // ERM boostings
     AdaBoost,
-    SmoothBoost,
 
 
     // Hard margin maximizing boostings
@@ -18,9 +19,13 @@ pub use crate::booster::{
     LPBoost,
     ERLPBoost,
     SoftBoost,
+    SmoothBoost,
     CERLPBoost,
 
     MLPBoost,
+
+    // Regression -------------------------------
+
 };
 
 pub use crate::booster::mlpboost::{
@@ -29,14 +34,13 @@ pub use crate::booster::mlpboost::{
     StopCondition,
 };
 
-pub use crate::booster::{
-};
-
 
 pub use crate::base_learner::{
+    // Base Learner trait
     BaseLearner,
 
 
+    // Classification ---------------------------
     // Decision tree
     DTree,
     DTreeClassifier,
@@ -46,10 +50,21 @@ pub use crate::base_learner::{
     // Naive Bayes
     GaussianNB,
     NBayesClassifier,
+
+
+    // Regression -------------------------------
+    RTree,
+    RTreeRegressor,
 };
 
 
 pub use crate::classifier::{
     Classifier,
     CombinedClassifier,
+};
+
+
+pub use crate::regressor::{
+    Regressor,
+    CombinedRegressor,
 };

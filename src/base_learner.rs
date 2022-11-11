@@ -5,6 +5,10 @@ pub mod core;
 pub mod decision_tree;
 
 
+/// Defines Regression Tree.
+pub mod regression_tree;
+
+
 /// Defines Naive Bayes.
 pub mod naive_bayes;
 
@@ -14,7 +18,16 @@ pub use self::decision_tree::{
     DTree,
     DTreeClassifier,
 };
+
+
 pub use self::naive_bayes::{
     GaussianNB,
     NBayesClassifier,
+};
+
+
+pub use self::regression_tree::{
+    Loss,
+    RTree,
+    RTreeRegressor,
 };
