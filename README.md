@@ -2,33 +2,32 @@
 A collection of boosting algorithms written in Rust.
 This library provides some boosting algorithms for binary classification.
 
-You can implement your original boosting algorithm 
-by implementing the `Booster` trait.
-You can also implement your original weak-learning algorithm 
-by implementing the `BaseLearner` trait.
+You can implement your original booster or base learner
+by implementing the `Booster` or `BaseLearner` trait, respectively.
+
 
 
 This library uses [Gurobi optimizer](https://www.gurobi.com), 
-so you need to acquire a license to use this library. 
+so you must acquire a license to use this library. 
 **Note** that you need to put `gurobi.lic` in your home directory; 
 otherwise, the compile fails. 
 
 I'm planning to write code that solves linear and quadratic programming.
 
 
-## Implemented:
+## Features
 You can combine the following boosters and weak-learners arbitrarily.
 
 ### Classification
 - Boosters
     - Empirical Risk Minimization
         * [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub) by Freynd and Schapire, 1997
-        * [SmoothBoost](https://link.springer.com/chapter/10.1007/3-540-44581-1_31) by Rocco A. Servedio, 2003
     - Hard Margin Optimization
         * [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html) by Rätsch and Warmuth, 2005
         * [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970) by Warmuth, Liao, and Rätsch, 2006
     - Soft Margin Optimization
         * [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf) by Demiriz, Bennett, and Shawe-Taylor, 2002
+        * [SmoothBoost](https://link.springer.com/chapter/10.1007/3-540-44581-1_31) by Rocco A. Servedio, 2003
         * [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf) by Warmuth, Glocer, and Rätsch, 2007
         * [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf) by Warmuth and Glocer, and Vishwanathan, 2008
         * [CERLPBoost](https://link.springer.com/article/10.1007/s10994-010-5173-z) (The Corrective ERLPBoost) by Shalev-Shwartz and Singer, 2010
@@ -40,7 +39,11 @@ You can combine the following boosters and weak-learners arbitrarily.
     - GaussianNB (Naive Bayes), **beta version**
 
 
-## What I will implement:
+### Regression
+- Weak Learner
+    - RTree (Regression Tree)
+
+## My future work
 
 - Booster
     - LogitBoost
@@ -52,8 +55,7 @@ You can combine the following boosters and weak-learners arbitrarily.
 - Base Learner
     - Bag of words
     - TF-IDF
-    - Two-Layer Neural Networks
-    - Regression Tree
+    - Two-Layer Neural Network
     - [RBF-Net](https://link.springer.com/content/pdf/10.1023/A:1007618119488.pdf)
 
 
@@ -62,7 +64,7 @@ You can combine the following boosters and weak-learners arbitrarily.
     - LP/QP solver
 
 
-I'm also planning to implement the other booster/weak-learner in the future.
+I'm also planning to implement the other booster/weak-learner.
 
 
 ## How to use

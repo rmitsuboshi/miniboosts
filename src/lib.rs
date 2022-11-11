@@ -24,6 +24,7 @@
 //!     - `CERLPBoost`.
 //! 
 
+pub mod regressor;
 pub mod classifier;
 pub mod booster;
 pub mod base_learner;
@@ -32,6 +33,10 @@ pub mod prelude;
 
 // Export the `Classifier` trait.
 pub use classifier::{Classifier, CombinedClassifier};
+
+
+// Export the `Regressor` trait.
+pub use regressor::{Regressor, CombinedRegressor};
 
 
 // Export the `Booster` trait.
