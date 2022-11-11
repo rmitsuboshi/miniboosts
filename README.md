@@ -1,18 +1,12 @@
 # MiniBoosts
-A collection of boosting algorithms written in Rust.
-This library provides some boosting algorithms for binary classification.
-
-You can implement your original booster or base learner
-by implementing the `Booster` or `BaseLearner` trait, respectively.
-
+**A collection of boosting algorithms written in Rust.**
 
 
 This library uses [Gurobi optimizer](https://www.gurobi.com), 
 so you must acquire a license to use this library. 
 **Note** that you need to put `gurobi.lic` in your home directory; 
 otherwise, the compile fails. 
-
-I'm planning to write code that solves linear and quadratic programming.
+See [this repository](https://github.com/ykrist/rust-grb) for details.
 
 
 ## Features
@@ -61,7 +55,7 @@ You can combine the following boosters and weak-learners arbitrarily.
 
 - Others
     - Parallelization
-    - LP/QP solver
+    - LP/QP solver (This work allows you to use this library without a license).
 
 
 I'm also planning to implement the other booster/weak-learner.
