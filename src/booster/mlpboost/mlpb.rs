@@ -59,8 +59,8 @@ pub struct MLPBoost {
 
 impl MLPBoost {
     /// Initialize the `MLPBoost`.
-    pub fn init(df: &DataFrame) -> Self {
-        let (size, _) = df.shape();
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        let (size, _) = data.shape();
         assert!(size != 0);
 
 
@@ -116,10 +116,11 @@ impl MLPBoost {
     }
 
 
-    /// Update the tolerance parameter.
+    /// Set the tolerance parameter.
     #[inline(always)]
-    fn tolerance(&mut self, tol: f64) {
-        self.tolerance = tol / 2.0;
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
+        self.tolerance = tolerance / 2.0;
+        self
     }
 
 
@@ -146,9 +147,9 @@ impl MLPBoost {
     /// Initialize all parameters.
     /// The methods `self.tolerance(..)`, `self.eta(..)`, and
     /// `self.init_solver(..)` are accessed only via this method.
-    fn init_params(&mut self, tol: f64) {
+    fn init_params(&mut self) {
         // Set the tolerance parameter.
-        self.tolerance(tol);
+        assert!((0.0..0.5).contains(&self.tolerance));
         // Set the regularization parameter.
         // Note that this method must called after
         // `self.tolerance(..)`.
@@ -260,15 +261,14 @@ impl<C> Booster<C> for MLPBoost
               base_learner: &B,
               data: &DataFrame,
               target: &Series,
-              tolerance: f64)
-        -> CombinedClassifier<C>
+    ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
         // ------------------------------------------------------
         // Pre-processing
 
         // Initialize the parameters.
-        self.init_params(tolerance);
+        self.init_params();
 
 
         // Compute the maximum iteration and set `self.terminated`.

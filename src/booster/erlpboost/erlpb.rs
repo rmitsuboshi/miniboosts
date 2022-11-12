@@ -48,8 +48,8 @@ impl ERLPBoost {
     /// Use `data` for argument.
     /// This method does not care 
     /// whether the label is included in `data` or not.
-    pub fn init(df: &DataFrame) -> Self {
-        let size = df.shape().0;
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        let size = data.shape().0;
         assert!(size != 0);
 
 
@@ -119,10 +119,11 @@ impl ERLPBoost {
     }
 
 
-    /// Setter method of `self.tolerance`
+    /// Set the tolerance parameter.
     #[inline(always)]
-    fn set_tolerance(&mut self, tolerance: f64) {
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance / 2.0;
+        self
     }
 
 
@@ -139,7 +140,7 @@ impl ERLPBoost {
 
     /// Set `gamma_hat` and `gamma_star`.
     #[inline]
-    fn set_gamma(&mut self) {
+    fn gamma(&mut self) {
         self.gamma_hat = 1.0;
         self.gamma_star = -1.0;
     }
@@ -147,19 +148,19 @@ impl ERLPBoost {
 
     /// Set all parameters in ERLPBoost.
     #[inline]
-    fn init_params(&mut self, tolerance: f64) {
-        self.set_tolerance(tolerance);
+    fn init_params(&mut self) {
+        assert!((0.0..1.0).contains(&self.tolerance));
 
         self.regularization_param();
 
-        self.set_gamma();
+        self.gamma();
     }
 
 
     /// `max_loop` returns the maximum iteration
     /// of the Adaboost to find a combined hypothesis
     /// that has error at most `tolerance`.
-    fn max_loop(&mut self) -> u64 {
+    fn max_loop(&mut self) -> usize {
         let size = self.size as f64;
 
         let mut max_iter = 4.0 / self.tolerance;
@@ -171,7 +172,7 @@ impl ERLPBoost {
 
         max_iter = max_iter.max(temp);
 
-        max_iter.ceil() as u64
+        max_iter.ceil() as usize
     }
 }
 
@@ -277,12 +278,11 @@ impl<C> Booster<C> for ERLPBoost
               base_learner: &B,
               data: &DataFrame,
               target: &Series,
-              tolerance: f64)
-        -> CombinedClassifier<C>
+    ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
         // Initialize all parameters
-        self.init_params(tolerance);
+        self.init_params();
 
 
         self.init_solver();

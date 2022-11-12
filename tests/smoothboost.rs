@@ -40,13 +40,13 @@ pub mod smoothboost_iris {
         let target = data.drop_in_place(&"class").unwrap();
 
 
-        let mut smoothboost = SmoothBoost::init(&data)
+        let mut smoothboost = SmoothBoost::init(&data, &target)
             .tolerance(0.1)
             .gamma(0.1);
-        let dtree = DTree::init(&data);
+        let dtree = DTree::init(&data, &target);
 
 
-        let f = smoothboost.run(&dtree, &data, &target, 0.1);
+        let f = smoothboost.run(&dtree, &data, &target);
 
 
         let (m, _) = data.shape();

@@ -41,8 +41,8 @@ pub struct SmoothBoost {
 
 impl SmoothBoost {
     /// Initialize `SmoothBoost`.
-    pub fn init(df: &DataFrame) -> Self {
-        let n_sample = df.shape().0;
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        let n_sample = data.shape().0;
 
 
         Self {
@@ -122,7 +122,6 @@ impl<C> Booster<C> for SmoothBoost
         base_learner: &B,
         data:         &DataFrame,
         target:       &Series,
-        _tol:         f64,
     ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>
     {

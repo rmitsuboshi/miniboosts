@@ -30,10 +30,10 @@ pub struct DTree {
 impl DTree {
     /// Initialize `DTree`.
     #[inline]
-    pub fn init(df: &DataFrame) -> Self {
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
         let criterion = Criterion::Entropy;
         let max_depth = None;
-        let size = df.shape().0;
+        let size = data.shape().0;
 
         Self {
             criterion,

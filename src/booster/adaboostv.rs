@@ -25,8 +25,8 @@ pub struct AdaBoostV {
 
 impl AdaBoostV {
     /// Initialize the `AdaBoostV<D, L>`.
-    pub fn init(df: &DataFrame) -> Self {
-        let (m, _) = df.shape();
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        let (m, _) = data.shape();
         assert!(m != 0);
 
 
@@ -47,14 +47,14 @@ impl AdaBoostV {
 
     /// Set the tolerance parameter.
     #[inline]
-    pub fn set_tolerance(&mut self, tolerance: f64) {
+    pub fn tolerance(&mut self, tolerance: f64) {
         self.tolerance = tolerance;
     }
 
 
     /// `max_loop` returns the maximum iteration
     /// of the `AdaBoostV` to find a combined hypothesis
-    /// that has error at most `eps`.
+    /// that has error at most `tolerance`.
     /// After the `self.max_loop()` iterations,
     /// `AdaBoost` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
@@ -125,18 +125,18 @@ impl<C> Booster<C> for AdaBoostV
 {
 
 
-    fn run<B>(&mut self,
-              base_learner: &B,
-              data: &DataFrame,
-              target: &Series,
-              eps: f64)
-        -> CombinedClassifier<C>
+    fn run<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+    ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
         // Initialize parameters
         let (m, _) = data.shape();
         self.dist = vec![1.0 / m as f64; m];
-        self.set_tolerance(eps);
+
 
         let mut weighted_classifier = Vec::new();
 

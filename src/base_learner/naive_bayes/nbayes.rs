@@ -17,7 +17,7 @@ pub struct GaussianNB;
 
 impl GaussianNB {
     /// Initializes the GaussianNB instance.
-    pub fn init(_data: &DataFrame) -> Self {
+    pub fn init(_data: &DataFrame, _target: &Series) -> Self {
         Self {}
     }
 }

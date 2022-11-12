@@ -33,10 +33,11 @@ pub struct RTree {
 impl RTree {
     /// Initialize `RTree`.
     #[inline]
-    pub fn init(df: &DataFrame) -> Self
+    pub fn init(data: &DataFrame, _target: &Series)
+        -> Self
     {
         let max_depth = None;
-        let size = df.shape().0;
+        let size = data.shape().0;
 
         Self {
             max_depth,

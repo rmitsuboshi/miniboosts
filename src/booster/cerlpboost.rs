@@ -29,9 +29,9 @@ pub struct CERLPBoost {
 
 impl CERLPBoost {
     /// Initialize the `CERLPBoost`.
-    pub fn init(df: &DataFrame) -> Self {
-        assert!(!df.is_empty());
-        let (m, _) = df.shape();
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        assert!(!data.is_empty());
+        let (m, _) = data.shape();
 
         // Set uni as an uniform weight
         let uni = 1.0 / m as f64;
@@ -52,9 +52,15 @@ impl CERLPBoost {
         }
     }
 
+    fn init_params(&mut self) {
+        assert!((0.0..1.0).contains(&self.tolerance));
+        self.regularization_param();
+    }
+
     /// This method updates the capping parameter.
     pub fn capping(mut self, capping_param: f64) -> Self {
-        assert!(1.0 <= capping_param && capping_param <= self.dist.len() as f64);
+        let n_sample = self.dist.len() as f64;
+        assert!((1.0..=n_sample).contains(&capping_param));
         self.capping_param = capping_param;
 
         self.regularization_param();
@@ -62,18 +68,21 @@ impl CERLPBoost {
         self
     }
 
-    /// Update set_tolerance parameter `tolerance`.
+    /// Update tolerance parameter `tolerance`.
     #[inline(always)]
-    fn set_tolerance(&mut self, tolerance: f64) {
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance / 2.0;
-        self.regularization_param();
+        self
     }
 
     /// Compute the dual objective value
     #[inline(always)]
-    fn dual_objval_mut<C>(&mut self, data: &DataFrame, target: &Series, classifiers: &[(C, f64)])
-    where
-        C: Classifier + PartialEq,
+    fn dual_objval_mut<C>(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+        classifiers: &[(C, f64)]
+    ) where C: Classifier + PartialEq,
     {
         self.dual_optval = classifiers
             .iter()
@@ -84,7 +93,9 @@ impl CERLPBoost {
                     .into_iter()
                     .zip(self.dist.iter().copied())
                     .enumerate()
-                    .map(|(i, (y, d))| d * y.unwrap() as f64 * h.confidence(data, i))
+                    .map(|(i, (y, d))|
+                        d * y.unwrap() as f64 * h.confidence(data, i)
+                    )
                     .sum::<f64>()
             })
             .reduce(f64::max)
@@ -109,10 +120,7 @@ impl CERLPBoost {
 
     /// returns the maximum iteration of the CERLPBoost
     /// to find a combined hypothesis that has error at most `tolerance`.
-    pub fn max_loop(&mut self, tolerance: f64) -> u64 {
-        if 2.0 * self.tolerance != tolerance {
-            self.set_tolerance(tolerance);
-        }
+    pub fn max_loop(&mut self) -> u64 {
 
         let m = self.dist.len() as f64;
 
@@ -238,12 +246,12 @@ where
         base_learner: &B,
         data: &DataFrame,
         target: &Series,
-        tolerance: f64,
     ) -> CombinedClassifier<C>
     where
         B: BaseLearner<Clf = C>,
     {
-        let max_iter = self.max_loop(tolerance);
+        self.init_params();
+        let max_iter = self.max_loop();
 
         let mut classifiers: Vec<(C, f64)> = Vec::new();
 

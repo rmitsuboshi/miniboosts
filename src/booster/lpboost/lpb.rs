@@ -46,8 +46,8 @@ pub struct LPBoost {
 
 impl LPBoost {
     /// Initialize the `LPBoost`.
-    pub fn init(df: &DataFrame) -> Self {
-        let (size, _) = df.shape();
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        let (size, _) = data.shape();
         assert!(size != 0);
 
 
@@ -89,8 +89,9 @@ impl LPBoost {
     /// Set the tolerance parameter.
     /// Default is `1.0 / sample_size`/
     #[inline(always)]
-    fn set_tolerance(&mut self, tolerance: f64) {
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
+        self
     }
 
 
@@ -124,16 +125,14 @@ impl LPBoost {
 impl<C> Booster<C> for LPBoost
     where C: Classifier,
 {
-    fn run<B>(&mut self,
-              base_learner: &B,
-              data: &DataFrame,
-              target: &Series,
-              tolerance: f64)
-        -> CombinedClassifier<C>
+    fn run<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+    ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
-        self.set_tolerance(tolerance);
-
         self.init_solver();
 
         let mut classifiers = Vec::new();
