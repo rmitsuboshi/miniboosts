@@ -46,14 +46,15 @@ pub mod erlpboost_iris {
 
         // let nu = 0.1_f64;
         let ratio = 1.0_f64 / m;
-        let mut booster = ERLPBoost::init(&data)
+        let mut booster = ERLPBoost::init(&data, &target)
+            .tolerance(0.1)
             .nu(ratio * m);
 
-        let dtree = DTree::init(&data)
+        let dtree = DTree::init(&data, &target)
             .max_depth(1);
 
 
-        let f = booster.run(&dtree, &data, &target, 0.1);
+        let f = booster.run(&dtree, &data, &target);
 
 
         let (m, _) = data.shape();

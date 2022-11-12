@@ -11,19 +11,21 @@ use crate::Booster;
 /// Defines `AdaBoost`.
 pub struct AdaBoost {
     dist: Vec<f64>,
+    tolerance: f64,
 }
 
 
 impl AdaBoost {
     /// Initialize the `AdaBoost`.
     /// This method just sets the parameter `AdaBoost` holds.
-    pub fn init(df: &DataFrame) -> Self {
-        assert!(!df.is_empty());
-        let (m, _) = df.shape();
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        assert!(!data.is_empty());
+        let (m, _) = data.shape();
 
         let uni = 1.0 / m as f64;
         AdaBoost {
             dist: vec![uni; m],
+            tolerance: 1.0 / (m as f64 + 1.0),
         }
     }
 
@@ -34,10 +36,17 @@ impl AdaBoost {
     /// After the `self.max_loop()` iterations,
     /// `AdaBoost` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
-    pub fn max_loop(&self, eps: f64) -> u64 {
+    pub fn max_loop(&self) -> usize {
         let m = self.dist.len();
 
-        ((m as f64).ln() / eps.powi(2)) as u64
+        ((m as f64).ln() / self.tolerance.powi(2)) as usize
+    }
+
+
+    /// Set the tolerance parameter.
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
+        self.tolerance = tolerance;
+        self
     }
 
 
@@ -97,12 +106,12 @@ impl AdaBoost {
 impl<C> Booster<C> for AdaBoost
     where C: Classifier,
 {
-    fn run<B>(&mut self,
-              base_learner: &B,
-              data: &DataFrame,
-              target: &Series,
-              eps: f64)
-        -> CombinedClassifier<C>
+    fn run<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+    ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
         // Initialize parameters
@@ -113,7 +122,7 @@ impl<C> Booster<C> for AdaBoost
         let mut weighted_classifier = Vec::new();
 
 
-        let max_loop = self.max_loop(eps);
+        let max_loop = self.max_loop();
         println!("max_loop: {max_loop}");
 
         for step in 1..=max_loop {

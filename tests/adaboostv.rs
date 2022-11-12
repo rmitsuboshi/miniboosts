@@ -39,11 +39,12 @@ pub mod adaboostv_iris {
         let target = data.drop_in_place(&"class").unwrap();
 
 
-        let mut adaboostv = AdaBoostV::init(&data);
-        let dtree = DTree::init(&data);
+        let mut adaboostv = AdaBoostV::init(&data, &target)
+            .tolerance(0.1);
+        let dtree = DTree::init(&data, &target);
 
 
-        let f = adaboostv.run(&dtree, &data, &target, 0.1);
+        let f = adaboostv.run(&dtree, &data, &target);
 
 
         let (m, _) = data.shape();

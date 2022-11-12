@@ -32,8 +32,8 @@ pub struct SoftBoost {
 
 impl SoftBoost {
     /// Initialize the `SoftBoost`.
-    pub fn init(df: &DataFrame) -> Self {
-        let (m, _) = df.shape();
+    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+        let (m, _) = data.shape();
         assert!(m != 0);
 
         let mut env = Env::new("").unwrap();
@@ -79,23 +79,21 @@ impl SoftBoost {
 
     /// Set the tolerance parameter.
     #[inline(always)]
-    fn set_tolerance(&mut self, tolerance: f64) {
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
+        self
     }
 
 
     /// `max_loop` returns the maximum iteration
     /// of the Adaboost to find a combined hypothesis
     /// that has error at most `tolerance`.
-    pub fn max_loop(&mut self, tolerance: f64) -> u64 {
-        if self.tolerance != tolerance {
-            self.set_tolerance(tolerance);
-        }
+    pub fn max_loop(&mut self) -> u64 {
 
         let m = self.dist.len() as f64;
 
         let temp = (m / self.capping_param).ln();
-        let max_iter = 2.0 * temp / (self.tolerance * self.tolerance);
+        let max_iter = 2.0 * temp / self.tolerance.powi(2);
 
         max_iter.ceil() as u64
     }
@@ -316,11 +314,10 @@ impl<C> Booster<C> for SoftBoost
               base_learner: &B,
               data: &DataFrame,
               target: &Series,
-              tolerance: f64)
-        -> CombinedClassifier<C>
+    ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
-        let max_iter = self.max_loop(tolerance);
+        let max_iter = self.max_loop();
 
         let mut classifiers = Vec::new();
         for t in 1..=max_iter {

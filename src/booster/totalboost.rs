@@ -22,8 +22,8 @@ pub struct TotalBoost {
 
 impl TotalBoost {
     /// initialize the `TotalBoost`.
-    pub fn init(df: &DataFrame) -> Self {
-        let softboost = SoftBoost::init(df)
+    pub fn init(data: &DataFrame, target: &Series) -> Self {
+        let softboost = SoftBoost::init(data, target)
             .capping(1.0);
 
         TotalBoost { softboost }
@@ -34,20 +34,27 @@ impl TotalBoost {
     pub fn opt_val(&self) -> f64 {
         self.softboost.opt_val()
     }
+
+
+    /// Set the tolerance parameter.
+    pub fn tolerance(mut self, tol: f64) -> Self {
+        self.softboost = self.softboost.tolerance(tol);
+        self
+    }
 }
 
 
 impl<C> Booster<C> for TotalBoost
     where C: Classifier,
 {
-    fn run<B>(&mut self,
-              base_learner: &B,
-              data: &DataFrame,
-              target: &Series,
-              eps: f64)
-        -> CombinedClassifier<C>
+    fn run<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+    ) -> CombinedClassifier<C>
         where B: BaseLearner<Clf = C>,
     {
-        self.softboost.run(base_learner, data, target, eps)
+        self.softboost.run(base_learner, data, target)
     }
 }
