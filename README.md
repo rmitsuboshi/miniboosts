@@ -98,25 +98,26 @@ fn main() {
     let target: Series = data.drop_in_place(&"class").unwrap();
 
 
+    // Set tolerance parameter
+    let tol: f64 = 0.01;
+
+
     // Initialize Booster
-    let mut booster = AdaBoost::init(&sample);
+    let mut booster = AdaBoost::init(&data, &target)
+        .tolerance(tol);
 
 
     // Initialize Base Learner
     // For decision tree, the default `max_depth` is `None` so that 
     // The tree grows extremely large.
-    let weak_learner = DTree::init(&data)
+    let weak_learner = DTree::init(&data, &target)
         .max_depth(2)
         .criterion(Criterion::Edge); // Choose the split rule that maximizes the edge.
 
 
-    // Set tolerance parameter
-    let tolerance = 0.01;
-
-
     // Run boosting algorithm
     // Each booster returns a combined hypothesis.
-    let f = booster.run(&weak_learner, &data, &target, tolerance);
+    let f = booster.run(&weak_learner, &data, &target);
 
 
     // These assertion may fail if the dataset are not linearly separable.
@@ -136,6 +137,7 @@ initialize booster like this:
 let (m, _) = df.shape();
 let nu = m as f64 * 0.2;
 let lpboost = LPBoost::init(&sample)
+    .tolerance(tol)
     .nu(nu); // Setting the capping parameter.
 ```
 
