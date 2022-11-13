@@ -10,34 +10,35 @@ See [this repository](https://github.com/ykrist/rust-grb) for details.
 
 
 ## Features
-You can combine the following boosters and weak-learners arbitrarily.
+Currently, I implemented the following Boosters and Weak Learners.
+You can combine them arbitrarily.
+
 
 ### Classification
+
+
 - Boosters
-    - Empirical Risk Minimization
-        * [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub) by Freynd and Schapire, 1997
-    - Hard Margin Optimization
-        * [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html) by Rätsch and Warmuth, 2005
-        * [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970) by Warmuth, Liao, and Rätsch, 2006
-    - Soft Margin Optimization
-        * [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf) by Demiriz, Bennett, and Shawe-Taylor, 2002
-        * [SmoothBoost](https://link.springer.com/chapter/10.1007/3-540-44581-1_31) by Rocco A. Servedio, 2003
-        * [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf) by Warmuth, Glocer, and Rätsch, 2007
-        * [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf) by Warmuth and Glocer, and Vishwanathan, 2008
-        * [CERLPBoost](https://link.springer.com/article/10.1007/s10994-010-5173-z) (The Corrective ERLPBoost) by Shalev-Shwartz and Singer, 2010
-        * [MLPBoost](https://arxiv.org/abs/2209.10831) by Mitsuboshi, Hatano, and Takimoto, 2022
+    * [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub) by Freund and Schapire, 1997
+    * [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html) by Rätsch and Warmuth, 2005
+    * [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970) by Warmuth, Liao, and Rätsch, 2006
+    * [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf) by Demiriz, Bennett, and Shawe-Taylor, 2002
+    * [SmoothBoost](https://link.springer.com/chapter/10.1007/3-540-44581-1_31) by Rocco A. Servedio, 2003
+    * [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf) by Warmuth, Glocer, and Rätsch, 2007
+    * [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf) by Warmuth and Glocer, and Vishwanathan, 2008
+    * [CERLPBoost](https://link.springer.com/article/10.1007/s10994-010-5173-z) (The Corrective ERLPBoost) by Shalev-Shwartz and Singer, 2010
+    * [MLPBoost](https://arxiv.org/abs/2209.10831) by Mitsuboshi, Hatano, and Takimoto, 2022
 
 
 - Weak Learners
-    - DTree (Decision Tree)
+    - [DTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)
     - GaussianNB (Naive Bayes), **beta version**
 
 
 ### Regression
 - Weak Learner
-    - RTree (Regression Tree)
+    - [RTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)
 
-## My future work
+## Future work
 
 - Booster
     - LogitBoost
@@ -58,11 +59,8 @@ You can combine the following boosters and weak-learners arbitrarily.
     - LP/QP solver (This work allows you to use this library without a license).
 
 
-I'm also planning to implement the other booster/weak-learner.
-
-
 ## How to use
-Our boosting algorithms uses 
+Our boosting algorithms use 
 the `DataFrame` of [`polars`](https://github.com/pola-rs/polars) crate, 
 so that you need to import `polars`.
 
@@ -104,14 +102,14 @@ fn main() {
 
     // Initialize Booster
     let mut booster = AdaBoost::init(&data, &target)
-        .tolerance(tol);
+        .tolerance(tol); // Set the tolerance parameter.
 
 
     // Initialize Base Learner
     // For decision tree, the default `max_depth` is `None` so that 
     // The tree grows extremely large.
     let weak_learner = DTree::init(&data, &target)
-        .max_depth(2)
+        .max_depth(2) // Specify the max depth (default is not specified)
         .criterion(Criterion::Edge); // Choose the split rule that maximizes the edge.
 
 
@@ -120,7 +118,7 @@ fn main() {
     let f = booster.run(&weak_learner, &data, &target);
 
 
-    // These assertion may fail if the dataset are not linearly separable.
+    // Get the batch prediction for all examples in `data`.
     let predictions = f.predict_all(&data);
 
 
@@ -134,7 +132,7 @@ fn main() {
 If you use boosting for soft margin optimization, 
 initialize booster like this:
 ```rust
-let (m, _) = df.shape();
+let m = df.shape().0;
 let nu = m as f64 * 0.2;
 let lpboost = LPBoost::init(&sample)
     .tolerance(tol)
