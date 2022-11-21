@@ -40,7 +40,10 @@ pub use regressor::{Regressor, CombinedRegressor};
 
 
 // Export the `Booster` trait.
-pub use booster::Booster;
+pub use booster::{
+    Booster,
+    State,
+};
 
 
 // Export the boosting algorithms that minimizes the empirical loss.
@@ -49,7 +52,7 @@ pub use booster::{
 };
 
 
-// // Export the boosting algorithms that maximizes the hard margin.
+// Export the boosting algorithms that maximizes the hard margin.
 pub use booster::{
     AdaBoostV,
     TotalBoost,
@@ -63,6 +66,8 @@ pub use booster::{
     SoftBoost,
     SmoothBoost,
     CERLPBoost,
+
+    MLPBoost,
 };
 
 
@@ -78,10 +83,10 @@ pub use base_learner::{
 
     GaussianNB,
 };
-// 
-// 
-// // Export the instances of the `Classifier` trait.
-// // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
+
+
+// Export the instances of the `Classifier` trait.
+// The `CombinedClassifier` is the output of the `Boosting::run(..)`.
 pub use base_learner::{
     DTreeClassifier,
     NBayesClassifier,

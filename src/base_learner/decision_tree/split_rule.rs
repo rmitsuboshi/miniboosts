@@ -13,7 +13,7 @@ pub enum LR {
 }
 
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(super) struct Splitter {
     feature: String,
     threshold: f64,

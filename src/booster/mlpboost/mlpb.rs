@@ -12,9 +12,14 @@ use super::{
     utils::*,
 };
 
-use crate::{Classifier, CombinedClassifier};
-use crate::BaseLearner;
-use crate::Booster;
+use crate::{
+    Booster,
+    BaseLearner,
+
+    State,
+    Classifier,
+    CombinedClassifier
+};
 
 
 use std::cell::RefCell;
@@ -22,13 +27,13 @@ use std::cell::RefCell;
 
 
 /// MLPBoost struct. See [this paper](https://arxiv.org/abs/2209.10831).
-pub struct MLPBoost {
+pub struct MLPBoost<C> {
     // Tolerance parameter
     tolerance: f64,
 
 
     // Number of examples
-    size: usize,
+    n_sample: usize,
 
 
     // Capping parameter
@@ -53,24 +58,35 @@ pub struct MLPBoost {
     lp_model: Option<RefCell<LPModel>>,
 
 
+    // Weights on hypotheses
+    weights: Vec<f64>,
+
+    // Hypotheses
+    classifiers: Vec<C>,
+
+
     terminated: usize,
+    max_iter: usize,
+
+
+    gamma: f64,
 }
 
 
-impl MLPBoost {
+impl<C> MLPBoost<C> {
     /// Initialize the `MLPBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
-        let (size, _) = data.shape();
-        assert!(size != 0);
+        let n_sample = data.shape().0;
+        assert!(n_sample != 0);
 
 
-        let uni = 1.0 / size as f64;
-        let eta = 2.0 * (size as f64).ln() / uni;
+        let uni = 1.0 / n_sample as f64;
+        let eta = 2.0 * (n_sample as f64).ln() / uni;
         let nu  = 1.0;
 
         MLPBoost {
             tolerance: uni,
-            size,
+            n_sample,
             nu,
             eta,
             lp_model: None,
@@ -80,7 +96,13 @@ impl MLPBoost {
             secondary: Secondary::LPB,
             condition: StopCondition::ObjVal,
 
-            terminated: 0_usize,
+            weights: Vec::new(),
+            classifiers: Vec::new(),
+
+            terminated: usize::MAX,
+            max_iter: usize::MAX,
+
+            gamma: 1.0,
         }
     }
 
@@ -88,7 +110,7 @@ impl MLPBoost {
     /// This method updates the capping parameter.
     /// This parameter must be in `[1, sample_size]`.
     pub fn nu(mut self, nu: f64) -> Self {
-        assert!(1.0 <= nu && nu <= self.size as f64);
+        assert!(1.0 <= nu && nu <= self.n_sample as f64);
         self.nu = nu;
 
         self
@@ -127,7 +149,7 @@ impl MLPBoost {
     /// Set the regularization parameter.
     #[inline(always)]
     fn eta(&mut self) {
-        let ln_m = (self.size as f64 / self.nu).ln();
+        let ln_m = (self.n_sample as f64 / self.nu).ln();
         self.eta = ln_m / self.tolerance;
     }
 
@@ -138,7 +160,7 @@ impl MLPBoost {
 
         assert!((0.0..=1.0).contains(&upper_bound));
 
-        let lp_model = RefCell::new(LPModel::init(self.size, upper_bound));
+        let lp_model = RefCell::new(LPModel::init(self.n_sample, upper_bound));
 
         self.lp_model = Some(lp_model);
     }
@@ -163,7 +185,7 @@ impl MLPBoost {
     /// Returns the maximum iterations 
     /// to obtain the solution with accuracy `tolerance`.
     pub fn max_loop(&self) -> usize {
-        let ln_m = (self.size as f64 / self.nu).ln();
+        let ln_m = (self.n_sample as f64 / self.nu).ln();
         (8.0_f64 * ln_m / self.tolerance.powi(2)).ceil() as usize
     }
 
@@ -173,14 +195,17 @@ impl MLPBoost {
     pub fn terminated(&self) -> usize {
         self.terminated
     }
+}
 
-
-    fn secondary_update<C>(&self,
-                           data: &DataFrame,
-                           target: &Series,
-                           opt_h: Option<&C>)
-        -> Vec<f64>
-        where C: Classifier,
+impl<C> MLPBoost<C>
+    where C: Classifier,
+{
+    fn secondary_update(
+        &self,
+        data: &DataFrame,
+        target: &Series,
+        opt_h: Option<&C>
+    ) -> Vec<f64>
     {
         match self.secondary {
             Secondary::LPB => {
@@ -195,20 +220,26 @@ impl MLPBoost {
 
     /// Returns the objective value 
     /// `- \tilde{f}^\star (-Aw)` at the current weighting `w = weights`.
-    fn objval<C>(&self,
-                 data: &DataFrame,
-                 target: &Series,
-                 classifiers: &[C],
-                 weights: &[f64])
-        -> f64
-        where C: Classifier
+    fn objval(
+        &self,
+        data: &DataFrame,
+        target: &Series,
+        weights: &[f64],
+    ) -> f64
     {
         let dist = dist_at(
-            self.eta, self.nu, data, target, classifiers, weights
+            self.eta,
+            self.nu,
+            data,
+            target,
+            &self.classifiers[..],
+            weights
         );
 
 
-        let margin = edge_of(data, target, &dist[..], classifiers, weights);
+        let margin = edge_of(
+            data, target, &dist[..], &self.classifiers[..], weights
+        );
 
 
         let entropy = dist.iter()
@@ -216,171 +247,201 @@ impl MLPBoost {
             .map(|d| if d == 0.0 { 0.0 } else { d * d.ln() })
             .sum::<f64>();
 
-        margin + (entropy + (self.size as f64).ln()) / self.eta
+        margin + (entropy + (self.n_sample as f64).ln()) / self.eta
     }
 
 
     /// Choose the better weights by some criterion.
-    fn better_weight<C>(&self,
-                        data: &DataFrame,
-                        target: &Series,
-                        dist: &[f64],
-                        prim: Vec<f64>,
-                        seco: Vec<f64>,
-                        classifiers: &[C])
-        -> Vec<f64>
-        where C: Classifier
+    fn better_weight(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+        dist: &[f64],
+        prim: Vec<f64>,
+        seco: Vec<f64>,
+    )
     {
         let prim_val;
         let seco_val;
 
         match self.condition {
             StopCondition::Edge => {
-                prim_val = edge_of(data, target, dist, classifiers, &prim[..]);
-                seco_val = edge_of(data, target, dist, classifiers, &seco[..]);
+                prim_val = edge_of(
+                    data, target, dist, &self.classifiers[..], &prim[..]
+                );
+                seco_val = edge_of(
+                    data, target, dist, &self.classifiers[..], &seco[..]
+                );
             },
 
             StopCondition::ObjVal => {
-                prim_val = self.objval(data, target, classifiers, &prim[..]);
-                seco_val = self.objval(data, target, classifiers, &seco[..]);
+                prim_val = self.objval(
+                    data, target, &prim[..]
+                );
+                seco_val = self.objval(
+                    data, target, &seco[..]
+                );
             },
         }
-        if prim_val >= seco_val {
-            prim
-        } else {
-            seco
-        }
+        self.weights = if prim_val >= seco_val { prim } else { seco };
     }
 }
 
 
-impl<C> Booster<C> for MLPBoost
-    where C: Classifier + PartialEq,
+impl<C> Booster<C> for MLPBoost<C>
+    where C: Classifier + Clone + PartialEq,
 {
-    fn run<B>(&mut self,
-              base_learner: &B,
-              data: &DataFrame,
-              target: &Series,
-    ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>,
+    fn preprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        data: &DataFrame,
+        _target: &Series,
+    )
+        where B: BaseLearner<Clf = C>
     {
-        // ------------------------------------------------------
-        // Pre-processing
+        self.n_sample = data.shape().0;
 
-        // Initialize the parameters.
         self.init_params();
 
-
-        // Compute the maximum iteration and set `self.terminated`.
-        let max_iter = self.max_loop();
-        self.terminated = max_iter;
+        self.max_iter = self.max_loop();
+        self.terminated = self.max_iter;
 
 
-        // Obtain a hypothesis by passing the uniform distribution.
-        let h = base_learner.produce(
-            data, target, &vec![1.0 / self.size as f64; self.size]
+        // // Obtain a hypothesis by passing the uniform distribution.
+        // let h = base_learner.produce(
+        //     data, target, &vec![1.0 / self.size as f64; self.size]
+        // );
+
+
+        // // Defines the vector of hypotheses obtained from `base_learner`.
+        // let mut classifiers = vec![h];
+        // // Defines the vector of weights on `classifiers`.
+        // let mut weights = vec![1.0];
+
+        self.classifiers = Vec::new();
+        self.weights = Vec::new();
+
+        // Upper-bound of the optimal `edge`.
+        self.gamma = 1.0;
+    }
+
+
+    fn boost<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+        iteration: usize,
+    ) -> State
+        where B: BaseLearner<Clf = C>,
+    {
+
+        if self.max_iter < iteration {
+            return State::Terminate;
+        }
+
+        // ------------------------------------------------------
+
+        // Compute the distribution over training instances.
+        let dist = dist_at(
+            self.eta,
+            self.nu,
+            data,
+            target,
+            &self.classifiers[..],
+            &self.weights[..]
         );
 
 
-        // Defines the vector of hypotheses obtained from `base_learner`.
-        let mut classifiers = vec![h];
-        // Defines the vector of weights on `classifiers`.
-        let mut weights = vec![1.0];
+        // Obtain a hypothesis w.r.t. `dist`.
+        let h = base_learner.produce(data, target, &dist);
 
 
-        // Upper-bound of the optimal `edge`.
-        let mut gamma: f64 = 1.0;
-
-        // ------------------------------------------------------
-
-        for step in 1..max_iter {
+        // Compute the edge of newly-attained hypothesis `h`.
+        let edge_h = edge_of_h(data, target, &dist[..], &h);
 
 
-            // Compute the distribution over training instances.
-            let dist = dist_at(self.eta,
-                               self.nu,
-                               data,
-                               target,
-                               &classifiers[..],
-                               &weights[..]);
+        // Update the estimation of `edge`.
+        self.gamma = self.gamma.min(edge_h);
 
 
-            // Obtain a hypothesis w.r.t. `dist`.
-            let h = base_learner.produce(data, target, &dist);
 
+        // For the first iteration,
+        // just append the hypothesis and continue.
+        if iteration == 1 {
+            self.classifiers.push(h);
+            self.weights.push(1.0_f64);
 
-            // Compute the edge of newly-attained hypothesis `h`.
-            let edge_h = edge_of_h(data, target, &dist[..], &h);
-
-
-            // Update the estimation of `edge`.
-            gamma = gamma.min(edge_h);
-
-
-            // Compute the objective value.
-            let objval = self.objval(
-                data, target, &classifiers[..], &weights[..]
-            );
-
-
-            if step % 10 == 0 {
-                println!("Step {step}: diff: {}", gamma - objval);
-            }
-
-
-            // If the difference between `gamma` and `objval` is
-            // lower than `self.tolerance`,
-            // optimality guaranteed with the precision.
-            if gamma - objval <= self.tolerance {
-                println!("Break loop at: {step}");
-                self.terminated = step;
-                break;
-            }
-
-
-            // Now, we move to the update of `weights`.
-            // We first check whether `h` is obtained in past iterations
-            // or not.
-            let mut opt_h = None;
-            let pos = classifiers.iter()
-                .position(|f| *f == h)
-                .unwrap_or(classifiers.len());
-
-
-            // If `h` is a newly-attained hypothesis,
-            // append it to `classifiers`.
-            if pos == classifiers.len() {
-                classifiers.push(h);
-                weights.push(0.0);
-                opt_h = classifiers.last();
-            }
-
-
-            // Primary update
-            let prim = self.primary.update(self.eta,
-                                           self.nu,
-                                           data,
-                                           target,
-                                           &dist[..],
-                                           pos,
-                                           &classifiers[..],
-                                           weights,
-                                           step);
-
-            // Secondary update
-            let seco = self.secondary_update(data, target, opt_h);
-
-
-            // Choose the better one
-            weights = self.better_weight(
-                data, target, &dist[..], prim, seco, &classifiers[..]
-            );
+            return State::Continue;
         }
 
 
-        // Construct the combined classifier.
-        let clfs = weights.into_iter()
-            .zip(classifiers)
+        // Compute the objective value.
+        let objval = self.objval(data, target, &self.weights[..]);
+
+
+        // If the difference between `gamma` and `objval` is
+        // lower than `self.tolerance`,
+        // optimality guaranteed with the precision.
+        if self.gamma - objval <= self.tolerance {
+            self.terminated = iteration;
+            return State::Terminate;
+        }
+
+
+        // Now, we move to the update of `weights`.
+        // We first check whether `h` is obtained in past iterations
+        // or not.
+        let mut opt_h = None;
+        let pos = self.classifiers.iter()
+            .position(|f| *f == h)
+            .unwrap_or(self.classifiers.len());
+
+
+        // If `h` is a newly-attained hypothesis,
+        // append it to `classifiers`.
+        if pos == self.classifiers.len() {
+            self.classifiers.push(h);
+            self.weights.push(0.0);
+            opt_h = self.classifiers.last();
+        }
+
+
+        // Primary update
+        let prim = self.primary.update(
+            self.eta,
+            self.nu,
+            data,
+            target,
+            &dist[..],
+            pos,
+            &self.classifiers[..],
+            self.weights.clone(),
+            iteration
+        );
+
+        // Secondary update
+        let seco = self.secondary_update(data, target, opt_h);
+
+
+        // Choose the better one
+        self.better_weight(data, target, &dist[..], prim, seco);
+
+        State::Continue
+    }
+
+
+    fn postprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        _data: &DataFrame,
+        _target: &Series,
+    ) -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>
+    {
+        let clfs = self.weights.clone()
+            .into_iter()
+            .zip(self.classifiers.clone())
             .filter(|(w, _)| *w > 0.0)
             .collect::<Vec<_>>();
 

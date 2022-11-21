@@ -12,7 +12,7 @@ use super::node::*;
 
 /// Regression Tree regressor.
 /// This struct is just a wrapper of `Node`.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RTreeRegressor {
     root: Node,
 }
