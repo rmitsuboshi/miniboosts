@@ -9,13 +9,18 @@
 use polars::prelude::*;
 use rayon::prelude::*;
 
-use crate::BaseLearner;
-use crate::Booster;
-use crate::{Classifier, CombinedClassifier};
+use crate::{
+    Booster,
+    BaseLearner,
+
+    State,
+    Classifier,
+    CombinedClassifier
+};
 
 /// Corrective ERLPBoost struct.
 /// This algorithm is based on the [paper](https://link.springer.com/content/pdf/10.1007/s10994-010-5173-z.pdf).
-pub struct CERLPBoost {
+pub struct CERLPBoost<C> {
     dist: Vec<f64>,
     // A regularization parameter defined in the paper
     eta: f64,
@@ -25,9 +30,14 @@ pub struct CERLPBoost {
 
     // Optimal value (Dual problem)
     dual_optval: f64,
+
+    classifiers: Vec<(C, f64)>,
+
+    max_iter: usize,
+    terminated: usize,
 }
 
-impl CERLPBoost {
+impl<C> CERLPBoost<C> {
     /// Initialize the `CERLPBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         assert!(!data.is_empty());
@@ -43,22 +53,23 @@ impl CERLPBoost {
         let capping_param = 1.0;
         let eta = 2.0 * (m as f64 / capping_param).ln() / tolerance;
 
-        CERLPBoost {
+        Self {
             dist: vec![uni; m],
             tolerance,
             eta,
             capping_param: 1.0,
             dual_optval: 1.0,
+
+            classifiers: Vec::new(),
+
+            max_iter: usize::MAX,
+            terminated: usize::MAX,
         }
     }
 
-    fn init_params(&mut self) {
-        assert!((0.0..1.0).contains(&self.tolerance));
-        self.regularization_param();
-    }
 
     /// This method updates the capping parameter.
-    pub fn capping(mut self, capping_param: f64) -> Self {
+    pub fn nu(mut self, capping_param: f64) -> Self {
         let n_sample = self.dist.len() as f64;
         assert!((1.0..=n_sample).contains(&capping_param));
         self.capping_param = capping_param;
@@ -68,6 +79,7 @@ impl CERLPBoost {
         self
     }
 
+
     /// Update tolerance parameter `tolerance`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
@@ -75,17 +87,16 @@ impl CERLPBoost {
         self
     }
 
+
     /// Compute the dual objective value
     #[inline(always)]
-    fn dual_objval_mut<C>(
+    fn dual_objval_mut(
         &mut self,
         data: &DataFrame,
         target: &Series,
-        classifiers: &[(C, f64)]
     ) where C: Classifier + PartialEq,
     {
-        self.dual_optval = classifiers
-            .iter()
+        self.dual_optval = self.classifiers.iter()
             .map(|(h, _)| {
                 target
                     .i64()
@@ -102,11 +113,13 @@ impl CERLPBoost {
             .unwrap();
     }
 
+
     /// Returns an optimal value of the dual problem.
     /// This value is an `self.tolerance`-accurate value of the primal one.
     pub fn opt_val(&self) -> f64 {
         self.dual_optval
     }
+
 
     /// Update regularization parameter.
     /// (the regularization parameter on
@@ -118,43 +131,44 @@ impl CERLPBoost {
         self.eta = ln_part / self.tolerance;
     }
 
+
     /// returns the maximum iteration of the CERLPBoost
     /// to find a combined hypothesis that has error at most `tolerance`.
-    pub fn max_loop(&mut self) -> u64 {
+    pub fn max_loop(&mut self) -> usize {
 
         let m = self.dist.len() as f64;
 
         let ln_m = (m / self.capping_param).ln();
         let max_iter = 8.0 * ln_m / self.tolerance.powi(2);
 
-        max_iter.ceil() as u64
+        max_iter.ceil() as usize
     }
+}
 
+
+impl<C> CERLPBoost<C>
+    where C: Classifier + PartialEq,
+{
     /// Updates weight on hypotheses and `self.dist` in this order.
-    fn update_distribution_mut<C>(
-        &mut self,
-        classifiers: &[(C, f64)],
-        data: &DataFrame,
-        target: &Series,
-    ) where
-        C: Classifier + PartialEq,
+    fn update_distribution_mut(&mut self, data: &DataFrame, target: &Series)
     {
         self.dist
             .iter_mut()
             .zip(target.i64().expect("The target is not a dtype i64"))
             .enumerate()
             .for_each(|(i, (d, y))| {
-                let p = prediction(i, data, classifiers);
+                let p = prediction(i, data, &self.classifiers[..]);
                 *d = -self.eta * y.unwrap() as f64 * p
             });
 
         let m = self.dist.len();
         // Sort the indices over `self.dist` in non-increasing order.
         let mut indices = (0..m).collect::<Vec<_>>();
-        indices.sort_by(|&i, &j| self.dist[j].partial_cmp(&self.dist[i]).unwrap());
+        indices.sort_by(|&i, &j|
+            self.dist[j].partial_cmp(&self.dist[i]).unwrap()
+        );
 
-        let logsums = indices
-            .iter()
+        let logsums = indices.iter()
             .rev()
             .fold(Vec::with_capacity(m), |mut vec, &i| {
                 // TODO use `get_unchecked`
@@ -200,9 +214,7 @@ impl CERLPBoost {
     }
 
     /// Update the weights on hypotheses
-    fn update_clf_weight_mut<C>(&self, clfs: &mut Vec<(C, f64)>, new_clf: C, gap_vec: Vec<f64>)
-    where
-        C: Classifier + PartialEq,
+    fn update_clf_weight_mut(&mut self, new_clf: C, gap_vec: Vec<f64>)
     {
         // Numerator
         let numer = gap_vec
@@ -222,7 +234,7 @@ impl CERLPBoost {
         let weight = 0.0_f64.max(1.0_f64.min(numer / denom));
 
         let mut already_exist = false;
-        for (clf, w) in clfs.iter_mut() {
+        for (clf, w) in self.classifiers.iter_mut() {
             if *clf == new_clf {
                 already_exist = true;
                 *w += weight;
@@ -232,78 +244,104 @@ impl CERLPBoost {
         }
 
         if !already_exist {
-            clfs.push((new_clf, weight));
+            self.classifiers.push((new_clf, weight));
         }
     }
 }
 
-impl<C> Booster<C> for CERLPBoost
-where
-    C: Classifier + PartialEq + std::fmt::Debug,
+impl<C> Booster<C> for CERLPBoost<C>
+    where C: Classifier + Clone + PartialEq + std::fmt::Debug,
 {
-    fn run<B>(
+    fn preprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        data: &DataFrame,
+        _target: &Series,
+    )
+        where B: BaseLearner<Clf = C>
+    {
+        let n_sample = data.shape().0;
+        let uni = 1.0 / n_sample as f64;
+
+        self.dist = vec![uni; n_sample];
+
+
+        assert!((0.0..1.0).contains(&self.tolerance));
+        self.regularization_param();
+        self.max_iter = self.max_loop();
+        self.terminated = self.max_iter;
+
+        self.classifiers = Vec::new();
+    }
+
+
+    fn boost<B>(
         &mut self,
         base_learner: &B,
         data: &DataFrame,
         target: &Series,
-    ) -> CombinedClassifier<C>
-    where
-        B: BaseLearner<Clf = C>,
+        iteration: usize,
+    ) -> State
+    where B: BaseLearner<Clf = C>,
     {
-        self.init_params();
-        let max_iter = self.max_loop();
-
-        let mut classifiers: Vec<(C, f64)> = Vec::new();
-
-        // {
-        //     let h = base_learner.produce(data, target, &self.dist);
-        //     classifiers.push((h, 1.0));
-        // }
-
-        for t in 1..=max_iter {
-            // Update the distribution over examples
-            self.update_distribution_mut(&classifiers, data, target);
-
-            // Receive a hypothesis from the base learner
-            let h = base_learner.produce(data, target, &self.dist);
-
-            // println!("h: {h:?}");
-
-            let gap_vec = target
-                .i64()
-                .expect("The target class is not a dtype of i64")
-                .into_iter()
-                .enumerate()
-                .map(|(i, y)| {
-                    let old_pred = prediction(i, data, &classifiers[..]);
-                    let new_pred = h.confidence(data, i);
-
-                    y.unwrap() as f64 * (new_pred - old_pred)
-                })
-                .collect::<Vec<_>>();
-
-            // Compute the difference between the new hypothesis
-            // and the current combined hypothesis
-            let diff = gap_vec
-                .par_iter()
-                .zip(&self.dist[..])
-                .map(|(v, d)| v * d)
-                .sum::<f64>();
-
-            // Update the parameters
-            if diff <= self.tolerance {
-                println!("Break loop at: {t}");
-                break;
-            }
-
-            // Update the weight on hypotheses
-            self.update_clf_weight_mut(&mut classifiers, h, gap_vec);
+        if self.max_iter < iteration {
+            return State::Terminate;
         }
 
-        // Compute the dual optimal value for debug
-        self.dual_objval_mut(data, target, &classifiers[..]);
+        // Update the distribution over examples
+        self.update_distribution_mut(data, target);
 
-        let weighted_classifier = classifiers
+        // Receive a hypothesis from the base learner
+        let h = base_learner.produce(data, target, &self.dist);
+
+        // println!("h: {h:?}");
+
+        let gap_vec = target
+            .i64()
+            .expect("The target class is not a dtype of i64")
+            .into_iter()
+            .enumerate()
+            .map(|(i, y)| {
+                let old_pred = prediction(i, data, &self.classifiers[..]);
+                let new_pred = h.confidence(data, i);
+
+                y.unwrap() as f64 * (new_pred - old_pred)
+            })
+            .collect::<Vec<_>>();
+
+        // Compute the difference between the new hypothesis
+        // and the current combined hypothesis
+        let diff = gap_vec
+            .par_iter()
+            .zip(&self.dist[..])
+            .map(|(v, d)| v * d)
+            .sum::<f64>();
+
+        // Update the parameters
+        if diff <= self.tolerance {
+            self.terminated = iteration;
+            return State::Terminate;
+        }
+
+        // Update the weight on hypotheses
+        self.update_clf_weight_mut(h, gap_vec);
+
+        State::Continue
+    }
+
+
+    fn postprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+    ) -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>
+    {
+        // Compute the dual optimal value for debug
+        self.dual_objval_mut(data, target);
+
+        let weighted_classifier = self.classifiers.clone()
             .into_iter()
             .filter_map(|(h, w)| if w != 0.0 { Some((w, h)) } else { None })
             .collect::<Vec<_>>();

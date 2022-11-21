@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 
 /// Enumeration of `BranchNode` and `LeafNode`.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Node {
     /// A node that have two childrens.
     Branch(BranchNode),
@@ -27,7 +27,7 @@ pub enum Node {
 
 /// Represents the branch nodes of decision tree.
 /// Each `BranchNode` must have two childrens
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BranchNode {
     pub(self) rule: Splitter,
     pub(self) left: Box<Node>,
@@ -52,7 +52,7 @@ impl BranchNode {
 
 
 /// Represents the leaf nodes of decision tree.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode {
     pub(self) prediction: f64,
 }

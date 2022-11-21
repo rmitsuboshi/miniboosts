@@ -5,26 +5,33 @@
 use polars::prelude::*;
 
 
-use crate::{Classifier, CombinedClassifier};
-use crate::BaseLearner;
-use crate::Booster;
+use crate::{
+    Booster,
+    BaseLearner,
 
-use super::softboost::SoftBoost;
+    State,
+    Classifier,
+    CombinedClassifier,
+
+    SoftBoost,
+};
 
 
 /// Since we can regard TotalBoost as
 /// a special case of SoftBoost (with capping param is 1.0),
 /// so that we use it.
-pub struct TotalBoost {
-    softboost: SoftBoost
+pub struct TotalBoost<C> {
+    softboost: SoftBoost<C>,
 }
 
 
-impl TotalBoost {
+impl<C> TotalBoost<C>
+    where C: Classifier,
+{
     /// initialize the `TotalBoost`.
     pub fn init(data: &DataFrame, target: &Series) -> Self {
         let softboost = SoftBoost::init(data, target)
-            .capping(1.0);
+            .nu(1.0);
 
         TotalBoost { softboost }
     }
@@ -44,17 +51,42 @@ impl TotalBoost {
 }
 
 
-impl<C> Booster<C> for TotalBoost
-    where C: Classifier,
+impl<C> Booster<C> for TotalBoost<C>
+    where C: Classifier + Clone,
 {
-    fn run<B>(
+    fn preprocess<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+    )
+        where B: BaseLearner<Clf = C>
+    {
+        self.softboost.preprocess(base_learner, data, target);
+    }
+
+
+    fn boost<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+        iteration: usize,
+    ) -> State
+        where B: BaseLearner<Clf = C>
+    {
+        self.softboost.boost(base_learner, data, target, iteration)
+    }
+
+
+    fn postprocess<B>(
         &mut self,
         base_learner: &B,
         data: &DataFrame,
         target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>,
+        where B: BaseLearner<Clf = C>
     {
-        self.softboost.run(base_learner, data, target)
+        self.softboost.postprocess(base_learner, data, target)
     }
 }

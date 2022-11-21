@@ -51,7 +51,7 @@ impl Primary {
         match self {
             Primary::Classic => {
                 // Compute the step-size
-                let lambda = 2.0_f64 / ((iterate + 2) as f64);
+                let lambda = 2.0_f64 / ((iterate + 1) as f64);
 
                 // Update the weights
                 weights.iter_mut()

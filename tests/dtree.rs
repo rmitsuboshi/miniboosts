@@ -43,7 +43,7 @@ fn full_binary_tree() {
     println!("{df}");
 
 
-    let dtree = DTree::init(&df);
+    let dtree = DTree::init(&df, &target);
 
     let dist = vec![1.0/7.0; 7];
 

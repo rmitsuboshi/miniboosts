@@ -6,9 +6,15 @@ use polars::prelude::*;
 // use rayon::prelude::*;
 
 
-use crate::{Classifier, CombinedClassifier};
-use crate::BaseLearner;
-use crate::Booster;
+use crate::{
+    Booster,
+    BaseLearner,
+
+    State,
+    Classifier,
+    CombinedClassifier,
+};
+
 use grb::prelude::*;
 
 
@@ -16,7 +22,7 @@ use grb::prelude::*;
 /// Struct `SoftBoost` has 3 main parameters.
 /// 
 /// - `dist` is the distribution over training examples,
-pub struct SoftBoost {
+pub struct SoftBoost<C> {
     pub(crate) dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})
@@ -27,21 +33,32 @@ pub struct SoftBoost {
     capping_param: f64,
 
     env: Env,
+
+
+    classifiers: Vec<C>,
+
+
+    max_iter: usize,
+    terminated: usize,
 }
 
 
-impl SoftBoost {
+impl<C> SoftBoost<C>
+    where C: Classifier
+{
     /// Initialize the `SoftBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
-        let (m, _) = data.shape();
-        assert!(m != 0);
+        let n_sample = data.shape().0;
+        assert!(n_sample != 0);
 
         let mut env = Env::new("").unwrap();
 
         env.set(param::OutputFlag, 0).unwrap();
 
         // Set uni as an uniform weight
-        let uni = 1.0 / m as f64;
+        let uni = 1.0 / n_sample as f64;
+
+        let dist = vec![uni; n_sample];
 
 
         // Set tolerance, sub_tolerance
@@ -53,19 +70,24 @@ impl SoftBoost {
 
 
         SoftBoost {
-            dist:          vec![uni; m],
+            dist,
             gamma_hat,
             tolerance,
             sub_tolerance: 1e-9,
             capping_param: 1.0,
-            env
+            env,
+
+            classifiers: Vec::new(),
+
+            max_iter: usize::MAX,
+            terminated: usize::MAX,
         }
     }
 
 
     /// This method updates the capping parameter.
     #[inline(always)]
-    pub fn capping(mut self, capping_param: f64) -> Self {
+    pub fn nu(mut self, capping_param: f64) -> Self {
         assert!(
             1.0 <= capping_param
             &&
@@ -88,14 +110,14 @@ impl SoftBoost {
     /// `max_loop` returns the maximum iteration
     /// of the Adaboost to find a combined hypothesis
     /// that has error at most `tolerance`.
-    pub fn max_loop(&mut self) -> u64 {
+    pub fn max_loop(&mut self) -> usize {
 
         let m = self.dist.len() as f64;
 
         let temp = (m / self.capping_param).ln();
         let max_iter = 2.0 * temp / self.tolerance.powi(2);
 
-        max_iter.ceil() as u64
+        max_iter.ceil() as usize
     }
 
 
@@ -106,20 +128,21 @@ impl SoftBoost {
 }
 
 
-impl SoftBoost {
+impl<C> SoftBoost<C>
+    where C: Classifier,
+{
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
-    fn set_weights<C>(&mut self,
-                      data: &DataFrame,
-                      target: &Series,
-                      classifiers: &[C])
-        -> std::result::Result<Vec<f64>, grb::Error>
-        where C: Classifier,
+    fn set_weights(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+    ) -> std::result::Result<Vec<f64>, grb::Error>
     {
         let mut model = Model::with_env("", &self.env)?;
 
         let m = self.dist.len();
-        let t = classifiers.len();
+        let t = self.classifiers.len();
 
         // Initialize GRBVars
         let wt_vec = (0..t).map(|i| {
@@ -143,7 +166,7 @@ impl SoftBoost {
         for (i, (y, &xi)) in iter {
             let y = y.unwrap() as f64;
             let expr = wt_vec.iter()
-                .zip(classifiers)
+                .zip(&self.classifiers[..])
                 .map(|(&w, h)| w * h.confidence(data, i))
                 .grb_sum();
             let name = format!("sample[{i}]");
@@ -184,12 +207,11 @@ impl SoftBoost {
 
     /// Updates `self.distribution`
     /// Returns `None` if the stopping criterion satisfied.
-    fn update_params_mut<C>(&mut self,
-                            data: &DataFrame,
-                            target: &Series,
-                            classifiers: &[C])
-        -> Option<()>
-        where C: Classifier,
+    fn update_params_mut(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+    ) -> Option<()>
     {
         loop {
             // Initialize GRBModel
@@ -214,7 +236,7 @@ impl SoftBoost {
 
 
             // Set constraints
-            classifiers.iter()
+            self.classifiers.iter()
                 .enumerate()
                 .for_each(|(j, h)| {
                     let iter = target.i64()
@@ -264,10 +286,9 @@ impl SoftBoost {
             // Check the status
             let status = model.status().unwrap();
             // If the status is `Status::Infeasible`,
-            // it implies that the `tolerance`-optimalitys
+            // it implies that a `tolerance`-optimality
             // of the previous solution
-            if status == Status::Infeasible
-                || status == Status::InfOrUnbd {
+            if status == Status::Infeasible || status == Status::InfOrUnbd {
                 return None;
             }
 
@@ -305,62 +326,95 @@ impl SoftBoost {
 }
 
 
-impl<C> Booster<C> for SoftBoost
-    where C: Classifier,
+impl<C> Booster<C> for SoftBoost<C>
+    where C: Classifier + Clone,
 {
+    fn preprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        data: &DataFrame,
+        _target: &Series,
+    )
+        where B: BaseLearner<Clf = C>
+    {
+        let n_sample = data.shape().0;
+
+        let uni = 1.0 / n_sample as f64;
+
+        self.dist = vec![uni; n_sample];
+
+        self.max_iter = self.max_loop();
+        self.terminated = self.max_iter;
+        self.classifiers = Vec::new();
+
+        self.gamma_hat = 1.0;
+    }
 
 
-    fn run<B>(&mut self,
-              base_learner: &B,
-              data: &DataFrame,
-              target: &Series,
-    ) -> CombinedClassifier<C>
+    fn boost<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+        iteration: usize,
+    ) -> State
         where B: BaseLearner<Clf = C>,
     {
-        let max_iter = self.max_loop();
-
-        let mut classifiers = Vec::new();
-        for t in 1..=max_iter {
-            // Receive a hypothesis from the base learner
-            let h = base_learner.produce(data, target, &self.dist);
-
-            // update `self.gamma_hat`
-            let edge = target.i64()
-                .expect("The target class is not a dtype i64")
-                .into_iter()
-                .zip(self.dist.iter().copied())
-                .enumerate()
-                .map(|(i, (y, d))|
-                    d * y.unwrap() as f64 * h.confidence(data, i)
-                )
-                .sum::<f64>();
-
-
-            if self.gamma_hat > edge {
-                self.gamma_hat = edge;
-            }
-
-
-            // At this point, the stopping criterion is not satisfied.
-            // Append a new hypothesis to `self.classifiers`.
-            classifiers.push(h);
-
-            // Update the parameters
-            if self.update_params_mut(data, target, &classifiers).is_none() {
-                println!("Break loop at: {t}");
-                break;
-            }
+        if self.max_iter < iteration {
+            return State::Terminate;
         }
 
+        // Receive a hypothesis from the base learner
+        let h = base_learner.produce(data, target, &self.dist);
+
+        // update `self.gamma_hat`
+        let edge = target.i64()
+            .expect("The target class is not a dtype i64")
+            .into_iter()
+            .zip(self.dist.iter().copied())
+            .enumerate()
+            .map(|(i, (y, d))|
+                d * y.unwrap() as f64 * h.confidence(data, i)
+            )
+            .sum::<f64>();
+
+
+        if self.gamma_hat > edge {
+            self.gamma_hat = edge;
+        }
+
+
+        // At this point, the stopping criterion is not satisfied.
+        // Append a new hypothesis to `self.classifiers`.
+        self.classifiers.push(h);
+
+        // Update the parameters
+        if self.update_params_mut(data, target).is_none() {
+            self.terminated = iteration;
+            return State::Terminate;
+        }
+
+        State::Continue
+    }
+
+
+    fn postprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+    ) -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>
+    {
         // Set the weights on the hypotheses
         // by solving a linear program
-        let clfs = match self.set_weights(data, target, &classifiers) {
+        let clfs = match self.set_weights(data, target) {
             Err(e) => {
                 panic!("{e}");
             },
             Ok(weights) => {
                 weights.into_iter()
-                    .zip(classifiers.into_iter())
+                    .zip(self.classifiers.clone())
                     .filter(|(w, _)| *w != 0.0)
                     .collect::<Vec<(f64, C)>>()
             }

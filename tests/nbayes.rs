@@ -46,7 +46,7 @@ fn full_binary_tree() {
     println!("{df}");
 
 
-    let nbayes = GaussianNB::init(&df);
+    let nbayes = GaussianNB::init(&df, &target);
 
     let dist = vec![1.0/7.0; 7];
 

@@ -48,7 +48,7 @@ pub mod softboost_iris {
         // let nu = 0.1_f64;
         let mut booster = SoftBoost::init(&data, &target)
             .tolerance(0.1)
-            .capping(nu * m as f64);
+            .nu(nu * m as f64);
         let dtree = DTree::init(&data, &target)
             .max_depth(1);
 

@@ -7,16 +7,18 @@ use polars::prelude::*;
 use rayon::prelude::*;
 
 use crate::{
+    Booster,
+    BaseLearner,
+
+    State,
     Classifier,
     CombinedClassifier,
-    BaseLearner,
-    Booster,
 };
 
 
 /// SmoothBoost. See Figure 1
 /// in [this paper](https://www.jmlr.org/papers/volume4/servedio03a/servedio03a.pdf).
-pub struct SmoothBoost {
+pub struct SmoothBoost<C> {
     /// Desired accuracy
     kappa: f64,
 
@@ -36,23 +38,39 @@ pub struct SmoothBoost {
 
     /// Terminated iteration.
     terminated: usize,
+
+    max_iter: usize,
+
+    classifiers: Vec<C>,
+
+
+    m: Vec<f64>,
+    n: Vec<f64>,
 }
 
 
-impl SmoothBoost {
+impl<C> SmoothBoost<C> {
     /// Initialize `SmoothBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         let n_sample = data.shape().0;
 
+        let gamma = 0.5;
+
 
         Self {
             kappa: 0.5,
-            theta: 0.5 / (2.0 + 0.5), // gamma / (2.0 + gamma)
-            gamma: 0.5,
+            theta: gamma / (2.0 + gamma), // gamma / (2.0 + gamma)
+            gamma,
 
             n_sample,
 
             terminated: usize::MAX,
+            max_iter: usize::MAX,
+
+            classifiers: Vec::new(),
+
+            m: Vec::new(),
+            n: Vec::new(),
         }
     }
 
@@ -97,7 +115,7 @@ impl SmoothBoost {
         // Check `kappa`.
         if !(0.0..1.0).contains(&self.kappa) || self.kappa <= 0.0 {
             panic!(
-                "Invalid kappa.\
+                "Invalid kappa. \
                  The parameter `kappa` must be in (0.0, 1.0)"
             );
         }
@@ -105,7 +123,7 @@ impl SmoothBoost {
         // Check `gamma`.
         if !(self.theta..0.5).contains(&self.gamma) {
             panic!(
-                "Invalid gamma.\
+                "Invalid gamma. \
                  The parameter `gamma` must be in [self.theta, 0.5)"
             );
         }
@@ -114,17 +132,18 @@ impl SmoothBoost {
 
 
 
-impl<C> Booster<C> for SmoothBoost
-    where C: Classifier,
+impl<C> Booster<C> for SmoothBoost<C>
+    where C: Classifier + Clone,
 {
-    fn run<B>(
+    fn preprocess<B>(
         &mut self,
-        base_learner: &B,
-        data:         &DataFrame,
-        target:       &Series,
-    ) -> CombinedClassifier<C>
+        _base_learner: &B,
+        data: &DataFrame,
+        _target: &Series,
+    )
         where B: BaseLearner<Clf = C>
     {
+        self.n_sample = data.shape().0;
         // Set the paremeter `theta`.
         self.theta();
 
@@ -132,69 +151,94 @@ impl<C> Booster<C> for SmoothBoost
         self.check_preconditions();
 
 
-        let max_iter = self.max_loop();
-        self.terminated = max_iter;
+        self.max_iter = self.max_loop();
+        self.terminated = self.max_iter;
+
+        self.classifiers = Vec::new();
 
 
-        let mut m = vec![1.0; self.n_sample];
-        let mut n = vec![1.0; self.n_sample];
+        self.m = vec![1.0; self.n_sample];
+        self.n = vec![1.0; self.n_sample];
+    }
 
 
-        let mut clfs = Vec::new();
+    fn boost<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+        iteration: usize,
+    ) -> State
+        where B: BaseLearner<Clf = C>
+    {
 
-
-        for t in 1..max_iter {
-            let sum = m.iter().sum::<f64>();
-            // Check the stopping criterion.
-            if sum < self.n_sample as f64 * self.kappa {
-                self.terminated = t - 1;
-                break;
-            }
-
-
-            // Compute the distribution.
-            let dist = m.iter()
-                .map(|mj| *mj / sum)
-                .collect::<Vec<_>>();
-
-
-            // Call weak learner to obtain a hypothesis.
-            clfs.push(
-                base_learner.produce(data, target, &dist[..])
-            );
-            let h: &C = clfs.last().unwrap();
-
-
-            let margins = target.i64()
-                .expect("The target is not a dtype i64")
-                .into_iter()
-                .enumerate()
-                .map(|(i, y)| y.unwrap() as f64 * h.confidence(data, i));
-
-
-            // Update `n`
-            n.iter_mut()
-                .zip(margins)
-                .for_each(|(nj, yh)| {
-                    *nj = *nj + yh - self.theta;
-                });
-
-
-            // Update `m`
-            m.par_iter_mut()
-                .zip(&n[..])
-                .for_each(|(mj, nj)| {
-                    if *nj <= 0.0 {
-                        *mj = 1.0;
-                    } else {
-                        *mj = (1.0 - self.gamma).powf(*nj * 0.5);
-                    }
-                });
+        if self.max_iter < iteration {
+            return State::Terminate;
         }
 
-        // Compute the combined hypothesis
+
+        let sum = self.m.iter().sum::<f64>();
+        // Check the stopping criterion.
+        if sum < self.n_sample as f64 * self.kappa {
+            self.terminated = iteration - 1;
+            return State::Terminate;
+        }
+
+
+        // Compute the distribution.
+        let dist = self.m.iter()
+            .map(|mj| *mj / sum)
+            .collect::<Vec<_>>();
+
+
+        // Call weak learner to obtain a hypothesis.
+        self.classifiers.push(
+            base_learner.produce(data, target, &dist[..])
+        );
+        let h: &C = self.classifiers.last().unwrap();
+
+
+        let margins = target.i64()
+            .expect("The target is not a dtype i64")
+            .into_iter()
+            .enumerate()
+            .map(|(i, y)| y.unwrap() as f64 * h.confidence(data, i));
+
+
+        // Update `n`
+        self.n.iter_mut()
+            .zip(margins)
+            .for_each(|(nj, yh)| {
+                *nj = *nj + yh - self.theta;
+            });
+
+
+        // Update `m`
+        self.m.par_iter_mut()
+            .zip(&self.n[..])
+            .for_each(|(mj, nj)| {
+                if *nj <= 0.0 {
+                    *mj = 1.0;
+                } else {
+                    *mj = (1.0 - self.gamma).powf(*nj * 0.5);
+                }
+            });
+
+        State::Continue
+    }
+
+
+    fn postprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        _data: &DataFrame,
+        _target: &Series,
+    ) -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>
+    {
         let weight = 1.0 / self.terminated as f64;
-        let clfs = clfs.into_iter()
+        let clfs = self.classifiers.clone()
+            .into_iter()
             .map(|h| (weight, h))
             .collect::<Vec<(f64, C)>>();
 

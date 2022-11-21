@@ -11,7 +11,7 @@ use super::probability::Probability;
 
 
 /// Naive Bayes classifier.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NBayesClassifier<P> {
     pub(super) prior_p: f64,
     pub(super) prior_n: f64, // equals to `1.0 - prior_p`

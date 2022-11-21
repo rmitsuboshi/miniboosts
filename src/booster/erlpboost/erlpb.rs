@@ -6,9 +6,14 @@ use polars::prelude::*;
 // use rayon::prelude::*;
 
 
-use crate::{Classifier, CombinedClassifier};
-use crate::BaseLearner;
-use crate::Booster;
+use crate::{
+    Booster,
+    BaseLearner,
+
+    State,
+    Classifier,
+    CombinedClassifier,
+};
 use super::qp_model::QPModel;
 
 
@@ -18,7 +23,7 @@ use std::cell::RefCell;
 
 /// ERLPBoost struct. 
 /// See [this paper](https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.141.1759&rep=rep1&type=pdf).
-pub struct ERLPBoost {
+pub struct ERLPBoost<C> {
     dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
@@ -33,31 +38,35 @@ pub struct ERLPBoost {
 
     qp_model: Option<RefCell<QPModel>>,
 
+    classifiers: Vec<C>,
+
 
     // an accuracy parameter for the sub-problems
-    size: usize,
+    n_sample: usize,
     nu: f64,
 
 
     terminated: usize,
+
+    max_iter: usize,
 }
 
 
-impl ERLPBoost {
+impl<C> ERLPBoost<C> {
     /// Initialize the `ERLPBoost`.
     /// Use `data` for argument.
     /// This method does not care 
     /// whether the label is included in `data` or not.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
-        let size = data.shape().0;
-        assert!(size != 0);
+        let n_sample = data.shape().0;
+        assert!(n_sample != 0);
 
 
         // Set uni as an uniform weight
-        let uni = 1.0 / size as f64;
+        let uni = 1.0 / n_sample as f64;
 
-        // Compute $\ln(size)$ in advance
-        let ln_size = (size as f64).ln();
+        // Compute $\ln(n_sample)$ in advance
+        let ln_n_sample = (n_sample as f64).ln();
 
 
         // Set tolerance
@@ -65,7 +74,7 @@ impl ERLPBoost {
 
 
         // Set regularization parameter
-        let eta = 0.5_f64.max(2.0_f64 * ln_size / tolerance);
+        let eta = 0.5_f64.max(2.0_f64 * ln_n_sample / tolerance);
 
         // Set gamma_hat and gamma_star
         let gamma_hat  = 1.0;
@@ -73,16 +82,20 @@ impl ERLPBoost {
 
 
         ERLPBoost {
-            dist: vec![uni; size],
+            dist: vec![uni; n_sample],
             gamma_hat,
             gamma_star,
             eta,
             tolerance,
             qp_model: None,
-            size,
+
+            classifiers: Vec::new(),
+
+            n_sample,
             nu: 1.0,
 
-            terminated: 0_usize,
+            terminated: usize::MAX,
+            max_iter: usize::MAX,
         }
     }
 
@@ -94,7 +107,7 @@ impl ERLPBoost {
 
 
         let qp_model = RefCell::new(QPModel::init(
-            self.eta, self.size, upper_bound
+            self.eta, self.n_sample, upper_bound
         ));
 
         self.qp_model = Some(qp_model);
@@ -103,7 +116,7 @@ impl ERLPBoost {
 
     /// Updates the capping parameter.
     pub fn nu(mut self, nu: f64) -> Self {
-        assert!(1.0 <= nu && nu <= self.size as f64);
+        assert!(1.0 <= nu && nu <= self.n_sample as f64);
         self.nu = nu;
         self.regularization_param();
 
@@ -130,30 +143,10 @@ impl ERLPBoost {
     /// Setter method of `self.eta`
     #[inline(always)]
     fn regularization_param(&mut self) {
-        let ln_size = (self.size as f64 / self.nu).ln();
+        let ln_n_sample = (self.n_sample as f64 / self.nu).ln();
 
 
-        self.eta = 0.5_f64.max(ln_size / self.tolerance);
-    }
-
-
-
-    /// Set `gamma_hat` and `gamma_star`.
-    #[inline]
-    fn gamma(&mut self) {
-        self.gamma_hat = 1.0;
-        self.gamma_star = -1.0;
-    }
-
-
-    /// Set all parameters in ERLPBoost.
-    #[inline]
-    fn init_params(&mut self) {
-        assert!((0.0..1.0).contains(&self.tolerance));
-
-        self.regularization_param();
-
-        self.gamma();
+        self.eta = 0.5_f64.max(ln_n_sample / self.tolerance);
     }
 
 
@@ -161,13 +154,13 @@ impl ERLPBoost {
     /// of the Adaboost to find a combined hypothesis
     /// that has error at most `tolerance`.
     fn max_loop(&mut self) -> usize {
-        let size = self.size as f64;
+        let n_sample = self.n_sample as f64;
 
         let mut max_iter = 4.0 / self.tolerance;
 
 
-        let ln_size = (size / self.nu).ln();
-        let temp = 8.0 * ln_size / self.tolerance.powi(2);
+        let ln_n_sample = (n_sample / self.nu).ln();
+        let temp = 8.0 * ln_n_sample / self.tolerance.powi(2);
 
 
         max_iter = max_iter.max(temp);
@@ -177,15 +170,18 @@ impl ERLPBoost {
 }
 
 
-impl ERLPBoost {
+impl<C> ERLPBoost<C>
+    where C: Classifier
+{
     /// Update `self.gamma_hat`.
     /// `self.gamma_hat` holds the minimum value of the objective value.
     #[inline]
-    fn update_gamma_hat_mut<C>(&mut self,
-                               h: &C,
-                               data: &DataFrame,
-                               target: &Series)
-        where C: Classifier,
+    fn update_gamma_hat_mut(
+        &mut self,
+        h: &C,
+        data: &DataFrame,
+        target: &Series
+    )
     {
         let edge = target.i64()
             .expect("The target class is not a dtype i64")
@@ -211,13 +207,9 @@ impl ERLPBoost {
 
     /// Update `self.gamma_star`.
     /// `self.gamma_star` holds the current optimal value.
-    fn update_gamma_star_mut<C>(&mut self,
-                                classifiers: &[C],
-                                data: &DataFrame,
-                                target: &Series)
-        where C: Classifier,
+    fn update_gamma_star_mut(&mut self, data: &DataFrame, target: &Series)
     {
-        let max_edge = classifiers.iter()
+        let max_edge = self.classifiers.iter()
             .map(|h|
                 target.i64()
                     .expect("The target class is not a dtype i64")
@@ -252,11 +244,12 @@ impl ERLPBoost {
     /// This method continues minimizing the quadratic objective 
     /// while the decrease of the optimal value is 
     /// greater than `self.sub_tolerance`.
-    fn update_distribution_mut<C>(&mut self,
-                                  data: &DataFrame,
-                                  target: &Series,
-                                  clf: &C)
-        where C: Classifier,
+    fn update_distribution_mut(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+        clf: &C
+    )
     {
         self.qp_model.as_ref()
             .unwrap()
@@ -271,71 +264,95 @@ impl ERLPBoost {
 }
 
 
-impl<C> Booster<C> for ERLPBoost
-    where C: Classifier
+impl<C> Booster<C> for ERLPBoost<C>
+    where C: Classifier + Clone,
 {
-    fn run<B>(&mut self,
-              base_learner: &B,
-              data: &DataFrame,
-              target: &Series,
-    ) -> CombinedClassifier<C>
+    fn preprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        data: &DataFrame,
+        _target: &Series,
+    )
+        where B: BaseLearner<Clf = C>
+    {
+        let n_sample = data.shape().0;
+        let uni = 1.0 / n_sample as f64;
+
+        self.dist = vec![uni; n_sample];
+
+        self.max_iter = self.max_loop();
+        self.terminated = self.max_iter;
+
+        self.classifiers = Vec::new();
+
+        self.gamma_hat = 1.0;
+        self.gamma_star = -1.0;
+
+
+        assert!((0.0..1.0).contains(&self.tolerance));
+        self.regularization_param();
+        self.init_solver();
+    }
+
+
+    fn boost<B>(
+        &mut self,
+        base_learner: &B,
+        data: &DataFrame,
+        target: &Series,
+        iteration: usize,
+    ) -> State
         where B: BaseLearner<Clf = C>,
     {
-        // Initialize all parameters
-        self.init_params();
-
-
-        self.init_solver();
-
-
-        // Get max iteration.
-        let max_iter = self.max_loop();
-
-        self.terminated = max_iter as usize;
-
-
-        // This vector holds the classifiers
-        // obtained from the `base_learner`.
-        let mut classifiers = Vec::new();
-
-        for step in 1..=max_iter {
-            // Receive a hypothesis from the base learner
-            let h = base_learner.produce(data, target, &self.dist[..]);
-
-
-            // update `self.gamma_hat`
-            self.update_gamma_hat_mut(&h, data, target);
-
-
-            // Check the stopping criterion
-            let diff = self.gamma_hat - self.gamma_star;
-            if diff <= self.tolerance {
-                println!("Break loop at: {step}");
-                self.terminated = step as usize;
-                break;
-            }
-
-            // At this point, the stopping criterion is not satisfied.
-
-            // Update the parameters
-            self.update_distribution_mut(data, target, &h);
-
-
-            // Append a new hypothesis to `clfs`.
-            classifiers.push(h);
-
-
-            // update `self.gamma_star`.
-            self.update_gamma_star_mut(&classifiers, data, target);
+        if self.max_iter < iteration {
+            return State::Terminate;
         }
 
-        // Set the weights on the hypotheses
-        // by solving a linear program
+        // Receive a hypothesis from the base learner
+        let h = base_learner.produce(data, target, &self.dist[..]);
+
+
+        // update `self.gamma_hat`
+        self.update_gamma_hat_mut(&h, data, target);
+
+
+        // Check the stopping criterion
+        let diff = self.gamma_hat - self.gamma_star;
+        if diff <= self.tolerance {
+            self.terminated = iteration;
+            return State::Terminate;
+        }
+
+        // At this point, the stopping criterion is not satisfied.
+
+        // Update the parameters
+        self.update_distribution_mut(data, target, &h);
+
+
+        // Append a new hypothesis to `clfs`.
+        self.classifiers.push(h);
+
+
+        // update `self.gamma_star`.
+        self.update_gamma_star_mut(data, target);
+
+        State::Continue
+    }
+
+
+    fn postprocess<B>(
+        &mut self,
+        _base_learner: &B,
+        _data: &DataFrame,
+        _target: &Series,
+    ) -> CombinedClassifier<C>
+        where B: BaseLearner<Clf = C>
+    {
         let clfs = self.qp_model.as_ref()
             .unwrap()
             .borrow_mut()
             .weight()
-            .zip(classifiers)
+            .zip(self.classifiers.clone())
             .filter(|(w, _)| *w != 0.0)
             .collect::<Vec<(f64, C)>>();
 
