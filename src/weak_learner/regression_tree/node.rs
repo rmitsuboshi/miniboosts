@@ -29,9 +29,9 @@ pub enum Node {
 /// Each `BranchNode` must have two childrens
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BranchNode {
-    pub(self) rule: Splitter,
-    pub(self) left: Box<Node>,
-    pub(self) right: Box<Node>,
+    pub(super) rule: Splitter,
+    pub(super) left: Box<Node>,
+    pub(super) right: Box<Node>,
 }
 
 
@@ -54,7 +54,7 @@ impl BranchNode {
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode {
-    pub(self) prediction: f64,
+    pub(super) prediction: f64,
 }
 
 
@@ -143,4 +143,50 @@ impl Regressor for Node {
     }
 }
 
+
+impl Node {
+    pub(super) fn to_dot_info(&self, id: usize) -> (Vec<String>, usize) {
+        match self {
+            Node::Branch(b) => {
+                let b_info = format!(
+                    "\tnode_{id} [ label = \"{feat} < {thr:.2} ?\" ];\n",
+                    feat = b.rule.feature,
+                    thr = b.rule.threshold
+                );
+
+                let (l_info, next_id) = b.left.to_dot_info(id + 1);
+                let (mut r_info, ret_id) = b.right.to_dot_info(next_id);
+
+                let mut info = l_info;
+                info.push(b_info);
+                info.append(&mut r_info);
+
+                let l_edge = format!(
+                    "\t\tnode_{id} -- node_{l_id} [ label = \"Yes\" ];\n",
+                    l_id = id + 1
+                );
+                let r_edge = format!(
+                    "\t\tnode_{id} -- node_{r_id} [ label = \"No\" ];\n",
+                    r_id = next_id
+                );
+
+                info.push(l_edge);
+                info.push(r_edge);
+
+                (info, ret_id)
+            },
+            Node::Leaf(l) => {
+                let info = format!(
+                    "\tnode_{id} [ \
+                     label = \"prediction = {p:.2}\",\
+                     shape = box,\
+                     ];\n",
+                    p = l.prediction
+                );
+
+                (vec![info], id + 1)
+            }
+        }
+    }
+}
 
