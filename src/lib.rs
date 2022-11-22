@@ -27,7 +27,7 @@
 pub mod regressor;
 pub mod classifier;
 pub mod booster;
-pub mod base_learner;
+pub mod weak_learner;
 pub mod prelude;
 
 
@@ -71,12 +71,12 @@ pub use booster::{
 };
 
 
-// Export the `BaseLearner` trait.
-pub use base_learner::BaseLearner;
+// Export the `WeakLearner` trait.
+pub use weak_learner::WeakLearner;
 
 
-// Export the instances of the `BaseLearner` trait.
-pub use base_learner::{
+// Export the instances of the `WeakLearner` trait.
+pub use weak_learner::{
     DTree,
     Criterion,
 
@@ -87,7 +87,7 @@ pub use base_learner::{
 
 // Export the instances of the `Classifier` trait.
 // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
-pub use base_learner::{
+pub use weak_learner::{
     DTreeClassifier,
     NBayesClassifier,
 };

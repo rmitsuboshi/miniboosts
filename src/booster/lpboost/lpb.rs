@@ -9,7 +9,7 @@ use super::lp_model::LPModel;
 
 use crate::{
     Booster,
-    BaseLearner,
+    WeakLearner,
     State,
 
     Classifier,
@@ -139,13 +139,13 @@ impl<C> LPBoost<C>
 impl<C> Booster<C> for LPBoost<C>
     where C: Classifier + Clone,
 {
-    fn preprocess<B>(
+    fn preprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         data: &DataFrame,
         _target: &Series,
     )
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         let n_sample = data.shape().0;
         let uni = 1.0_f64 / n_sample as f64;
@@ -160,16 +160,16 @@ impl<C> Booster<C> for LPBoost<C>
     }
 
 
-    fn boost<B>(
+    fn boost<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
         _iteration: usize,
     ) -> State
-        where B: BaseLearner<Clf = C>,
+        where W: WeakLearner<Clf = C>,
     {
-        let h = base_learner.produce(data, target, &self.dist);
+        let h = weak_learner.produce(data, target, &self.dist);
 
         // Each element in `margins` is the product of
         // the predicted vector and the correct vector
@@ -208,13 +208,13 @@ impl<C> Booster<C> for LPBoost<C>
     }
 
 
-    fn postprocess<B>(
+    fn postprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         let clfs = self.lp_model.as_ref()
             .unwrap()
@@ -228,75 +228,3 @@ impl<C> Booster<C> for LPBoost<C>
         CombinedClassifier::from(clfs)
     }
 }
-
-
-// impl<C> Booster<C> for LPBoost
-//     where C: Classifier,
-// {
-//     fn run<B>(
-//         &mut self,
-//         base_learner: &B,
-//         data: &DataFrame,
-//         target: &Series,
-//     ) -> CombinedClassifier<C>
-//         where B: BaseLearner<Clf = C>,
-//     {
-//         self.init_solver();
-// 
-//         let mut classifiers = Vec::new();
-// 
-//         self.terminated = usize::MAX;
-// 
-//         // Since the LPBoost does not have non-trivial iteration,
-//         // we run this until the stopping criterion is satisfied.
-//         loop {
-//             let h = base_learner.produce(data, target, &self.dist);
-// 
-//             // Each element in `margins` is the product of
-//             // the predicted vector and the correct vector
-// 
-//             let ghat = target.i64()
-//                 .expect("The target class is not a dtype of i64")
-//                 .into_iter()
-//                 .enumerate()
-//                 .map(|(i, y)| y.unwrap() as f64 * h.confidence(data, i))
-//                 .zip(self.dist.iter())
-//                 .map(|(yh, &d)| d * yh)
-//                 .sum::<f64>();
-// 
-//             self.gamma_hat = ghat.min(self.gamma_hat);
-// 
-// 
-//             let gamma_star = self.update_distribution_mut(
-//                 data, target, &h
-//             );
-// 
-// 
-//             classifiers.push(h);
-// 
-//             if gamma_star >= self.gamma_hat - self.tolerance {
-//                 println!("Break loop at: {t}", t = classifiers.len());
-//                 self.terminated = classifiers.len();
-//                 break;
-//             }
-// 
-//             // Update the distribution over the training examples.
-//             self.dist = self.lp_model.as_ref()
-//                 .unwrap()
-//                 .borrow()
-//                 .distribution();
-//         }
-// 
-// 
-//         let clfs = self.lp_model.as_ref()
-//             .unwrap()
-//             .borrow()
-//             .weight()
-//             .zip(classifiers)
-//             .filter(|(w, _)| *w != 0.0)
-//             .collect::<Vec<(f64, C)>>();
-// 
-// 
-//         CombinedClassifier::from(clfs)
-//     }
-// }

@@ -14,7 +14,7 @@ use super::{
 
 use crate::{
     Booster,
-    BaseLearner,
+    WeakLearner,
 
     State,
     Classifier,
@@ -291,13 +291,13 @@ impl<C> MLPBoost<C>
 impl<C> Booster<C> for MLPBoost<C>
     where C: Classifier + Clone + PartialEq,
 {
-    fn preprocess<B>(
+    fn preprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         data: &DataFrame,
         _target: &Series,
     )
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         self.n_sample = data.shape().0;
 
@@ -308,12 +308,12 @@ impl<C> Booster<C> for MLPBoost<C>
 
 
         // // Obtain a hypothesis by passing the uniform distribution.
-        // let h = base_learner.produce(
+        // let h = weak_learner.produce(
         //     data, target, &vec![1.0 / self.size as f64; self.size]
         // );
 
 
-        // // Defines the vector of hypotheses obtained from `base_learner`.
+        // // Defines the vector of hypotheses obtained from `weak_learner`.
         // let mut classifiers = vec![h];
         // // Defines the vector of weights on `classifiers`.
         // let mut weights = vec![1.0];
@@ -326,14 +326,14 @@ impl<C> Booster<C> for MLPBoost<C>
     }
 
 
-    fn boost<B>(
+    fn boost<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
         iteration: usize,
     ) -> State
-        where B: BaseLearner<Clf = C>,
+        where W: WeakLearner<Clf = C>,
     {
 
         if self.max_iter < iteration {
@@ -354,7 +354,7 @@ impl<C> Booster<C> for MLPBoost<C>
 
 
         // Obtain a hypothesis w.r.t. `dist`.
-        let h = base_learner.produce(data, target, &dist);
+        let h = weak_learner.produce(data, target, &dist);
 
 
         // Compute the edge of newly-attained hypothesis `h`.
@@ -431,13 +431,13 @@ impl<C> Booster<C> for MLPBoost<C>
     }
 
 
-    fn postprocess<B>(
+    fn postprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         let clfs = self.weights.clone()
             .into_iter()

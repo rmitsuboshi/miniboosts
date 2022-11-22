@@ -8,7 +8,7 @@ use rayon::prelude::*;
 
 use crate::{
     Booster,
-    BaseLearner,
+    WeakLearner,
 
     State,
     Classifier,
@@ -135,13 +135,13 @@ impl<C> SmoothBoost<C> {
 impl<C> Booster<C> for SmoothBoost<C>
     where C: Classifier + Clone,
 {
-    fn preprocess<B>(
+    fn preprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         data: &DataFrame,
         _target: &Series,
     )
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         self.n_sample = data.shape().0;
         // Set the paremeter `theta`.
@@ -162,14 +162,14 @@ impl<C> Booster<C> for SmoothBoost<C>
     }
 
 
-    fn boost<B>(
+    fn boost<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
         iteration: usize,
     ) -> State
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
 
         if self.max_iter < iteration {
@@ -193,7 +193,7 @@ impl<C> Booster<C> for SmoothBoost<C>
 
         // Call weak learner to obtain a hypothesis.
         self.classifiers.push(
-            base_learner.produce(data, target, &dist[..])
+            weak_learner.produce(data, target, &dist[..])
         );
         let h: &C = self.classifiers.last().unwrap();
 
@@ -228,13 +228,13 @@ impl<C> Booster<C> for SmoothBoost<C>
     }
 
 
-    fn postprocess<B>(
+    fn postprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         let weight = 1.0 / self.terminated as f64;
         let clfs = self.classifiers.clone()

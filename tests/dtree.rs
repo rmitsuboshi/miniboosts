@@ -1,5 +1,5 @@
 use miniboosts::DTree;
-use miniboosts::BaseLearner;
+use miniboosts::WeakLearner;
 
 
 use polars::prelude::*;

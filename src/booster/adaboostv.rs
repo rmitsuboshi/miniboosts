@@ -5,7 +5,7 @@ use rayon::prelude::*;
 
 use crate::{
     Booster,
-    BaseLearner,
+    WeakLearner,
 
     State,
     Classifier,
@@ -139,13 +139,13 @@ impl<C> AdaBoostV<C> {
 impl<C> Booster<C> for AdaBoostV<C>
     where C: Classifier + Clone,
 {
-    fn preprocess<B>(
+    fn preprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         data: &DataFrame,
         _target: &Series,
     )
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         // Initialize parameters
         let n_sample = data.shape().0;
@@ -159,21 +159,21 @@ impl<C> Booster<C> for AdaBoostV<C>
     }
 
 
-    fn boost<B>(
+    fn boost<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
         iteration: usize,
     ) -> State
-        where B: BaseLearner<Clf = C>,
+        where W: WeakLearner<Clf = C>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
         }
 
         // Get a new hypothesis
-        let h = base_learner.produce(data, target, &self.dist);
+        let h = weak_learner.produce(data, target, &self.dist);
 
 
         // Each element in `predictions` is the product of
@@ -209,13 +209,13 @@ impl<C> Booster<C> for AdaBoostV<C>
     }
 
 
-    fn postprocess<B>(
+    fn postprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         CombinedClassifier::from(self.weighted_classifiers.clone())
     }

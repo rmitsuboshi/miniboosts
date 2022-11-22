@@ -11,7 +11,7 @@ use rayon::prelude::*;
 
 use crate::{
     Booster,
-    BaseLearner,
+    WeakLearner,
 
     State,
     Classifier,
@@ -252,13 +252,13 @@ impl<C> CERLPBoost<C>
 impl<C> Booster<C> for CERLPBoost<C>
     where C: Classifier + Clone + PartialEq + std::fmt::Debug,
 {
-    fn preprocess<B>(
+    fn preprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         data: &DataFrame,
         _target: &Series,
     )
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         let n_sample = data.shape().0;
         let uni = 1.0 / n_sample as f64;
@@ -275,14 +275,14 @@ impl<C> Booster<C> for CERLPBoost<C>
     }
 
 
-    fn boost<B>(
+    fn boost<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
         iteration: usize,
     ) -> State
-    where B: BaseLearner<Clf = C>,
+    where W: WeakLearner<Clf = C>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -292,7 +292,7 @@ impl<C> Booster<C> for CERLPBoost<C>
         self.update_distribution_mut(data, target);
 
         // Receive a hypothesis from the base learner
-        let h = base_learner.produce(data, target, &self.dist);
+        let h = weak_learner.produce(data, target, &self.dist);
 
         // println!("h: {h:?}");
 
@@ -330,13 +330,13 @@ impl<C> Booster<C> for CERLPBoost<C>
     }
 
 
-    fn postprocess<B>(
+    fn postprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         data: &DataFrame,
         target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         // Compute the dual optimal value for debug
         self.dual_objval_mut(data, target);

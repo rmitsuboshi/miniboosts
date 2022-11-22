@@ -12,7 +12,7 @@ pub mod regression_tree;
 /// Defines Naive Bayes.
 pub mod naive_bayes;
 
-pub use self::core::BaseLearner;
+pub use self::core::WeakLearner;
 pub use self::decision_tree::{
     Criterion,
     DTree,

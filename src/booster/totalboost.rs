@@ -7,7 +7,7 @@ use polars::prelude::*;
 
 use crate::{
     Booster,
-    BaseLearner,
+    WeakLearner,
 
     State,
     Classifier,
@@ -54,39 +54,39 @@ impl<C> TotalBoost<C>
 impl<C> Booster<C> for TotalBoost<C>
     where C: Classifier + Clone,
 {
-    fn preprocess<B>(
+    fn preprocess<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
     )
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
-        self.softboost.preprocess(base_learner, data, target);
+        self.softboost.preprocess(weak_learner, data, target);
     }
 
 
-    fn boost<B>(
+    fn boost<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
         iteration: usize,
     ) -> State
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
-        self.softboost.boost(base_learner, data, target, iteration)
+        self.softboost.boost(weak_learner, data, target, iteration)
     }
 
 
-    fn postprocess<B>(
+    fn postprocess<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
-        self.softboost.postprocess(base_learner, data, target)
+        self.softboost.postprocess(weak_learner, data, target)
     }
 }

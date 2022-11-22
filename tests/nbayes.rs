@@ -1,6 +1,6 @@
 use miniboosts::{
     GaussianNB,
-    BaseLearner,
+    WeakLearner,
     Classifier,
 };
 
