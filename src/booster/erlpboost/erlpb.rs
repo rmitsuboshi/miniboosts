@@ -8,7 +8,7 @@ use polars::prelude::*;
 
 use crate::{
     Booster,
-    BaseLearner,
+    WeakLearner,
 
     State,
     Classifier,
@@ -267,13 +267,13 @@ impl<C> ERLPBoost<C>
 impl<C> Booster<C> for ERLPBoost<C>
     where C: Classifier + Clone,
 {
-    fn preprocess<B>(
+    fn preprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         data: &DataFrame,
         _target: &Series,
     )
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         let n_sample = data.shape().0;
         let uni = 1.0 / n_sample as f64;
@@ -295,21 +295,21 @@ impl<C> Booster<C> for ERLPBoost<C>
     }
 
 
-    fn boost<B>(
+    fn boost<W>(
         &mut self,
-        base_learner: &B,
+        weak_learner: &W,
         data: &DataFrame,
         target: &Series,
         iteration: usize,
     ) -> State
-        where B: BaseLearner<Clf = C>,
+        where W: WeakLearner<Clf = C>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
         }
 
         // Receive a hypothesis from the base learner
-        let h = base_learner.produce(data, target, &self.dist[..]);
+        let h = weak_learner.produce(data, target, &self.dist[..]);
 
 
         // update `self.gamma_hat`
@@ -340,13 +340,13 @@ impl<C> Booster<C> for ERLPBoost<C>
     }
 
 
-    fn postprocess<B>(
+    fn postprocess<W>(
         &mut self,
-        _base_learner: &B,
+        _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedClassifier<C>
-        where B: BaseLearner<Clf = C>
+        where W: WeakLearner<Clf = C>
     {
         let clfs = self.qp_model.as_ref()
             .unwrap()

@@ -2,14 +2,16 @@ use polars::prelude::*;
 use rayon::prelude::*;
 
 
-use crate::BaseLearner;
+use crate::WeakLearner;
 
 
-use super::rtree_regressor::RTreeRegressor;
-use super::split_rule::*;
-use super::node::*;
-use super::train_node::*;
-use super::loss::Loss;
+use super::{
+    node::*,
+    train_node::*,
+    split_rule::*,
+    loss::Loss,
+    rtree_regressor::RTreeRegressor,
+};
 
 
 use std::rc::Rc;
@@ -65,7 +67,7 @@ impl RTree {
 }
 
 
-impl BaseLearner for RTree {
+impl WeakLearner for RTree {
     type Clf = RTreeRegressor;
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
         -> Self::Clf

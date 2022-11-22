@@ -1,7 +1,7 @@
 use polars::prelude::*;
 use rayon::prelude::*;
 
-use crate::BaseLearner;
+use crate::WeakLearner;
 
 use super::probability::{
     Gaussian,
@@ -23,7 +23,7 @@ impl GaussianNB {
 }
 
 
-impl BaseLearner for GaussianNB {
+impl WeakLearner for GaussianNB {
     type Clf = NBayesClassifier<Gaussian>;
 
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])

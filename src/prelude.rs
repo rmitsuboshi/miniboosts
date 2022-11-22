@@ -35,9 +35,9 @@ pub use crate::booster::mlpboost::{
 };
 
 
-pub use crate::base_learner::{
+pub use crate::weak_learner::{
     // Base Learner trait
-    BaseLearner,
+    WeakLearner,
 
 
     // Classification ---------------------------

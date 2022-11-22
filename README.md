@@ -47,7 +47,7 @@ You can combine them arbitrarily.
     - [SparsiBoost](http://proceedings.mlr.press/v97/mathiasen19a/mathiasen19a.pdf)
 
 
-- Base Learner
+- Weak Learner
     - Bag of words
     - TF-IDF
     - Two-Layer Neural Network
@@ -105,7 +105,7 @@ fn main() {
         .tolerance(tol); // Set the tolerance parameter.
 
 
-    // Initialize Base Learner
+    // Initialize Weak Learner
     // For decision tree, the default `max_depth` is `None` so that 
     // The tree grows extremely large.
     let weak_learner = DTree::init(&data, &target)

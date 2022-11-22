@@ -2,14 +2,16 @@ use polars::prelude::*;
 use rayon::prelude::*;
 
 
-use crate::BaseLearner;
+use crate::WeakLearner;
 
 
-use super::node::*;
-use super::criterion::*;
-use super::split_rule::*;
-use super::train_node::*;
-use super::dtree_classifier::DTreeClassifier;
+use super::{
+    node::*,
+    criterion::*,
+    split_rule::*,
+    train_node::*,
+    dtree_classifier::DTreeClassifier,
+};
 
 
 use std::rc::Rc;
@@ -62,7 +64,7 @@ impl DTree {
 }
 
 
-impl BaseLearner for DTree {
+impl WeakLearner for DTree {
     type Clf = DTreeClassifier;
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
         -> Self::Clf
@@ -99,13 +101,14 @@ impl BaseLearner for DTree {
 /// Construct a full binary tree
 /// that perfectly classify the given examples.
 #[inline]
-fn full_tree(data: &DataFrame,
-             target: &Series,
-             dist: &[f64],
-             indices: Vec<usize>,
-             criterion: Criterion,
-             max_depth: Option<usize>)
-    -> Rc<RefCell<TrainNode>>
+fn full_tree(
+    data: &DataFrame,
+    target: &Series,
+    dist: &[f64],
+    indices: Vec<usize>,
+    criterion: Criterion,
+    max_depth: Option<usize>
+) -> Rc<RefCell<TrainNode>>
 {
 
     let total_weight = indices.par_iter()
@@ -184,10 +187,11 @@ fn full_tree(data: &DataFrame,
 
 
 #[inline]
-fn construct_leaf(target: &Series,
-                  dist: &[f64],
-                  indices: Vec<usize>)
-    -> Rc<RefCell<TrainNode>>
+fn construct_leaf(
+    target: &Series,
+    dist: &[f64],
+    indices: Vec<usize>
+) -> Rc<RefCell<TrainNode>>
 {
     // Compute the best prediction that minimizes the training error
     // on this node.
