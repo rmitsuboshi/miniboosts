@@ -162,11 +162,11 @@ impl Node {
                 info.append(&mut r_info);
 
                 let l_edge = format!(
-                    "\t\tnode_{id} -- node_{l_id} [ label = \"Yes\" ];\n",
+                    "\tnode_{id} -- node_{l_id} [ label = \"Yes\" ];\n",
                     l_id = id + 1
                 );
                 let r_edge = format!(
-                    "\t\tnode_{id} -- node_{r_id} [ label = \"No\" ];\n",
+                    "\tnode_{id} -- node_{r_id} [ label = \"No\" ];\n",
                     r_id = next_id
                 );
 
@@ -178,8 +178,8 @@ impl Node {
             Node::Leaf(l) => {
                 let info = format!(
                     "\tnode_{id} [ \
-                     label = \"prediction = {p:.2}\",\
-                     shape = box,\
+                     label = \"prediction = {p:.2}\", \
+                     shape = box, \
                      ];\n",
                     p = l.prediction
                 );
