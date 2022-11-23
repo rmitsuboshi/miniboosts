@@ -37,7 +37,7 @@ impl Regressor for RTreeRegressor {
 
 
 impl RTreeRegressor {
-    /// Write the current decision tree to dot file.
+    /// Write the current regression tree to dot file.
     #[inline]
     pub fn to_dot_file<P>(&self, path: P) -> std::io::Result<()>
         where P: AsRef<Path>
