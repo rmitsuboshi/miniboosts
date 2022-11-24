@@ -12,13 +12,13 @@ use crate::{
 
     State,
     Classifier,
-    CombinedClassifier,
+    CombinedHypothesis,
 };
 
 
 /// SmoothBoost. See Figure 1
 /// in [this paper](https://www.jmlr.org/papers/volume4/servedio03a/servedio03a.pdf).
-pub struct SmoothBoost<C> {
+pub struct SmoothBoost<F> {
     /// Desired accuracy
     kappa: f64,
 
@@ -41,7 +41,7 @@ pub struct SmoothBoost<C> {
 
     max_iter: usize,
 
-    classifiers: Vec<C>,
+    classifiers: Vec<F>,
 
 
     m: Vec<f64>,
@@ -49,7 +49,7 @@ pub struct SmoothBoost<C> {
 }
 
 
-impl<C> SmoothBoost<C> {
+impl<F> SmoothBoost<F> {
     /// Initialize `SmoothBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         let n_sample = data.shape().0;
@@ -132,8 +132,8 @@ impl<C> SmoothBoost<C> {
 
 
 
-impl<C> Booster<C> for SmoothBoost<C>
-    where C: Classifier + Clone,
+impl<F> Booster<F> for SmoothBoost<F>
+    where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
@@ -141,7 +141,7 @@ impl<C> Booster<C> for SmoothBoost<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         self.n_sample = data.shape().0;
         // Set the paremeter `theta`.
@@ -169,7 +169,7 @@ impl<C> Booster<C> for SmoothBoost<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
 
         if self.max_iter < iteration {
@@ -195,7 +195,7 @@ impl<C> Booster<C> for SmoothBoost<C>
         self.classifiers.push(
             weak_learner.produce(data, target, &dist[..])
         );
-        let h: &C = self.classifiers.last().unwrap();
+        let h: &F = self.classifiers.last().unwrap();
 
 
         let margins = target.i64()
@@ -233,15 +233,15 @@ impl<C> Booster<C> for SmoothBoost<C>
         _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         let weight = 1.0 / self.terminated as f64;
         let clfs = self.classifiers.clone()
             .into_iter()
             .map(|h| (weight, h))
-            .collect::<Vec<(f64, C)>>();
+            .collect::<Vec<(f64, F)>>();
 
-        CombinedClassifier::from(clfs)
+        CombinedHypothesis::from(clfs)
     }
 }

@@ -2,7 +2,7 @@ use polars::prelude::*;
 use grb::prelude::*;
 
 
-use crate::classifier::Classifier;
+use crate::hypothesis::Classifier;
 
 /// A linear programming model for edge minimization. 
 pub(super) struct LPModel {
@@ -61,12 +61,13 @@ impl LPModel {
     /// Solve the edge minimization problem 
     /// over the hypotheses `h1, ..., ht` 
     /// and outputs the optimal value.
-    pub(super) fn update<C>(&mut self,
-                            data: &DataFrame,
-                            target: &Series,
-                            clf: &C)
-        -> f64
-        where C: Classifier
+    pub(super) fn update<F>(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+        clf: &F
+    ) -> f64
+        where F: Classifier
     {
         // If we got a new hypothesis,
         // 1. append a constraint, and

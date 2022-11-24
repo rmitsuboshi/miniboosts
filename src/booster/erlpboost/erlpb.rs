@@ -12,7 +12,7 @@ use crate::{
 
     State,
     Classifier,
-    CombinedClassifier,
+    CombinedHypothesis,
 };
 use super::qp_model::QPModel;
 
@@ -23,7 +23,7 @@ use std::cell::RefCell;
 
 /// ERLPBoost struct. 
 /// See [this paper](https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.141.1759&rep=rep1&type=pdf).
-pub struct ERLPBoost<C> {
+pub struct ERLPBoost<F> {
     dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
@@ -38,7 +38,7 @@ pub struct ERLPBoost<C> {
 
     qp_model: Option<RefCell<QPModel>>,
 
-    classifiers: Vec<C>,
+    classifiers: Vec<F>,
 
 
     // an accuracy parameter for the sub-problems
@@ -52,7 +52,7 @@ pub struct ERLPBoost<C> {
 }
 
 
-impl<C> ERLPBoost<C> {
+impl<F> ERLPBoost<F> {
     /// Initialize the `ERLPBoost`.
     /// Use `data` for argument.
     /// This method does not care 
@@ -170,15 +170,15 @@ impl<C> ERLPBoost<C> {
 }
 
 
-impl<C> ERLPBoost<C>
-    where C: Classifier
+impl<F> ERLPBoost<F>
+    where F: Classifier
 {
     /// Update `self.gamma_hat`.
     /// `self.gamma_hat` holds the minimum value of the objective value.
     #[inline]
     fn update_gamma_hat_mut(
         &mut self,
-        h: &C,
+        h: &F,
         data: &DataFrame,
         target: &Series
     )
@@ -248,7 +248,7 @@ impl<C> ERLPBoost<C>
         &mut self,
         data: &DataFrame,
         target: &Series,
-        clf: &C
+        clf: &F,
     )
     {
         self.qp_model.as_ref()
@@ -264,8 +264,8 @@ impl<C> ERLPBoost<C>
 }
 
 
-impl<C> Booster<C> for ERLPBoost<C>
-    where C: Classifier + Clone,
+impl<F> Booster<F> for ERLPBoost<F>
+    where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
@@ -273,7 +273,7 @@ impl<C> Booster<C> for ERLPBoost<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         let n_sample = data.shape().0;
         let uni = 1.0 / n_sample as f64;
@@ -302,7 +302,7 @@ impl<C> Booster<C> for ERLPBoost<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>,
+        where W: WeakLearner<Clf = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -345,8 +345,8 @@ impl<C> Booster<C> for ERLPBoost<C>
         _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         let clfs = self.qp_model.as_ref()
             .unwrap()
@@ -354,10 +354,10 @@ impl<C> Booster<C> for ERLPBoost<C>
             .weight()
             .zip(self.classifiers.clone())
             .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<(f64, C)>>();
+            .collect::<Vec<(f64, F)>>();
 
 
-        CombinedClassifier::from(clfs)
+        CombinedHypothesis::from(clfs)
     }
 }
 

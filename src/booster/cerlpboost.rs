@@ -15,12 +15,12 @@ use crate::{
 
     State,
     Classifier,
-    CombinedClassifier
+    CombinedHypothesis
 };
 
 /// Corrective ERLPBoost struct.
 /// This algorithm is based on the [paper](https://link.springer.com/content/pdf/10.1007/s10994-010-5173-z.pdf).
-pub struct CERLPBoost<C> {
+pub struct CERLPBoost<F> {
     dist: Vec<f64>,
     // A regularization parameter defined in the paper
     eta: f64,
@@ -31,13 +31,13 @@ pub struct CERLPBoost<C> {
     // Optimal value (Dual problem)
     dual_optval: f64,
 
-    classifiers: Vec<(C, f64)>,
+    classifiers: Vec<(F, f64)>,
 
     max_iter: usize,
     terminated: usize,
 }
 
-impl<C> CERLPBoost<C> {
+impl<F> CERLPBoost<F> {
     /// Initialize the `CERLPBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         assert!(!data.is_empty());
@@ -94,7 +94,7 @@ impl<C> CERLPBoost<C> {
         &mut self,
         data: &DataFrame,
         target: &Series,
-    ) where C: Classifier + PartialEq,
+    ) where F: Classifier + PartialEq,
     {
         self.dual_optval = self.classifiers.iter()
             .map(|(h, _)| {
@@ -146,8 +146,8 @@ impl<C> CERLPBoost<C> {
 }
 
 
-impl<C> CERLPBoost<C>
-    where C: Classifier + PartialEq,
+impl<F> CERLPBoost<F>
+    where F: Classifier + PartialEq,
 {
     /// Updates weight on hypotheses and `self.dist` in this order.
     fn update_distribution_mut(&mut self, data: &DataFrame, target: &Series)
@@ -214,7 +214,7 @@ impl<C> CERLPBoost<C>
     }
 
     /// Update the weights on hypotheses
-    fn update_clf_weight_mut(&mut self, new_clf: C, gap_vec: Vec<f64>)
+    fn update_clf_weight_mut(&mut self, new_clf: F, gap_vec: Vec<f64>)
     {
         // Numerator
         let numer = gap_vec
@@ -249,8 +249,8 @@ impl<C> CERLPBoost<C>
     }
 }
 
-impl<C> Booster<C> for CERLPBoost<C>
-    where C: Classifier + Clone + PartialEq + std::fmt::Debug,
+impl<F> Booster<F> for CERLPBoost<F>
+    where F: Classifier + Clone + PartialEq + std::fmt::Debug,
 {
     fn preprocess<W>(
         &mut self,
@@ -258,7 +258,7 @@ impl<C> Booster<C> for CERLPBoost<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         let n_sample = data.shape().0;
         let uni = 1.0 / n_sample as f64;
@@ -282,7 +282,7 @@ impl<C> Booster<C> for CERLPBoost<C>
         target: &Series,
         iteration: usize,
     ) -> State
-    where W: WeakLearner<Clf = C>,
+    where W: WeakLearner<Clf = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -335,8 +335,8 @@ impl<C> Booster<C> for CERLPBoost<C>
         _weak_learner: &W,
         data: &DataFrame,
         target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         // Compute the dual optimal value for debug
         self.dual_objval_mut(data, target);
@@ -346,13 +346,13 @@ impl<C> Booster<C> for CERLPBoost<C>
             .filter_map(|(h, w)| if w != 0.0 { Some((w, h)) } else { None })
             .collect::<Vec<_>>();
 
-        CombinedClassifier::from(weighted_classifier)
+        CombinedHypothesis::from(weighted_classifier)
     }
 }
 
-fn prediction<C>(i: usize, data: &DataFrame, classifiers: &[(C, f64)]) -> f64
+fn prediction<F>(i: usize, data: &DataFrame, classifiers: &[(F, f64)]) -> f64
 where
-    C: Classifier,
+    F: Classifier,
 {
     classifiers
         .iter()

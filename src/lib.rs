@@ -24,19 +24,20 @@
 //!     - `CERLPBoost`.
 //! 
 
-pub mod regressor;
-pub mod classifier;
+pub mod hypothesis;
 pub mod booster;
 pub mod weak_learner;
 pub mod prelude;
 
 
-// Export the `Classifier` trait.
-pub use classifier::{Classifier, CombinedClassifier};
+// Export some traits and the combined hypothesis struct.
+pub use hypothesis::{
+    Classifier,
+    Regressor,
+    CombinedHypothesis
+};
 
 
-// Export the `Regressor` trait.
-pub use regressor::{Regressor, CombinedRegressor};
 
 
 // Export the `Booster` trait.

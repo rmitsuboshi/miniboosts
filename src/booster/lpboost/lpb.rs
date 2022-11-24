@@ -13,7 +13,7 @@ use crate::{
     State,
 
     Classifier,
-    CombinedClassifier,
+    CombinedHypothesis,
 };
 
 
@@ -23,7 +23,7 @@ use std::cell::RefCell;
 
 /// LPBoost struct.
 /// See [this paper](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf).
-pub struct LPBoost<C> {
+pub struct LPBoost<F> {
     // Distribution over examples
     dist: Vec<f64>,
 
@@ -46,15 +46,15 @@ pub struct LPBoost<C> {
     lp_model: Option<RefCell<LPModel>>,
 
 
-    classifiers: Vec<C>,
+    classifiers: Vec<F>,
 
 
     terminated: usize,
 }
 
 
-impl<C> LPBoost<C>
-    where C: Classifier
+impl<F> LPBoost<F>
+    where F: Classifier
 {
     /// Initialize the `LPBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
@@ -125,7 +125,7 @@ impl<C> LPBoost<C>
         &self,
         data: &DataFrame,
         target: &Series,
-        h: &C
+        h: &F,
     ) -> f64
     {
         self.lp_model.as_ref()
@@ -136,8 +136,8 @@ impl<C> LPBoost<C>
 }
 
 
-impl<C> Booster<C> for LPBoost<C>
-    where C: Classifier + Clone,
+impl<F> Booster<F> for LPBoost<F>
+    where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
@@ -145,7 +145,7 @@ impl<C> Booster<C> for LPBoost<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         let n_sample = data.shape().0;
         let uni = 1.0_f64 / n_sample as f64;
@@ -167,7 +167,7 @@ impl<C> Booster<C> for LPBoost<C>
         target: &Series,
         _iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>,
+        where W: WeakLearner<Clf = F>,
     {
         let h = weak_learner.produce(data, target, &self.dist);
 
@@ -213,8 +213,8 @@ impl<C> Booster<C> for LPBoost<C>
         _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         let clfs = self.lp_model.as_ref()
             .unwrap()
@@ -222,9 +222,9 @@ impl<C> Booster<C> for LPBoost<C>
             .weight()
             .zip(self.classifiers.clone())
             .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<(f64, C)>>();
+            .collect::<Vec<(f64, F)>>();
 
 
-        CombinedClassifier::from(clfs)
+        CombinedHypothesis::from(clfs)
     }
 }

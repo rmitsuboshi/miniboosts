@@ -18,7 +18,7 @@ use crate::{
 
     State,
     Classifier,
-    CombinedClassifier
+    CombinedHypothesis
 };
 
 
@@ -27,7 +27,7 @@ use std::cell::RefCell;
 
 
 /// MLPBoost struct. See [this paper](https://arxiv.org/abs/2209.10831).
-pub struct MLPBoost<C> {
+pub struct MLPBoost<F> {
     // Tolerance parameter
     tolerance: f64,
 
@@ -62,7 +62,7 @@ pub struct MLPBoost<C> {
     weights: Vec<f64>,
 
     // Hypotheses
-    classifiers: Vec<C>,
+    classifiers: Vec<F>,
 
 
     terminated: usize,
@@ -73,7 +73,7 @@ pub struct MLPBoost<C> {
 }
 
 
-impl<C> MLPBoost<C> {
+impl<F> MLPBoost<F> {
     /// Initialize the `MLPBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         let n_sample = data.shape().0;
@@ -197,14 +197,14 @@ impl<C> MLPBoost<C> {
     }
 }
 
-impl<C> MLPBoost<C>
-    where C: Classifier,
+impl<F> MLPBoost<F>
+    where F: Classifier,
 {
     fn secondary_update(
         &self,
         data: &DataFrame,
         target: &Series,
-        opt_h: Option<&C>
+        opt_h: Option<&F>
     ) -> Vec<f64>
     {
         match self.secondary {
@@ -288,8 +288,8 @@ impl<C> MLPBoost<C>
 }
 
 
-impl<C> Booster<C> for MLPBoost<C>
-    where C: Classifier + Clone + PartialEq,
+impl<F> Booster<F> for MLPBoost<F>
+    where F: Classifier + Clone + PartialEq,
 {
     fn preprocess<W>(
         &mut self,
@@ -297,7 +297,7 @@ impl<C> Booster<C> for MLPBoost<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         self.n_sample = data.shape().0;
 
@@ -333,7 +333,7 @@ impl<C> Booster<C> for MLPBoost<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>,
+        where W: WeakLearner<Clf = F>,
     {
 
         if self.max_iter < iteration {
@@ -436,8 +436,8 @@ impl<C> Booster<C> for MLPBoost<C>
         _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         let clfs = self.weights.clone()
             .into_iter()
@@ -446,7 +446,7 @@ impl<C> Booster<C> for MLPBoost<C>
             .collect::<Vec<_>>();
 
 
-        CombinedClassifier::from(clfs)
+        CombinedHypothesis::from(clfs)
     }
 }
 

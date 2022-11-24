@@ -12,7 +12,7 @@ use crate::{
 
     State,
     Classifier,
-    CombinedClassifier,
+    CombinedHypothesis,
 };
 
 use grb::prelude::*;
@@ -22,7 +22,7 @@ use grb::prelude::*;
 /// Struct `SoftBoost` has 3 main parameters.
 /// 
 /// - `dist` is the distribution over training examples,
-pub struct SoftBoost<C> {
+pub struct SoftBoost<F> {
     pub(crate) dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})
@@ -35,7 +35,7 @@ pub struct SoftBoost<C> {
     env: Env,
 
 
-    classifiers: Vec<C>,
+    classifiers: Vec<F>,
 
 
     max_iter: usize,
@@ -43,8 +43,8 @@ pub struct SoftBoost<C> {
 }
 
 
-impl<C> SoftBoost<C>
-    where C: Classifier
+impl<F> SoftBoost<F>
+    where F: Classifier
 {
     /// Initialize the `SoftBoost`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
@@ -128,8 +128,8 @@ impl<C> SoftBoost<C>
 }
 
 
-impl<C> SoftBoost<C>
-    where C: Classifier,
+impl<F> SoftBoost<F>
+    where F: Classifier,
 {
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
@@ -326,8 +326,8 @@ impl<C> SoftBoost<C>
 }
 
 
-impl<C> Booster<C> for SoftBoost<C>
-    where C: Classifier + Clone,
+impl<F> Booster<F> for SoftBoost<F>
+    where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
@@ -335,7 +335,7 @@ impl<C> Booster<C> for SoftBoost<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         let n_sample = data.shape().0;
 
@@ -358,7 +358,7 @@ impl<C> Booster<C> for SoftBoost<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>,
+        where W: WeakLearner<Clf = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -403,8 +403,8 @@ impl<C> Booster<C> for SoftBoost<C>
         _weak_learner: &W,
         data: &DataFrame,
         target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         // Set the weights on the hypotheses
         // by solving a linear program
@@ -416,11 +416,11 @@ impl<C> Booster<C> for SoftBoost<C>
                 weights.into_iter()
                     .zip(self.classifiers.clone())
                     .filter(|(w, _)| *w != 0.0)
-                    .collect::<Vec<(f64, C)>>()
+                    .collect::<Vec<(f64, F)>>()
             }
         };
 
-        CombinedClassifier::from(clfs)
+        CombinedHypothesis::from(clfs)
     }
 }
 

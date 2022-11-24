@@ -58,13 +58,8 @@ pub use crate::weak_learner::{
 };
 
 
-pub use crate::classifier::{
+pub use crate::hypothesis::{
     Classifier,
-    CombinedClassifier,
-};
-
-
-pub use crate::regressor::{
     Regressor,
-    CombinedRegressor,
+    CombinedHypothesis,
 };
