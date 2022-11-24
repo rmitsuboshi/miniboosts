@@ -9,7 +9,7 @@ use crate::{
 
     State,
     Classifier,
-    CombinedClassifier,
+    CombinedHypothesis,
 };
 
 
@@ -20,13 +20,13 @@ use crate::{
 /// - `rho` is a guess of the optimal margin,
 /// - `gamma` is the minimum edge over the past edges,
 /// - `dist` is the distribution over training examples,
-pub struct AdaBoostV<C> {
+pub struct AdaBoostV<F> {
     tolerance: f64,
     rho: f64,
     gamma: f64,
     dist: Vec<f64>,
 
-    weighted_classifiers: Vec<(f64, C)>,
+    weighted_classifiers: Vec<(f64, F)>,
 
     max_iter: usize,
 
@@ -34,7 +34,7 @@ pub struct AdaBoostV<C> {
 }
 
 
-impl<C> AdaBoostV<C> {
+impl<F> AdaBoostV<F> {
     /// Initialize the `AdaBoostV<D, L>`.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         let n_sample = data.shape().0;
@@ -136,8 +136,8 @@ impl<C> AdaBoostV<C> {
 }
 
 
-impl<C> Booster<C> for AdaBoostV<C>
-    where C: Classifier + Clone,
+impl<F> Booster<F> for AdaBoostV<F>
+    where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
@@ -145,7 +145,7 @@ impl<C> Booster<C> for AdaBoostV<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         // Initialize parameters
         let n_sample = data.shape().0;
@@ -166,7 +166,7 @@ impl<C> Booster<C> for AdaBoostV<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>,
+        where W: WeakLearner<Clf = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -214,10 +214,10 @@ impl<C> Booster<C> for AdaBoostV<C>
         _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
-        CombinedClassifier::from(self.weighted_classifiers.clone())
+        CombinedHypothesis::from(self.weighted_classifiers.clone())
     }
 }
 

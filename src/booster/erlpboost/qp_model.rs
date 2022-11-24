@@ -2,7 +2,7 @@ use polars::prelude::*;
 use grb::prelude::*;
 
 
-use crate::classifier::Classifier;
+use crate::hypothesis::Classifier;
 
 const QP_TOLERANCE: f64 = 1e-9;
 
@@ -63,12 +63,14 @@ impl QPModel {
     /// Solve the edge minimization problem 
     /// over the hypotheses `h1, ..., ht` 
     /// and outputs the optimal value.
-    pub(super) fn update<C>(&mut self,
-                            data: &DataFrame,
-                            target: &Series,
-                            dist: &mut [f64],
-                            clf: &C)
-        where C: Classifier
+    pub(super) fn update<F>(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+        dist: &mut [f64],
+        clf: &F
+    )
+        where F: Classifier
     {
         // If we got a new hypothesis,
         // 1. append a constraint, and

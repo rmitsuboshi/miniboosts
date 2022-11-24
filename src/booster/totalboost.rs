@@ -11,7 +11,7 @@ use crate::{
 
     State,
     Classifier,
-    CombinedClassifier,
+    CombinedHypothesis,
 
     SoftBoost,
 };
@@ -20,13 +20,13 @@ use crate::{
 /// Since we can regard TotalBoost as
 /// a special case of SoftBoost (with capping param is 1.0),
 /// so that we use it.
-pub struct TotalBoost<C> {
-    softboost: SoftBoost<C>,
+pub struct TotalBoost<F> {
+    softboost: SoftBoost<F>,
 }
 
 
-impl<C> TotalBoost<C>
-    where C: Classifier,
+impl<F> TotalBoost<F>
+    where F: Classifier,
 {
     /// initialize the `TotalBoost`.
     pub fn init(data: &DataFrame, target: &Series) -> Self {
@@ -51,8 +51,8 @@ impl<C> TotalBoost<C>
 }
 
 
-impl<C> Booster<C> for TotalBoost<C>
-    where C: Classifier + Clone,
+impl<F> Booster<F> for TotalBoost<F>
+    where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
@@ -60,7 +60,7 @@ impl<C> Booster<C> for TotalBoost<C>
         data: &DataFrame,
         target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         self.softboost.preprocess(weak_learner, data, target);
     }
@@ -73,7 +73,7 @@ impl<C> Booster<C> for TotalBoost<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         self.softboost.boost(weak_learner, data, target, iteration)
     }
@@ -84,8 +84,8 @@ impl<C> Booster<C> for TotalBoost<C>
         weak_learner: &W,
         data: &DataFrame,
         target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         self.softboost.postprocess(weak_learner, data, target)
     }

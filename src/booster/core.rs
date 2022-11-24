@@ -3,8 +3,7 @@
 use polars::prelude::*;
 use crate::{
     WeakLearner,
-    Classifier,
-    CombinedClassifier
+    CombinedHypothesis,
 };
 
 
@@ -22,20 +21,19 @@ pub enum State {
 /// 
 /// You need to implement `run`
 /// in order to write a new boosting algorithm.
-pub trait Booster<C>
-    where C: Classifier
-{
+pub trait Booster<F> {
     /// A main function that runs boosting algorithm.
     /// This method takes
     /// 
     /// - the reference of an instance of the `WeakLearner` trait,
     /// - a reference of the training examples, and
-    fn run<W>(&mut self,
-              weak_learner: &W,
-              data: &DataFrame,
-              target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    fn run<W>(
+        &mut self,
+        weak_learner: &W,
+        data: &DataFrame,
+        target: &Series,
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
         self.preprocess(weak_learner, data, target);
 
@@ -58,7 +56,7 @@ pub trait Booster<C>
         data: &DataFrame,
         target: &Series,
     )
-        where W: WeakLearner<Clf = C>;
+        where W: WeakLearner<Clf = F>;
 
 
     /// Boosting per iteration.
@@ -71,7 +69,7 @@ pub trait Booster<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>;
+        where W: WeakLearner<Clf = F>;
 
 
     /// Post-processing.
@@ -81,7 +79,7 @@ pub trait Booster<C>
         weak_learner: &W,
         data: &DataFrame,
         target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>;
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>;
 }
 

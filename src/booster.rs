@@ -1,6 +1,9 @@
 //! Provides some boosting algorithms.
 
 pub mod core;
+
+// ------------------------------------------------
+// Classification
 pub mod smoothboost;
 pub mod adaboost;
 pub mod adaboostv;
@@ -13,6 +16,11 @@ pub mod erlpboost;
 pub mod softboost;
 pub mod mlpboost;
 
+
+// ------------------------------------------------
+// Regression
+pub mod leveragings;
+
 /// 
 /// Export the Boosters
 
@@ -21,6 +29,9 @@ pub use self::core::{
     Booster,
     State,
 };
+
+// ------------------------------------------------
+// Classification
 
 /// Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
@@ -40,3 +51,8 @@ pub use self::cerlpboost::CERLPBoost;
 
 pub use self::mlpboost::MLPBoost;
 
+// ------------------------------------------------
+// Regression
+pub use self::leveragings::{
+    SquareLevR
+};

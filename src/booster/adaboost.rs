@@ -8,16 +8,16 @@ use crate::{
     WeakLearner,
     State,
     Classifier,
-    CombinedClassifier
+    CombinedHypothesis
 };
 
 
 /// Defines `AdaBoost`.
-pub struct AdaBoost<C> {
+pub struct AdaBoost<F> {
     dist: Vec<f64>,
     tolerance: f64,
 
-    weighted_classifiers: Vec<(f64, C)>,
+    weighted_classifiers: Vec<(f64, F)>,
 
     max_iter: usize,
 
@@ -25,7 +25,7 @@ pub struct AdaBoost<C> {
 }
 
 
-impl<C> AdaBoost<C> {
+impl<F> AdaBoost<F> {
     /// Initialize the `AdaBoost`.
     /// This method just sets the parameter `AdaBoost` holds.
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
@@ -120,8 +120,8 @@ impl<C> AdaBoost<C> {
 }
 
 
-impl<C> Booster<C> for AdaBoost<C>
-    where C: Classifier + Clone,
+impl<F> Booster<F> for AdaBoost<F>
+    where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
@@ -129,7 +129,7 @@ impl<C> Booster<C> for AdaBoost<C>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = C>
+        where W: WeakLearner<Clf = F>
     {
         // Initialize parameters
         let n_sample = data.shape().0;
@@ -150,7 +150,7 @@ impl<C> Booster<C> for AdaBoost<C>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = C>,
+        where W: WeakLearner<Clf = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -199,10 +199,10 @@ impl<C> Booster<C> for AdaBoost<C>
         _weak_learner: &W,
         _data: &DataFrame,
         _target: &Series,
-    ) -> CombinedClassifier<C>
-        where W: WeakLearner<Clf = C>
+    ) -> CombinedHypothesis<F>
+        where W: WeakLearner<Clf = F>
     {
-        CombinedClassifier::from(self.weighted_classifiers.clone())
+        CombinedHypothesis::from(self.weighted_classifiers.clone())
     }
 }
 
