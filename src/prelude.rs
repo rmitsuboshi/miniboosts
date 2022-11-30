@@ -25,7 +25,7 @@ pub use crate::booster::{
     MLPBoost,
 
     // Regression -------------------------------
-
+    SquareLevR,
 };
 
 pub use crate::booster::mlpboost::{
