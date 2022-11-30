@@ -72,6 +72,12 @@ pub use booster::{
 };
 
 
+// Export the boosting algorithms for regression
+pub use booster::{
+    SquareLevR,
+};
+
+
 // Export the `WeakLearner` trait.
 pub use weak_learner::WeakLearner;
 

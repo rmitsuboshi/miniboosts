@@ -179,7 +179,7 @@ impl Node {
             Node::Leaf(l) => {
                 let info = format!(
                     "\tnode_{id} [ \
-                     label = \"prediction = {p}\", \
+                     label = \"{p}\", \
                      shape = box, \
                      ];\n",
                     p = l.prediction
