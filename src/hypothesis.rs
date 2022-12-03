@@ -76,13 +76,28 @@ pub trait Regressor {
 pub struct CombinedHypothesis<F> {
     /// Each element is the pair of hypothesis and its weight
     pub inner: Vec<(f64, F)>,
+
+    /// The constant hypothesis that always predicts the same value.
+    pub constant: f64,
+}
+
+
+impl<F> CombinedHypothesis<F> {
+    /// Set the constant hypothesis that always predicts `value`.
+    pub fn constant(mut self, value: f64) -> Self {
+        self.constant = value;
+        self
+    }
 }
 
 
 impl<F> From<Vec<(f64, F)>> for CombinedHypothesis<F>
 {
     fn from(inner: Vec<(f64, F)>) -> Self {
-        CombinedHypothesis { inner }
+        CombinedHypothesis {
+            inner,
+            constant: 0.0,
+        }
     }
 }
 
@@ -94,6 +109,7 @@ impl<F> Classifier for CombinedHypothesis<F>
         self.inner.iter()
             .map(|(w, h)| *w * h.confidence(df, row))
             .sum::<f64>()
+            + self.constant
     }
 }
 
@@ -105,6 +121,7 @@ impl<F> Regressor for CombinedHypothesis<F>
         self.inner.iter()
             .map(|(w, h)| *w * h.predict(df, row))
             .sum::<f64>()
+            + self.constant
     }
 }
 
