@@ -1,4 +1,4 @@
-//! Provides the trait `Booster<C>`.
+//! Provides `Booster` trait.
 
 use polars::prelude::*;
 use crate::{
