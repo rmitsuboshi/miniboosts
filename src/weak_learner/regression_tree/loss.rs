@@ -27,31 +27,87 @@ impl Loss {
         idx: &[usize],
     ) -> (&'a str, f64)
     {
-        match self {
-            Loss::L1 => {
-                todo!()
-            },
-            Loss::L2 => {
-                data.get_columns()
-                    .into_par_iter()
-                    .map(|column| {
-                        let (variance, threshold) = best_split_l2(
-                            column, target, dist, &idx[..]
-                        );
+        data.get_columns()
+            .into_par_iter()
+            .map(|column| {
+                let (loss_value, threshold) = self.best_split_at(
+                    column, target, dist, &idx[..]
+                );
 
-                        (variance, column.name(), threshold)
-                    })
-                    .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
-                    .map(|(_, name, threshold)| (name, threshold))
-                    .expect(
-                        "\
-                        No feature that minimizes \
-                        the weighted variance.\
-                        "
-                    )
-            }
+                (loss_value, column.name(), threshold)
+            })
+            .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+            .map(|(_, name, threshold)| (name, threshold))
+            .expect(
+                "\
+                No feature that minimizes \
+                the weighted loss.\
+                "
+            )
+    }
+
+
+    fn best_split_at(
+        &self,
+        column: &Series,
+        target: &Series,
+        dist: &[f64],
+        idx: &[usize],
+    ) -> (f64, f64)
+    {
+        match self {
+            Loss::L1 => best_split_l1(column, target, dist, idx),
+            Loss::L2 => best_split_l2(column, target, dist, idx),
         }
     }
+
+}
+
+
+/// Returns the pair of the best LAE and the best threshold.
+fn best_split_l1(
+    column: &Series,
+    target: &Series,
+    dist: &[f64],
+    idx: &[usize]
+) -> (f64, f64)
+{
+    let target = target.f64()
+        .expect("The target class is not a dtype i64");
+
+
+    let column = column.f64()
+        .expect("The column is not a dtype f64");
+
+
+    // Sort the data in the increasing order of x.
+    let mut triplets = idx.into_par_iter()
+        .copied()
+        .map(|i| {
+            let x = column.get(i).unwrap();
+            let y = target.get(i).unwrap();
+            (x, dist[i], y)
+        })
+        .collect::<Vec<(f64, f64, f64)>>();
+    triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(x2).unwrap());
+
+
+    let mut node = LocalNodeL1::new(triplets);
+    let mut best_variance;
+    let mut best_threshold;
+
+
+    (best_variance, best_threshold) = node.lae_and_threshold();
+
+
+    while let Some((variance, threshold)) = node.move_to_left() {
+        if variance < best_variance {
+            best_variance = variance;
+            best_threshold = threshold;
+        }
+    }
+
+    (best_variance, best_threshold)
 }
 
 
@@ -83,7 +139,7 @@ fn best_split_l2(
     triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(x2).unwrap());
 
 
-    let mut node = LocalNode::new(triplets);
+    let mut node = LocalNodeL2::new(triplets);
     let mut best_variance;
     let mut best_threshold;
 
@@ -103,7 +159,7 @@ fn best_split_l2(
 
 
 /// This struct stores the temporary information to find a best split.
-struct LocalNode {
+struct LocalNodeL2 {
     /// The list of target values for the left/right nodes.
     left: Vec<(f64, f64, f64)>,
     right: Vec<(f64, f64, f64)>,
@@ -119,8 +175,8 @@ struct LocalNode {
 }
 
 
-impl LocalNode {
-    /// Create an instance of `LocalNode` that contains
+impl LocalNodeL2 {
+    /// Create an instance of `LocalNodeL2` that contains
     /// all instances in `triplets`.
     /// Note that `triplets` is sorted in the ascending order
     /// with respect to the first element.
@@ -214,7 +270,7 @@ impl LocalNode {
             self.left.push(r);
 
             while let Some(r2) = self.right.pop() {
-                if r == r2 {
+                if r.0 == r2.0 {
                     self.right_sum_dist -= r2.1;
                     self.right_sum_target -= r2.1 * r2.2;
 
@@ -251,6 +307,117 @@ fn calc_variance(triplets: &[(f64, f64, f64)], y_sum: f64, sum_dist: f64)
         .map(|(_, d, y)| d * (y - y_mean).powi(2))
         .sum::<f64>()
         / sum_dist
+}
+
+
+/// This struct stores the temporary information to find a best split.
+struct LocalNodeL1 {
+    /// The list of target values for the left/right nodes.
+    left: Vec<(f64, f64, f64)>,
+    right: Vec<(f64, f64, f64)>,
+
+    /// sum of the target values reached to left/right nodes.
+    left_sum_target: f64,
+    right_sum_target: f64,
+}
+
+
+impl LocalNodeL1 {
+    /// Create an instance of `LocalNodeL1` that contains
+    /// all instances in `triplets`.
+    /// Note that `triplets` is sorted in the ascending order
+    /// with respect to the first element.
+    pub(self) fn new(triplets: Vec<(f64, f64, f64)>) -> Self {
+        let m = triplets.len();
+
+        let left = Vec::with_capacity(m);
+        let right = triplets;
+
+        let left_sum_target: f64 = 0.0;
+        let right_sum_target = right.iter().map(|t| t.2).sum::<f64>();
+
+
+        Self {
+            left,
+            right,
+
+            left_sum_target,
+            right_sum_target,
+        }
+    }
+
+
+    /// Returns the pair of variance and threshold.
+    pub(self) fn lae_and_threshold(&self) -> (f64, f64) {
+        // Compute the threshold to make the current split.
+        let threshold;
+        if self.right.is_empty() {
+            let left_largest = self.left.last()
+                .map(|(x, _, _)| x).unwrap();
+            threshold = left_largest + 1.0;
+        } else {
+            let right_smallest = self.right.last()
+                .map(|(x, _, _)| x)
+                .unwrap();
+            let left_largest = self.left.last()
+                .map(|(x, _, _)| *x)
+                .unwrap_or(right_smallest - 2.0);
+            threshold = (left_largest + right_smallest) / 2.0;
+        }
+
+
+        // Compute the variance.
+        let left_lae = calc_lae(&self.left[..], self.left_sum_target);
+
+        let right_lae = calc_lae(&self.right[..], self.right_sum_target);
+
+
+        let lae = left_lae + right_lae;
+
+        (lae, threshold)
+    }
+
+
+
+    /// Move an instance of right node to the left node.
+    /// After that, this method returns the pair of
+    /// the variance of the new threshold.
+    pub(self) fn move_to_left(&mut self) -> Option<(f64, f64)> {
+        if let Some(r) = self.right.pop() {
+            self.right_sum_target -= r.2;
+            self.left_sum_target  += r.2;
+
+            self.left.push(r);
+
+            while let Some(r2) = self.right.pop() {
+                if r.0 == r2.0 {
+                    self.right_sum_target -= r2.2;
+                    self.left_sum_target  += r2.2;
+
+                    self.left.push(r2);
+                } else {
+                    self.right.push(r2);
+                    break;
+                }
+            }
+
+            let lae_threshold = self.lae_and_threshold();
+            Some(lae_threshold)
+        } else {
+            None
+        }
+    }
+}
+
+
+fn calc_lae(triplets: &[(f64, f64, f64)], y_sum: f64)
+    -> f64
+{
+    let n_sample = triplets.len() as f64;
+    let y_mean = y_sum / n_sample;
+    triplets.into_par_iter()
+        .map(|(_, w, y)| w * (y - y_mean).abs())
+        .sum::<f64>()
 }
 
 
