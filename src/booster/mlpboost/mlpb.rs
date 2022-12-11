@@ -12,6 +12,7 @@ use super::{
     utils::*,
 };
 
+
 use crate::{
     Booster,
     WeakLearner,
@@ -371,6 +372,11 @@ impl<F> Booster<F> for MLPBoost<F>
         if iteration == 1 {
             self.classifiers.push(h);
             self.weights.push(1.0_f64);
+
+            // **DO NOT FORGET** to update the LP model.
+            let _ = self.secondary_update(
+                data, target, self.classifiers.last()
+            );
 
             return State::Continue;
         }
