@@ -60,7 +60,7 @@ You can combine them arbitrarily.
 
 
 ## How to use
-Our boosting algorithms use 
+This library uses 
 the `DataFrame` of [`polars`](https://github.com/pola-rs/polars) crate, 
 so that you need to import `polars`.
 
