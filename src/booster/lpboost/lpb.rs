@@ -145,7 +145,7 @@ impl<F> Booster<F> for LPBoost<F>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         let n_sample = data.shape().0;
         let uni = 1.0_f64 / n_sample as f64;
@@ -167,7 +167,7 @@ impl<F> Booster<F> for LPBoost<F>
         target: &Series,
         _iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = F>,
+        where W: WeakLearner<Hypothesis = F>,
     {
         let h = weak_learner.produce(data, target, &self.dist);
 
@@ -214,7 +214,7 @@ impl<F> Booster<F> for LPBoost<F>
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         let clfs = self.lp_model.as_ref()
             .unwrap()

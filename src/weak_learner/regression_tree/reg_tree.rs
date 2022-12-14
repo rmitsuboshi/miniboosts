@@ -68,9 +68,9 @@ impl RTree {
 
 
 impl WeakLearner for RTree {
-    type Clf = RTreeRegressor;
+    type Hypothesis = RTreeRegressor;
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
-        -> Self::Clf
+        -> Self::Hypothesis
     {
         let indices = (0..self.size).into_iter()
             .collect::<Vec<usize>>();

@@ -298,7 +298,7 @@ impl<F> Booster<F> for MLPBoost<F>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         self.n_sample = data.shape().0;
 
@@ -334,7 +334,7 @@ impl<F> Booster<F> for MLPBoost<F>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = F>,
+        where W: WeakLearner<Hypothesis = F>,
     {
 
         if self.max_iter < iteration {
@@ -443,7 +443,7 @@ impl<F> Booster<F> for MLPBoost<F>
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         let clfs = self.weights.clone()
             .into_iter()

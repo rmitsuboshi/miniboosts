@@ -60,7 +60,7 @@ impl<F> Booster<F> for TotalBoost<F>
         data: &DataFrame,
         target: &Series,
     )
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         self.softboost.preprocess(weak_learner, data, target);
     }
@@ -73,7 +73,7 @@ impl<F> Booster<F> for TotalBoost<F>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         self.softboost.boost(weak_learner, data, target, iteration)
     }
@@ -85,7 +85,7 @@ impl<F> Booster<F> for TotalBoost<F>
         data: &DataFrame,
         target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         self.softboost.postprocess(weak_learner, data, target)
     }

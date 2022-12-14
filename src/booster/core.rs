@@ -33,7 +33,7 @@ pub trait Booster<F> {
         data: &DataFrame,
         target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         self.preprocess(weak_learner, data, target);
 
@@ -56,7 +56,7 @@ pub trait Booster<F> {
         data: &DataFrame,
         target: &Series,
     )
-        where W: WeakLearner<Clf = F>;
+        where W: WeakLearner<Hypothesis = F>;
 
 
     /// Boosting per iteration.
@@ -69,7 +69,7 @@ pub trait Booster<F> {
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = F>;
+        where W: WeakLearner<Hypothesis = F>;
 
 
     /// Post-processing.
@@ -80,6 +80,6 @@ pub trait Booster<F> {
         data: &DataFrame,
         target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>;
+        where W: WeakLearner<Hypothesis = F>;
 }
 

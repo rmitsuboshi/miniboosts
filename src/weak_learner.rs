@@ -1,5 +1,11 @@
-//! Provides some base learning algorithms.
+//! The files in `weak_learner/` directory defines
+//! `WeakLearner` trait and weak learners.
+
+/// Provides WeakLearner trait.
 pub mod core;
+
+/// Union of Weak learners.
+pub mod union;
 
 /// Defines Decision Tree.
 pub mod decision_tree;

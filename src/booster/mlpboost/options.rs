@@ -175,6 +175,7 @@ impl Primary {
                     );
 
 
+                    // Compute the gradient for the direction `dir`.
                     let edge = edge_of(
                         data, target, &dist[..], classifiers, &dir[..]
                     );
