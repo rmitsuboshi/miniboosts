@@ -32,6 +32,7 @@ You can combine them arbitrarily.
 - Weak Learners
     - [DTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)
     - GaussianNB (Naive Bayes), **beta version**
+    - WLUnion, a union of multiple weak learners.
 
 
 ### Regression

@@ -87,6 +87,8 @@ pub use weak_learner::{
     DTree,
     Criterion,
 
+    WLUnion,
+
 
     GaussianNB,
 };
@@ -99,8 +101,8 @@ pub use weak_learner::{
     NBayesClassifier,
 };
 
-// pub use weak_learner::{
-//     RTree,
-//     RTreeClassifier,
-//     Loss,
-// };
+pub use weak_learner::{
+    RTree,
+    RTreeRegressor,
+    Loss,
+};

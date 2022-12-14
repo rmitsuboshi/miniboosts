@@ -19,7 +19,6 @@ pub mod mlpboost;
 
 // ------------------------------------------------
 // Regression
-pub mod soft_lae;
 pub mod leveragings;
 
 /// 
@@ -54,7 +53,6 @@ pub use self::mlpboost::MLPBoost;
 
 // ------------------------------------------------
 // Regression
-pub use self::soft_lae::SLBoost;
 pub use self::leveragings::{
     SquareLevR,
 };
