@@ -55,6 +55,7 @@ pub use crate::weak_learner::{
     // Regression -------------------------------
     RTree,
     RTreeRegressor,
+    Loss,
 };
 
 

@@ -37,3 +37,6 @@ pub use self::regression_tree::{
     RTree,
     RTreeRegressor,
 };
+
+
+pub use self::union::WLUnion;
