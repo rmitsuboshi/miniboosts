@@ -335,7 +335,7 @@ impl<F> Booster<F> for SoftBoost<F>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         let n_sample = data.shape().0;
 
@@ -358,7 +358,7 @@ impl<F> Booster<F> for SoftBoost<F>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = F>,
+        where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -404,7 +404,7 @@ impl<F> Booster<F> for SoftBoost<F>
         data: &DataFrame,
         target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         // Set the weights on the hypotheses
         // by solving a linear program

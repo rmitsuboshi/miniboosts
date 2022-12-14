@@ -141,7 +141,7 @@ impl<F> Booster<F> for SmoothBoost<F>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         self.n_sample = data.shape().0;
         // Set the paremeter `theta`.
@@ -169,7 +169,7 @@ impl<F> Booster<F> for SmoothBoost<F>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
 
         if self.max_iter < iteration {
@@ -234,7 +234,7 @@ impl<F> Booster<F> for SmoothBoost<F>
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         let weight = 1.0 / self.terminated as f64;
         let clfs = self.classifiers.clone()

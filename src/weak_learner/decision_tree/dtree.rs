@@ -65,9 +65,9 @@ impl DTree {
 
 
 impl WeakLearner for DTree {
-    type Clf = DTreeClassifier;
+    type Hypothesis = DTreeClassifier;
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
-        -> Self::Clf
+        -> Self::Hypothesis
     {
         let mut indices = (0..self.size).into_iter()
             // .filter(|&i| dist[i] > 0.0)

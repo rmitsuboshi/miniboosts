@@ -24,10 +24,10 @@ impl GaussianNB {
 
 
 impl WeakLearner for GaussianNB {
-    type Clf = NBayesClassifier<Gaussian>;
+    type Hypothesis = NBayesClassifier<Gaussian>;
 
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
-        -> Self::Clf
+        -> Self::Hypothesis
     {
         let mut prior_p: f64 = 0.0;
         let mut prior_n: f64 = 0.0;

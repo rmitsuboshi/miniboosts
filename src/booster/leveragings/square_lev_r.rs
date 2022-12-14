@@ -178,7 +178,7 @@ impl<R> Booster<R> for SquareLevR<R>
         data: &DataFrame,
         target: &Series,
     )
-        where W: WeakLearner<Clf = R>
+        where W: WeakLearner<Hypothesis = R>
     {
         self.n_sample = data.shape().0;
 
@@ -205,7 +205,7 @@ impl<R> Booster<R> for SquareLevR<R>
         _target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = R>
+        where W: WeakLearner<Hypothesis = R>
     {
         // Check stopping conditions
         let res_mean = self.residuals.par_iter()
@@ -251,7 +251,7 @@ impl<R> Booster<R> for SquareLevR<R>
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedHypothesis<R>
-        where W: WeakLearner<Clf = R>
+        where W: WeakLearner<Hypothesis = R>
     {
         let regs = self.weights.clone()
             .into_iter()

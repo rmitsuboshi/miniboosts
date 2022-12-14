@@ -145,7 +145,7 @@ impl<F> Booster<F> for AdaBoostV<F>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         // Initialize parameters
         let n_sample = data.shape().0;
@@ -166,7 +166,7 @@ impl<F> Booster<F> for AdaBoostV<F>
         target: &Series,
         iteration: usize,
     ) -> State
-        where W: WeakLearner<Clf = F>,
+        where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -215,7 +215,7 @@ impl<F> Booster<F> for AdaBoostV<F>
         _data: &DataFrame,
         _target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         CombinedHypothesis::from(self.weighted_classifiers.clone())
     }

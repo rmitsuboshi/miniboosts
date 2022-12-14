@@ -258,7 +258,7 @@ impl<F> Booster<F> for CERLPBoost<F>
         data: &DataFrame,
         _target: &Series,
     )
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         let n_sample = data.shape().0;
         let uni = 1.0 / n_sample as f64;
@@ -282,7 +282,7 @@ impl<F> Booster<F> for CERLPBoost<F>
         target: &Series,
         iteration: usize,
     ) -> State
-    where W: WeakLearner<Clf = F>,
+    where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
             return State::Terminate;
@@ -336,7 +336,7 @@ impl<F> Booster<F> for CERLPBoost<F>
         data: &DataFrame,
         target: &Series,
     ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Clf = F>
+        where W: WeakLearner<Hypothesis = F>
     {
         // Compute the dual optimal value for debug
         self.dual_objval_mut(data, target);
