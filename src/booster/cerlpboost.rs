@@ -388,10 +388,8 @@ impl<F> Logger for CERLPBoost<F>
 
 
     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        let c = self.classifiers.iter()
+        self.classifiers.iter()
             .map(|(h, w)| w * h.confidence(data, i))
-            .sum::<f64>();
-
-        if c > 0.0 { 1.0 } else { 0.0 }
+            .sum::<f64>()
     }
 }
