@@ -17,6 +17,12 @@ use crate::{
 };
 
 
+use crate::research::{
+    Logger,
+    soft_margin_objective,
+};
+
+
 use std::cell::RefCell;
 
 
@@ -47,6 +53,7 @@ pub struct LPBoost<F> {
 
 
     classifiers: Vec<F>,
+    weights: Vec<f64>,
 
 
     terminated: usize,
@@ -72,6 +79,7 @@ impl<F> LPBoost<F>
             lp_model: None,
 
             classifiers: Vec::new(),
+            weights: Vec::new(),
 
 
             terminated: 0_usize,
@@ -226,5 +234,37 @@ impl<F> Booster<F> for LPBoost<F>
 
 
         CombinedHypothesis::from(clfs)
+    }
+}
+
+
+
+impl<F> Logger for LPBoost<F>
+    where F: Classifier
+{
+    fn weights_on_hypotheses(&mut self, _data: &DataFrame, _target: &Series) {
+        self.weights = self.lp_model.as_ref()
+            .unwrap()
+            .borrow()
+            .weight()
+            .collect::<Vec<f64>>();
+    }
+
+
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        soft_margin_objective(
+            data, target, &self.weights[..], &self.classifiers[..], self.nu
+        )
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        self.weights.iter()
+            .zip(&self.classifiers[..])
+            .map(|(w, h)| w * h.confidence(data, i))
+            .sum::<f64>()
     }
 }

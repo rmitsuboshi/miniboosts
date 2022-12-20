@@ -18,6 +18,12 @@ use crate::{
     CombinedHypothesis
 };
 
+
+use crate::research::{
+    Logger,
+    soft_margin_objective,
+};
+
 /// Corrective ERLPBoost struct.
 /// This algorithm is based on the [paper](https://link.springer.com/content/pdf/10.1007/s10994-010-5173-z.pdf).
 pub struct CERLPBoost<F> {
@@ -26,7 +32,7 @@ pub struct CERLPBoost<F> {
     eta: f64,
 
     tolerance: f64,
-    capping_param: f64,
+    nu: f64,
 
     // Optimal value (Dual problem)
     dual_optval: f64,
@@ -50,14 +56,14 @@ impl<F> CERLPBoost<F> {
         let tolerance = uni;
 
         // Set regularization parameter
-        let capping_param = 1.0;
-        let eta = 2.0 * (m as f64 / capping_param).ln() / tolerance;
+        let nu = 1.0;
+        let eta = 2.0 * (m as f64 / nu).ln() / tolerance;
 
         Self {
             dist: vec![uni; m],
             tolerance,
             eta,
-            capping_param: 1.0,
+            nu: 1.0,
             dual_optval: 1.0,
 
             classifiers: Vec::new(),
@@ -69,10 +75,10 @@ impl<F> CERLPBoost<F> {
 
 
     /// This method updates the capping parameter.
-    pub fn nu(mut self, capping_param: f64) -> Self {
+    pub fn nu(mut self, nu: f64) -> Self {
         let n_sample = self.dist.len() as f64;
-        assert!((1.0..=n_sample).contains(&capping_param));
-        self.capping_param = capping_param;
+        assert!((1.0..=n_sample).contains(&nu));
+        self.nu = nu;
 
         self.regularization_param();
 
@@ -123,11 +129,11 @@ impl<F> CERLPBoost<F> {
 
     /// Update regularization parameter.
     /// (the regularization parameter on
-    ///  `self.tolerance` and `self.capping_param`.)
+    ///  `self.tolerance` and `self.nu`.)
     #[inline(always)]
     fn regularization_param(&mut self) {
         let m = self.dist.len() as f64;
-        let ln_part = (m / self.capping_param).ln();
+        let ln_part = (m / self.nu).ln();
         self.eta = ln_part / self.tolerance;
     }
 
@@ -138,7 +144,7 @@ impl<F> CERLPBoost<F> {
 
         let m = self.dist.len() as f64;
 
-        let ln_m = (m / self.capping_param).ln();
+        let ln_m = (m / self.nu).ln();
         let max_iter = 8.0 * ln_m / self.tolerance.powi(2);
 
         max_iter.ceil() as usize
@@ -190,8 +196,8 @@ impl<F> CERLPBoost<F>
             .into_iter()
             .rev();
 
-        let ub = 1.0 / self.capping_param;
-        let log_cap = self.capping_param.ln();
+        let ub = 1.0 / self.nu;
+        let log_cap = self.nu.ln();
 
         let mut idx_with_logsum = indices.into_iter().zip(logsums).enumerate();
 
@@ -354,8 +360,38 @@ fn prediction<F>(i: usize, data: &DataFrame, classifiers: &[(F, f64)]) -> f64
 where
     F: Classifier,
 {
-    classifiers
-        .iter()
+    classifiers.iter()
         .map(|(h, w)| w * h.confidence(data, i))
         .sum()
+}
+
+
+
+impl<F> Logger for CERLPBoost<F>
+    where F: Classifier + Clone
+{
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        let weights = self.classifiers.iter()
+            .map(|(_, w)| *w)
+            .collect::<Vec<_>>();
+        let classifiers = self.classifiers.iter()
+            .map(|(h, _)| h.clone())
+            .collect::<Vec<_>>();
+
+        soft_margin_objective(
+            data, target, &weights[..], &classifiers[..], self.nu
+        )
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        let c = self.classifiers.iter()
+            .map(|(h, w)| w * h.confidence(data, i))
+            .sum::<f64>();
+
+        if c > 0.0 { 1.0 } else { 0.0 }
+    }
 }

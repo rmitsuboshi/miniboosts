@@ -29,6 +29,8 @@ pub mod booster;
 pub mod weak_learner;
 pub mod prelude;
 
+pub mod research;
+
 
 // Export some traits and the combined hypothesis struct.
 pub use hypothesis::{

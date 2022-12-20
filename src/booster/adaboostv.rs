@@ -13,6 +13,9 @@ use crate::{
 };
 
 
+use crate::research::Logger;
+
+
 
 /// Struct `AdaBoostV` has 4 parameters.
 /// 
@@ -221,3 +224,31 @@ impl<F> Booster<F> for AdaBoostV<F>
     }
 }
 
+
+
+impl<F> Logger for AdaBoostV<F>
+    where F: Classifier
+{
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        let n_sample = data.shape().0 as f64;
+
+        target.i64()
+            .expect("The target class is not a dtype i64")
+            .into_iter()
+            .map(|y| y.unwrap() as f64)
+            .enumerate()
+            .map(|(i, y)| (- y * self.prediction(data, i)).exp())
+            .sum::<f64>()
+            / n_sample
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        self.weighted_classifiers.iter()
+            .map(|(w, h)| w * h.confidence(data, i))
+            .sum::<f64>()
+    }
+}

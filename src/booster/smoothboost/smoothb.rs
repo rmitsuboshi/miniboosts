@@ -16,6 +16,12 @@ use crate::{
 };
 
 
+use crate::research::{
+    Logger,
+    soft_margin_objective,
+};
+
+
 /// SmoothBoost. See Figure 1
 /// in [this paper](https://www.jmlr.org/papers/volume4/servedio03a/servedio03a.pdf).
 pub struct SmoothBoost<F> {
@@ -35,6 +41,8 @@ pub struct SmoothBoost<F> {
 
     /// The number of training examples.
     n_sample: usize,
+
+    current: usize,
 
     /// Terminated iteration.
     terminated: usize,
@@ -63,6 +71,8 @@ impl<F> SmoothBoost<F> {
             gamma,
 
             n_sample,
+
+            current: 0_usize,
 
             terminated: usize::MAX,
             max_iter: usize::MAX,
@@ -151,6 +161,7 @@ impl<F> Booster<F> for SmoothBoost<F>
         self.check_preconditions();
 
 
+        self.current = 0_usize;
         self.max_iter = self.max_loop();
         self.terminated = self.max_iter;
 
@@ -175,6 +186,8 @@ impl<F> Booster<F> for SmoothBoost<F>
         if self.max_iter < iteration {
             return State::Terminate;
         }
+
+        self.current = iteration;
 
 
         let sum = self.m.iter().sum::<f64>();
@@ -243,5 +256,45 @@ impl<F> Booster<F> for SmoothBoost<F>
             .collect::<Vec<(f64, F)>>();
 
         CombinedHypothesis::from(clfs)
+    }
+}
+
+
+impl<F> Logger for SmoothBoost<F>
+    where F: Classifier
+{
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        let unit = if self.current > 0 {
+            1.0 / self.current as f64
+        } else {
+            0.0
+        };
+        let weights = vec![unit; self.current];
+
+
+        let n_sample = data.shape().0 as f64;
+        let nu = self.kappa * n_sample;
+
+        soft_margin_objective(
+            data, target, &weights[..], &self.classifiers[..], nu
+        )
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        let unit = if self.current > 0 {
+            1.0 / self.current as f64
+        } else {
+            0.0
+        };
+        let weights = vec![unit; self.current];
+
+        weights.iter()
+            .zip(&self.classifiers[..])
+            .map(|(w, h)| w * h.confidence(data, i))
+            .sum::<f64>()
     }
 }

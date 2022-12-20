@@ -12,6 +12,11 @@ use super::{
     utils::*,
 };
 
+use crate::research::{
+    Logger,
+    soft_margin_objective,
+};
+
 
 use crate::{
     Booster,
@@ -457,3 +462,23 @@ impl<F> Booster<F> for MLPBoost<F>
 }
 
 
+impl<F> Logger for MLPBoost<F>
+    where F: Classifier
+{
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        soft_margin_objective(
+            data, target, &self.weights[..], &self.classifiers[..], self.nu
+        )
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        self.weights.iter()
+            .zip(&self.classifiers[..])
+            .map(|(w, h)| w * h.confidence(data, i))
+            .sum::<f64>()
+    }
+}
