@@ -16,6 +16,8 @@ use crate::{
     SoftBoost,
 };
 
+use crate::research::Logger;
+
 
 /// Since we can regard TotalBoost as
 /// a special case of SoftBoost (with capping param is 1.0),
@@ -88,5 +90,26 @@ impl<F> Booster<F> for TotalBoost<F>
         where W: WeakLearner<Hypothesis = F>
     {
         self.softboost.postprocess(weak_learner, data, target)
+    }
+}
+
+
+impl<F> Logger for TotalBoost<F>
+    where F: Classifier
+{
+    fn weights_on_hypotheses(&mut self, data: &DataFrame, target: &Series) {
+        self.softboost.weights_on_hypotheses(data, target);
+    }
+
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        self.softboost.objective_value(data, target)
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        self.softboost.prediction(data, i)
     }
 }

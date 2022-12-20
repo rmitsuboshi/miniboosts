@@ -15,6 +15,11 @@ use crate::{
     CombinedHypothesis,
 };
 
+use crate::research::{
+    Logger,
+    soft_margin_objective,
+};
+
 use grb::prelude::*;
 
 
@@ -30,7 +35,7 @@ pub struct SoftBoost<F> {
     tolerance: f64,
     // an accuracy parameter for the sub-problems
     sub_tolerance: f64,
-    capping_param: f64,
+    nu: f64,
 
     env: Env,
 
@@ -40,6 +45,9 @@ pub struct SoftBoost<F> {
 
     max_iter: usize,
     terminated: usize,
+
+
+    weights: Vec<f64>,
 }
 
 
@@ -74,10 +82,11 @@ impl<F> SoftBoost<F>
             gamma_hat,
             tolerance,
             sub_tolerance: 1e-9,
-            capping_param: 1.0,
+            nu: 1.0,
             env,
 
             classifiers: Vec::new(),
+            weights: Vec::new(),
 
             max_iter: usize::MAX,
             terminated: usize::MAX,
@@ -87,13 +96,13 @@ impl<F> SoftBoost<F>
 
     /// This method updates the capping parameter.
     #[inline(always)]
-    pub fn nu(mut self, capping_param: f64) -> Self {
+    pub fn nu(mut self, nu: f64) -> Self {
         assert!(
-            1.0 <= capping_param
+            1.0 <= nu
             &&
-            capping_param <= self.dist.len() as f64
+            nu <= self.dist.len() as f64
         );
-        self.capping_param = capping_param;
+        self.nu = nu;
 
         self
     }
@@ -114,7 +123,7 @@ impl<F> SoftBoost<F>
 
         let m = self.dist.len() as f64;
 
-        let temp = (m / self.capping_param).ln();
+        let temp = (m / self.nu).ln();
         let max_iter = 2.0 * temp / self.tolerance.powi(2);
 
         max_iter.ceil() as usize
@@ -134,7 +143,7 @@ impl<F> SoftBoost<F>
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
     fn set_weights(
-        &mut self,
+        &self,
         data: &DataFrame,
         target: &Series,
     ) -> std::result::Result<Vec<f64>, grb::Error>
@@ -180,7 +189,7 @@ impl<F> SoftBoost<F>
 
 
         // Set the objective function
-        let param = 1.0 / self.capping_param;
+        let param = 1.0 / self.nu;
         let objective = rho - param * xi_vec.iter().grb_sum();
         model.set_objective(objective, Maximize)?;
         model.update()?;
@@ -205,7 +214,7 @@ impl<F> SoftBoost<F>
     }
 
 
-    /// Updates `self.distribution`
+    /// Updates `self.dist`
     /// Returns `None` if the stopping criterion satisfied.
     fn update_params_mut(
         &mut self,
@@ -219,7 +228,7 @@ impl<F> SoftBoost<F>
 
 
             // Set variables that are used in the optimization problem
-            let cap = 1.0 / self.capping_param;
+            let cap = 1.0 / self.nu;
 
             let vars = self.dist.iter()
                 .copied()
@@ -425,3 +434,28 @@ impl<F> Booster<F> for SoftBoost<F>
 }
 
 
+
+impl<F> Logger for SoftBoost<F>
+    where F: Classifier
+{
+    fn weights_on_hypotheses(&mut self, data: &DataFrame, target: &Series) {
+        self.weights = self.set_weights(data, target).unwrap();
+    }
+
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        soft_margin_objective(
+            data, target, &self.weights[..], &self.classifiers[..], self.nu
+        )
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        self.weights.iter()
+            .zip(&self.classifiers[..])
+            .map(|(w, h)| w * h.confidence(data, i))
+            .sum::<f64>()
+    }
+}

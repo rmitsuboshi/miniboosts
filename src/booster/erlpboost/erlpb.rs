@@ -14,6 +14,12 @@ use crate::{
     Classifier,
     CombinedHypothesis,
 };
+
+use crate::research::{
+    Logger,
+    soft_margin_objective,
+};
+
 use super::qp_model::QPModel;
 
 
@@ -39,6 +45,7 @@ pub struct ERLPBoost<F> {
     qp_model: Option<RefCell<QPModel>>,
 
     classifiers: Vec<F>,
+    weights: Vec<f64>,
 
 
     // an accuracy parameter for the sub-problems
@@ -90,6 +97,8 @@ impl<F> ERLPBoost<F> {
             qp_model: None,
 
             classifiers: Vec::new(),
+            weights: Vec::new(),
+
 
             n_sample,
             nu: 1.0,
@@ -362,3 +371,34 @@ impl<F> Booster<F> for ERLPBoost<F>
 }
 
 
+
+impl<F> Logger for ERLPBoost<F>
+    where F: Classifier
+{
+    fn weights_on_hypotheses(&mut self, _data: &DataFrame, _target: &Series) {
+        self.weights = self.qp_model.as_ref()
+            .unwrap()
+            .clone()
+            .borrow_mut()
+            .weight()
+            .collect::<Vec<f64>>();
+    }
+
+
+    /// AdaBoost optimizes the exp loss
+    fn objective_value(&self, data: &DataFrame, target: &Series)
+        -> f64
+    {
+        soft_margin_objective(
+            data, target, &self.weights[..], &self.classifiers[..], self.nu
+        )
+    }
+
+
+    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+        self.weights.iter()
+            .zip(&self.classifiers[..])
+            .map(|(w, h)| w * h.confidence(data, i))
+            .sum::<f64>()
+    }
+}
