@@ -181,7 +181,7 @@ impl QPModel {
         }
 
 
-        self.constrs[1..].iter()
+        self.constrs[0..].iter()
             .map(|c| self.model.get_obj_attr(attr::Pi, c).unwrap().abs())
     }
 }
