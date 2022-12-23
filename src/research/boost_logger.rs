@@ -12,7 +12,7 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::time::Instant;
 
-const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time";
+const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 
 
 /// Run a boosting algorithm
@@ -20,7 +20,7 @@ const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time";
 /// Since each line of `file` corresponds to 
 /// an iteration of boosting algorithm,
 /// this function does not write the iteration.
-pub fn boosting_with_log<B, W, H, F, P>(
+pub fn with_log<B, W, H, F, P>(
     mut booster: B,
     weak_learner: W,
     loss_function: F,
