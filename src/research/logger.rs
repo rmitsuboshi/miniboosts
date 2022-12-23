@@ -26,10 +26,10 @@ pub trait Logger {
     {
         let n_sample = data.shape().0 as f64;
 
-        target.f64()
-            .expect("The target class is not a dtype f64")
+        target.i64()
+            .expect("The target class is not a dtype i64")
             .into_iter()
-            .map(|y| y.unwrap())
+            .map(|y| y.unwrap() as f64)
             .enumerate()
             .map(|(i, y)| loss_function(y, self.prediction(data, i)))
             .sum::<f64>()

@@ -21,3 +21,14 @@ pub use logger::Logger;
 pub use objective_functions::{
     soft_margin_objective,
 };
+
+
+pub use boost_logger::{
+    with_log,
+};
+
+pub use loss_functions::{
+    zero_one_loss,
+    squared_loss,
+    absolute_loss,
+};

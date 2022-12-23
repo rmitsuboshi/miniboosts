@@ -313,17 +313,6 @@ impl<F> Booster<F> for MLPBoost<F>
         self.terminated = self.max_iter;
 
 
-        // // Obtain a hypothesis by passing the uniform distribution.
-        // let h = weak_learner.produce(
-        //     data, target, &vec![1.0 / self.size as f64; self.size]
-        // );
-
-
-        // // Defines the vector of hypotheses obtained from `weak_learner`.
-        // let mut classifiers = vec![h];
-        // // Defines the vector of weights on `classifiers`.
-        // let mut weights = vec![1.0];
-
         self.classifiers = Vec::new();
         self.weights = Vec::new();
 
@@ -480,5 +469,6 @@ impl<F> Logger for MLPBoost<F>
             .zip(&self.classifiers[..])
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
+            .signum()
     }
 }
