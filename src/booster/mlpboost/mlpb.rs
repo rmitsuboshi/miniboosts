@@ -281,12 +281,8 @@ impl<F> MLPBoost<F>
             },
 
             StopCondition::ObjVal => {
-                prim_val = self.objval(
-                    data, target, &prim[..]
-                );
-                seco_val = self.objval(
-                    data, target, &seco[..]
-                );
+                prim_val = self.objval(data, target, &prim[..]);
+                seco_val = self.objval(data, target, &seco[..]);
             },
         }
         self.weights = if prim_val >= seco_val { prim } else { seco };
@@ -454,7 +450,7 @@ impl<F> Booster<F> for MLPBoost<F>
 impl<F> Logger for MLPBoost<F>
     where F: Classifier
 {
-    /// AdaBoost optimizes the exp loss
+    /// MLPBoost optimizes the soft margin objective
     fn objective_value(&self, data: &DataFrame, target: &Series)
         -> f64
     {

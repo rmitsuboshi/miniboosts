@@ -122,7 +122,7 @@ impl LPModel {
     /// Returns the weights over the hypotheses.
     pub(super) fn weight(&self) -> impl Iterator<Item=f64> + '_
     {
-        self.constrs[1..].iter()
+        self.constrs[0..].iter()
             .map(|c| self.model.get_obj_attr(attr::Pi, c).unwrap().abs())
     }
 }
