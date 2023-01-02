@@ -1,5 +1,5 @@
 # MiniBoosts
-**A collection of boosting algorithms written in Rust.**
+**A collection of boosting algorithms written in Rust 🦀.**
 
 
 This library uses [Gurobi optimizer](https://www.gurobi.com), 
@@ -42,7 +42,6 @@ You can combine them arbitrarily.
 ## Future work
 
 - Booster
-    - LogitBoost
     - [AnyBoost](https://www.researchgate.net/publication/243689632_Functional_gradient_techniques_for_combining_hypotheses)
     - [GradientBoost](https://www.jstor.org/stable/2699986)
     - [SparsiBoost](http://proceedings.mlr.press/v97/mathiasen19a/mathiasen19a.pdf)
