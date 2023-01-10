@@ -4,11 +4,11 @@ use polars::prelude::*;
 /// Defines some stats around boosting process.
 pub trait Logger {
     /// Update the weights on hypotheses
-    fn weights_on_hypotheses(&mut self, _data: &DataFrame, _target: &Series) {}
+    fn weights_on_hypotheses(&mut self) {}
 
 
     /// Objective value at an intermediate state of boosting process
-    fn objective_value(&self, data: &DataFrame, target: &Series) -> f64;
+    fn objective_value(&self) -> f64;
 
 
     /// Prediction at an intermediate state of boosting process
@@ -35,4 +35,15 @@ pub trait Logger {
             .sum::<f64>()
             / n_sample
     }
+
+
+    /// Returns the triplet `(ObjectiveValue, TrainLoss, TestLoss)`
+    /// of types `(f64, f64, f64)`
+    fn logging<F>(
+        &self,
+        loss_function: &F,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where F: Fn(f64, f64) -> f64;
 }
