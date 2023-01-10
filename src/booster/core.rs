@@ -1,6 +1,5 @@
 //! Provides `Booster` trait.
 
-use polars::prelude::*;
 use crate::{
     WeakLearner,
     CombinedHypothesis,
@@ -30,22 +29,20 @@ pub trait Booster<F> {
     fn run<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
-        self.preprocess(weak_learner, data, target);
+        self.preprocess(weak_learner);
 
         for it in 1.. {
-            let state = self.boost(weak_learner, data, target, it);
+            let state = self.boost(weak_learner, it);
 
             if state == State::Terminate {
                 break;
             }
         }
 
-        self.postprocess(weak_learner, data, target)
+        self.postprocess(weak_learner)
     }
 
 
@@ -53,8 +50,6 @@ pub trait Booster<F> {
     fn preprocess<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>;
 
@@ -65,8 +60,6 @@ pub trait Booster<F> {
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = F>;
@@ -77,8 +70,6 @@ pub trait Booster<F> {
     fn postprocess<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>;
 }

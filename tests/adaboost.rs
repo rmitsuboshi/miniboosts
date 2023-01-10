@@ -45,7 +45,7 @@ pub mod adaboost_iris {
         let dtree = DTree::init(&data, &target);
 
 
-        let f = adaboost.run(&dtree, &data, &target);
+        let f = adaboost.run(&dtree);
 
 
         let (m, _) = data.shape();

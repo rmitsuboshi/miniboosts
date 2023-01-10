@@ -46,7 +46,7 @@ pub mod smoothboost_iris {
         let dtree = DTree::init(&data, &target);
 
 
-        let f = smoothboost.run(&dtree, &data, &target);
+        let f = smoothboost.run(&dtree);
 
 
         let (m, _) = data.shape();

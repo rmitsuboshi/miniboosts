@@ -17,7 +17,10 @@ use crate::{
 
 
 /// SquareLev.R algorithm.
-pub struct SquareLevR<R> {
+pub struct SquareLevR<'a, R> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
     /// Number of examples
     n_sample: usize,
 
@@ -51,9 +54,9 @@ pub struct SquareLevR<R> {
 }
 
 
-impl<R> SquareLevR<R> {
+impl<'a, R> SquareLevR<'a, R> {
     /// Initialize `SquareLev.R`
-    pub fn init(data: &DataFrame, target: &Series) -> Self {
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         let n_sample = data.shape().0;
 
         let residuals = target.f64()
@@ -66,6 +69,9 @@ impl<R> SquareLevR<R> {
 
 
         Self {
+            data,
+            target,
+
             n_sample,
             rho: 1e-2,
             dist: Vec::new(),
@@ -110,30 +116,28 @@ impl<R> SquareLevR<R> {
 
 
 
-impl<R: Regressor> SquareLevR<R> {
+impl<R: Regressor> SquareLevR<'_, R> {
     fn update_residuals(
         &mut self,
-        data: &DataFrame, // Training instances
-        alpha: f64,       // Weight on f
-        f: &R,            // A newly attained hypothesis
+        alpha: f64, // Weight on f
+        f: &R,      // A newly attained hypothesis
     )
     {
         self.residuals.iter_mut()
             .enumerate()
             .for_each(|(i, ri)| {
-                *ri -= alpha * f.predict(data, i);
+                *ri -= alpha * f.predict(self.data, i);
             });
     }
 
 
     fn weight_on_new_regressor(
         &self,
-        data: &DataFrame,
         r_bar: f64,
         f: &R,
     ) -> f64
     {
-        let f = f.predict_all(data);
+        let f = f.predict_all(self.data);
         let f_bar = f.iter()
             .sum::<f64>()
             / self.n_sample as f64;
@@ -169,18 +173,16 @@ impl<R: Regressor> SquareLevR<R> {
 }
 
 
-impl<R> Booster<R> for SquareLevR<R>
+impl<R> Booster<R> for SquareLevR<'_, R>
     where R: Regressor + Clone + std::fmt::Debug
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
     )
         where W: WeakLearner<Hypothesis = R>
     {
-        self.n_sample = data.shape().0;
+        self.n_sample = self.data.shape().0;
 
         let uni = 1.0 / self.n_sample as f64;
 
@@ -188,7 +190,7 @@ impl<R> Booster<R> for SquareLevR<R>
         self.weights = Vec::new();
         self.regressors = Vec::new();
 
-        self.residuals = target.f64()
+        self.residuals = self.target.f64()
             .expect("The target class is not a dtype f64")
             .into_iter()
             .map(|y| y.unwrap())
@@ -201,8 +203,6 @@ impl<R> Booster<R> for SquareLevR<R>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
         iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = R>
@@ -225,19 +225,15 @@ impl<R> Booster<R> for SquareLevR<R>
 
 
         // Obtain a new hypothesis
-        let f = weak_learner.produce(data, &y_tilde, &self.dist[..]);
+        let f = weak_learner.produce(self.data, &y_tilde, &self.dist[..]);
 
 
         // Obtain the weight on the new hypothesis `f`.
-        let alpha = self.weight_on_new_regressor(
-            data,
-            res_mean,
-            &f
-        );
+        let alpha = self.weight_on_new_regressor(res_mean, &f);
         assert!(alpha.is_finite());
 
 
-        self.update_residuals(data, alpha, &f);
+        self.update_residuals(alpha, &f);
         self.weights.push(alpha);
         self.regressors.push(f);
 
@@ -248,8 +244,6 @@ impl<R> Booster<R> for SquareLevR<R>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        _data: &DataFrame,
-        _target: &Series,
     ) -> CombinedHypothesis<R>
         where W: WeakLearner<Hypothesis = R>
     {

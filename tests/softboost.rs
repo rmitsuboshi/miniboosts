@@ -53,7 +53,7 @@ pub mod softboost_iris {
             .max_depth(1);
 
 
-        let f = booster.run(&dtree, &data, &target);
+        let f = booster.run(&dtree);
 
 
         let predictions = f.predict_all(&data);

@@ -3,7 +3,6 @@
 //! by Warmuth et al.
 //! 
 use polars::prelude::*;
-// use rayon::prelude::*;
 
 
 use crate::{
@@ -29,7 +28,11 @@ use std::cell::RefCell;
 
 /// ERLPBoost struct. 
 /// See [this paper](https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.141.1759&rep=rep1&type=pdf).
-pub struct ERLPBoost<F> {
+pub struct ERLPBoost<'a, F> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
+
     dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
@@ -59,12 +62,12 @@ pub struct ERLPBoost<F> {
 }
 
 
-impl<F> ERLPBoost<F> {
+impl<'a, F> ERLPBoost<'a, F> {
     /// Initialize the `ERLPBoost`.
     /// Use `data` for argument.
     /// This method does not care 
     /// whether the label is included in `data` or not.
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         let n_sample = data.shape().0;
         assert!(n_sample != 0);
 
@@ -89,6 +92,9 @@ impl<F> ERLPBoost<F> {
 
 
         ERLPBoost {
+            data,
+            target,
+
             dist: vec![uni; n_sample],
             gamma_hat,
             gamma_star,
@@ -179,25 +185,22 @@ impl<F> ERLPBoost<F> {
 }
 
 
-impl<F> ERLPBoost<F>
+impl<F> ERLPBoost<'_, F>
     where F: Classifier
 {
     /// Update `self.gamma_hat`.
     /// `self.gamma_hat` holds the minimum value of the objective value.
     #[inline]
-    fn update_gamma_hat_mut(
-        &mut self,
-        h: &F,
-        data: &DataFrame,
-        target: &Series
-    )
+    fn update_gamma_hat_mut(&mut self, h: &F)
     {
-        let edge = target.i64()
+        let edge = self.target.i64()
             .expect("The target class is not a dtype i64")
             .into_iter()
             .zip(self.dist.iter().copied())
             .enumerate()
-            .map(|(i, (y, d))| d * y.unwrap() as f64 * h.confidence(data, i))
+            .map(|(i, (y, d))|
+                d * y.unwrap() as f64 * h.confidence(self.data, i)
+            )
             .sum::<f64>();
 
 
@@ -216,17 +219,17 @@ impl<F> ERLPBoost<F>
 
     /// Update `self.gamma_star`.
     /// `self.gamma_star` holds the current optimal value.
-    fn update_gamma_star_mut(&mut self, data: &DataFrame, target: &Series)
+    fn update_gamma_star_mut(&mut self)
     {
         let max_edge = self.classifiers.iter()
             .map(|h|
-                target.i64()
+                self.target.i64()
                     .expect("The target class is not a dtype i64")
                     .into_iter()
                     .zip(self.dist.iter().copied())
                     .enumerate()
                     .map(|(i, (y, d))|
-                        d * y.unwrap() as f64 * h.confidence(data, i)
+                        d * y.unwrap() as f64 * h.confidence(self.data, i)
                     )
                     .sum::<f64>()
             )
@@ -253,17 +256,12 @@ impl<F> ERLPBoost<F>
     /// This method continues minimizing the quadratic objective 
     /// while the decrease of the optimal value is 
     /// greater than `self.sub_tolerance`.
-    fn update_distribution_mut(
-        &mut self,
-        data: &DataFrame,
-        target: &Series,
-        clf: &F,
-    )
+    fn update_distribution_mut(&mut self, clf: &F)
     {
         self.qp_model.as_ref()
             .unwrap()
             .borrow_mut()
-            .update(data, target, &mut self.dist[..], clf);
+            .update(self.data, self.target, &mut self.dist[..], clf);
 
         self.dist = self.qp_model.as_ref()
             .unwrap()
@@ -273,18 +271,16 @@ impl<F> ERLPBoost<F>
 }
 
 
-impl<F> Booster<F> for ERLPBoost<F>
+impl<F> Booster<F> for ERLPBoost<'_, F>
     where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        let n_sample = data.shape().0;
+        let n_sample = self.data.shape().0;
         let uni = 1.0 / n_sample as f64;
 
         self.dist = vec![uni; n_sample];
@@ -307,8 +303,6 @@ impl<F> Booster<F> for ERLPBoost<F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = F>,
@@ -318,11 +312,11 @@ impl<F> Booster<F> for ERLPBoost<F>
         }
 
         // Receive a hypothesis from the base learner
-        let h = weak_learner.produce(data, target, &self.dist[..]);
+        let h = weak_learner.produce(self.data, self.target, &self.dist[..]);
 
 
         // update `self.gamma_hat`
-        self.update_gamma_hat_mut(&h, data, target);
+        self.update_gamma_hat_mut(&h);
 
 
         // Check the stopping criterion
@@ -335,7 +329,7 @@ impl<F> Booster<F> for ERLPBoost<F>
         // At this point, the stopping criterion is not satisfied.
 
         // Update the parameters
-        self.update_distribution_mut(data, target, &h);
+        self.update_distribution_mut(&h);
 
 
         // Append a new hypothesis to `clfs`.
@@ -343,7 +337,7 @@ impl<F> Booster<F> for ERLPBoost<F>
 
 
         // update `self.gamma_star`.
-        self.update_gamma_star_mut(data, target);
+        self.update_gamma_star_mut();
 
         State::Continue
     }
@@ -352,8 +346,6 @@ impl<F> Booster<F> for ERLPBoost<F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        _data: &DataFrame,
-        _target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
@@ -372,10 +364,10 @@ impl<F> Booster<F> for ERLPBoost<F>
 
 
 
-impl<F> Logger for ERLPBoost<F>
+impl<F> Logger for ERLPBoost<'_, F>
     where F: Classifier
 {
-    fn weights_on_hypotheses(&mut self, _data: &DataFrame, _target: &Series) {
+    fn weights_on_hypotheses(&mut self) {
         self.weights = self.qp_model.as_ref()
             .unwrap()
             .clone()
@@ -386,11 +378,11 @@ impl<F> Logger for ERLPBoost<F>
 
 
     /// AdaBoost optimizes the exp loss
-    fn objective_value(&self, data: &DataFrame, target: &Series)
-        -> f64
+    fn objective_value(&self) -> f64
     {
         soft_margin_objective(
-            data, target, &self.weights[..], &self.classifiers[..], self.nu
+            self.data, self.target,
+            &self.weights[..], &self.classifiers[..], self.nu
         )
     }
 
@@ -401,5 +393,21 @@ impl<F> Logger for ERLPBoost<F>
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
             .signum()
+    }
+
+
+    fn logging<L>(
+        &self,
+        loss_function: &L,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where L: Fn(f64, f64) -> f64
+    {
+        let objval = self.objective_value();
+        let train = self.loss(loss_function, self.data, self.target);
+        let test = self.loss(loss_function, test_data, test_target);
+
+        (objval, train, test)
     }
 }

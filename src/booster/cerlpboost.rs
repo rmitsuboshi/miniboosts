@@ -26,7 +26,10 @@ use crate::research::{
 
 /// Corrective ERLPBoost struct.
 /// This algorithm is based on the [paper](https://link.springer.com/content/pdf/10.1007/s10994-010-5173-z.pdf).
-pub struct CERLPBoost<F> {
+pub struct CERLPBoost<'a, F> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
     dist: Vec<f64>,
     // A regularization parameter defined in the paper
     eta: f64,
@@ -43,24 +46,27 @@ pub struct CERLPBoost<F> {
     terminated: usize,
 }
 
-impl<F> CERLPBoost<F> {
+impl<'a, F> CERLPBoost<'a, F> {
     /// Initialize the `CERLPBoost`.
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         assert!(!data.is_empty());
-        let (m, _) = data.shape();
+        let n_sample = data.shape().0;
 
         // Set uni as an uniform weight
-        let uni = 1.0 / m as f64;
+        let uni = 1.0 / n_sample as f64;
 
         // Set tolerance, sub_tolerance
         let tolerance = uni;
 
         // Set regularization parameter
         let nu = 1.0;
-        let eta = 2.0 * (m as f64 / nu).ln() / tolerance;
+        let eta = 2.0 * (n_sample as f64 / nu).ln() / tolerance;
 
         Self {
-            dist: vec![uni; m],
+            data,
+            target,
+
+            dist: vec![uni; n_sample],
             tolerance,
             eta,
             nu: 1.0,
@@ -96,22 +102,18 @@ impl<F> CERLPBoost<F> {
 
     /// Compute the dual objective value
     #[inline(always)]
-    fn dual_objval_mut(
-        &mut self,
-        data: &DataFrame,
-        target: &Series,
-    ) where F: Classifier + PartialEq,
+    fn dual_objval_mut(&mut self)
+        where F: Classifier + PartialEq,
     {
         self.dual_optval = self.classifiers.iter()
             .map(|(h, _)| {
-                target
-                    .i64()
+                self.target.i64()
                     .expect("The target class is not a dtype i64")
                     .into_iter()
                     .zip(self.dist.iter().copied())
                     .enumerate()
                     .map(|(i, (y, d))|
-                        d * y.unwrap() as f64 * h.confidence(data, i)
+                        d * y.unwrap() as f64 * h.confidence(self.data, i)
                     )
                     .sum::<f64>()
             })
@@ -152,31 +154,31 @@ impl<F> CERLPBoost<F> {
 }
 
 
-impl<F> CERLPBoost<F>
+impl<F> CERLPBoost<'_, F>
     where F: Classifier + PartialEq,
 {
     /// Updates weight on hypotheses and `self.dist` in this order.
-    fn update_distribution_mut(&mut self, data: &DataFrame, target: &Series)
+    fn update_distribution_mut(&mut self)
     {
         self.dist
             .iter_mut()
-            .zip(target.i64().expect("The target is not a dtype i64"))
+            .zip(self.target.i64().expect("The target is not a dtype i64"))
             .enumerate()
             .for_each(|(i, (d, y))| {
-                let p = prediction(i, data, &self.classifiers[..]);
-                *d = -self.eta * y.unwrap() as f64 * p
+                let p = prediction(i, self.data, &self.classifiers[..]);
+                *d = - self.eta * y.unwrap() as f64 * p
             });
 
-        let m = self.dist.len();
+        let n_sample = self.data.shape().0;
         // Sort the indices over `self.dist` in non-increasing order.
-        let mut indices = (0..m).collect::<Vec<_>>();
+        let mut indices = (0..n_sample).collect::<Vec<_>>();
         indices.sort_by(|&i, &j|
             self.dist[j].partial_cmp(&self.dist[i]).unwrap()
         );
 
         let logsums = indices.iter()
             .rev()
-            .fold(Vec::with_capacity(m), |mut vec, &i| {
+            .fold(Vec::with_capacity(n_sample), |mut vec, &i| {
                 // TODO use `get_unchecked`
                 let temp = match vec.last() {
                     None => self.dist[i],
@@ -255,18 +257,16 @@ impl<F> CERLPBoost<F>
     }
 }
 
-impl<F> Booster<F> for CERLPBoost<F>
+impl<F> Booster<F> for CERLPBoost<'_, F>
     where F: Classifier + Clone + PartialEq + std::fmt::Debug,
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        let n_sample = data.shape().0;
+        let n_sample = self.data.shape().0;
         let uni = 1.0 / n_sample as f64;
 
         self.dist = vec![uni; n_sample];
@@ -284,8 +284,6 @@ impl<F> Booster<F> for CERLPBoost<F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         iteration: usize,
     ) -> State
     where W: WeakLearner<Hypothesis = F>,
@@ -295,21 +293,20 @@ impl<F> Booster<F> for CERLPBoost<F>
         }
 
         // Update the distribution over examples
-        self.update_distribution_mut(data, target);
+        self.update_distribution_mut();
 
         // Receive a hypothesis from the base learner
-        let h = weak_learner.produce(data, target, &self.dist);
+        let h = weak_learner.produce(self.data, self.target, &self.dist);
 
         // println!("h: {h:?}");
 
-        let gap_vec = target
-            .i64()
+        let gap_vec = self.target.i64()
             .expect("The target class is not a dtype of i64")
             .into_iter()
             .enumerate()
             .map(|(i, y)| {
-                let old_pred = prediction(i, data, &self.classifiers[..]);
-                let new_pred = h.confidence(data, i);
+                let old_pred = prediction(i, self.data, &self.classifiers[..]);
+                let new_pred = h.confidence(self.data, i);
 
                 y.unwrap() as f64 * (new_pred - old_pred)
             })
@@ -317,8 +314,7 @@ impl<F> Booster<F> for CERLPBoost<F>
 
         // Compute the difference between the new hypothesis
         // and the current combined hypothesis
-        let diff = gap_vec
-            .par_iter()
+        let diff = gap_vec.par_iter()
             .zip(&self.dist[..])
             .map(|(v, d)| v * d)
             .sum::<f64>();
@@ -339,13 +335,11 @@ impl<F> Booster<F> for CERLPBoost<F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
         // Compute the dual optimal value for debug
-        self.dual_objval_mut(data, target);
+        self.dual_objval_mut();
 
         let weighted_classifier = self.classifiers.clone()
             .into_iter()
@@ -367,11 +361,11 @@ where
 
 
 
-impl<F> Logger for CERLPBoost<F>
+impl<F> Logger for CERLPBoost<'_, F>
     where F: Classifier + Clone
 {
     /// AdaBoost optimizes the exp loss
-    fn objective_value(&self, data: &DataFrame, target: &Series)
+    fn objective_value(&self)
         -> f64
     {
         let weights = self.classifiers.iter()
@@ -382,7 +376,7 @@ impl<F> Logger for CERLPBoost<F>
             .collect::<Vec<_>>();
 
         soft_margin_objective(
-            data, target, &weights[..], &classifiers[..], self.nu
+            self.data, self.target, &weights[..], &classifiers[..], self.nu
         )
     }
 
@@ -391,5 +385,21 @@ impl<F> Logger for CERLPBoost<F>
         self.classifiers.iter()
             .map(|(h, w)| w * h.confidence(data, i))
             .sum::<f64>()
+    }
+
+
+    fn logging<L>(
+        &self,
+        loss_function: &L,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where L: Fn(f64, f64) -> f64
+    {
+        let objval = self.objective_value();
+        let train = self.loss(loss_function, self.data, self.target);
+        let test = self.loss(loss_function, test_data, test_target);
+
+        (objval, train, test)
     }
 }
