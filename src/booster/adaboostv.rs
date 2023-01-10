@@ -23,7 +23,10 @@ use crate::research::Logger;
 /// - `rho` is a guess of the optimal margin,
 /// - `gamma` is the minimum edge over the past edges,
 /// - `dist` is the distribution over training examples,
-pub struct AdaBoostV<F> {
+pub struct AdaBoostV<'a, F> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
     tolerance: f64,
     rho: f64,
     gamma: f64,
@@ -37,9 +40,9 @@ pub struct AdaBoostV<F> {
 }
 
 
-impl<F> AdaBoostV<F> {
+impl<'a, F> AdaBoostV<'a, F> {
     /// Initialize the `AdaBoostV<D, L>`.
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         let n_sample = data.shape().0;
         assert!(n_sample != 0);
 
@@ -48,6 +51,9 @@ impl<F> AdaBoostV<F> {
         let dist = vec![uni; n_sample];
 
         AdaBoostV {
+            data,
+            target,
+
             tolerance: 0.0,
             rho:       1.0,
             gamma:     1.0,
@@ -139,19 +145,17 @@ impl<F> AdaBoostV<F> {
 }
 
 
-impl<F> Booster<F> for AdaBoostV<F>
+impl<F> Booster<F> for AdaBoostV<'_, F>
     where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>
     {
         // Initialize parameters
-        let n_sample = data.shape().0;
+        let n_sample = self.data.shape().0;
         self.dist = vec![1.0 / n_sample as f64; n_sample];
 
 
@@ -165,8 +169,6 @@ impl<F> Booster<F> for AdaBoostV<F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = F>,
@@ -176,16 +178,16 @@ impl<F> Booster<F> for AdaBoostV<F>
         }
 
         // Get a new hypothesis
-        let h = weak_learner.produce(data, target, &self.dist);
+        let h = weak_learner.produce(self.data, self.target, &self.dist);
 
 
         // Each element in `predictions` is the product of
         // the predicted vector and the correct vector
-        let margins = target.i64()
+        let margins = self.target.i64()
             .expect("The target class is not an dtype i64")
             .into_iter()
             .enumerate()
-            .map(|(i, y)| (y.unwrap() as f64 * h.confidence(data, i)))
+            .map(|(i, y)| (y.unwrap() as f64 * h.confidence(self.data, i)))
             .collect::<Vec<f64>>();
 
 
@@ -215,8 +217,6 @@ impl<F> Booster<F> for AdaBoostV<F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        _data: &DataFrame,
-        _target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
@@ -226,21 +226,21 @@ impl<F> Booster<F> for AdaBoostV<F>
 
 
 
-impl<F> Logger for AdaBoostV<F>
+impl<F> Logger for AdaBoostV<'_, F>
     where F: Classifier
 {
     /// AdaBoost optimizes the exp loss
-    fn objective_value(&self, data: &DataFrame, target: &Series)
+    fn objective_value(&self)
         -> f64
     {
-        let n_sample = data.shape().0 as f64;
+        let n_sample = self.data.shape().0 as f64;
 
-        target.i64()
+        self.target.i64()
             .expect("The target class is not a dtype i64")
             .into_iter()
             .map(|y| y.unwrap() as f64)
             .enumerate()
-            .map(|(i, y)| (- y * self.prediction(data, i)).exp())
+            .map(|(i, y)| (- y * self.prediction(self.data, i)).exp())
             .sum::<f64>()
             / n_sample
     }
@@ -250,5 +250,21 @@ impl<F> Logger for AdaBoostV<F>
         self.weighted_classifiers.iter()
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
+    }
+
+
+    fn logging<L>(
+        &self,
+        loss_function: &L,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where L: Fn(f64, f64) -> f64
+    {
+        let objval = self.objective_value();
+        let train = self.loss(loss_function, self.data, self.target);
+        let test = self.loss(loss_function, test_data, test_target);
+
+        (objval, train, test)
     }
 }

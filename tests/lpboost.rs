@@ -54,7 +54,7 @@ pub mod lpboost_iris {
             .max_depth(1);
 
 
-        let f = booster.run(&dtree, &data, &target);
+        let f = booster.run(&dtree);
 
 
         let (m, _) = data.shape();

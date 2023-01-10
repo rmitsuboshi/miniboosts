@@ -27,7 +27,10 @@ use grb::prelude::*;
 /// Struct `SoftBoost` has 3 main parameters.
 /// 
 /// - `dist` is the distribution over training examples,
-pub struct SoftBoost<F> {
+pub struct SoftBoost<'a, F> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
     pub(crate) dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})
@@ -51,11 +54,11 @@ pub struct SoftBoost<F> {
 }
 
 
-impl<F> SoftBoost<F>
+impl<'a, F> SoftBoost<'a, F>
     where F: Classifier
 {
     /// Initialize the `SoftBoost`.
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         let n_sample = data.shape().0;
         assert!(n_sample != 0);
 
@@ -78,6 +81,9 @@ impl<F> SoftBoost<F>
 
 
         SoftBoost {
+            data,
+            target,
+
             dist,
             gamma_hat,
             tolerance,
@@ -137,16 +143,13 @@ impl<F> SoftBoost<F>
 }
 
 
-impl<F> SoftBoost<F>
+impl<F> SoftBoost<'_, F>
     where F: Classifier,
 {
     /// Set the weight on the classifiers.
     /// This function is called at the end of the boosting.
-    fn set_weights(
-        &self,
-        data: &DataFrame,
-        target: &Series,
-    ) -> std::result::Result<Vec<f64>, grb::Error>
+    fn set_weights(&self)
+        -> std::result::Result<Vec<f64>, grb::Error>
     {
         let mut model = Model::with_env("", &self.env)?;
 
@@ -166,7 +169,7 @@ impl<F> SoftBoost<F>
 
 
         // Set constraints
-        let iter = target.i64()
+        let iter = self.target.i64()
             .expect("The target class is not a dtype i64")
             .into_iter()
             .zip(xi_vec.iter())
@@ -176,7 +179,7 @@ impl<F> SoftBoost<F>
             let y = y.unwrap() as f64;
             let expr = wt_vec.iter()
                 .zip(&self.classifiers[..])
-                .map(|(&w, h)| w * h.confidence(data, i))
+                .map(|(&w, h)| w * h.confidence(self.data, i))
                 .grb_sum();
             let name = format!("sample[{i}]");
             model.add_constr(&name, c!(y * expr >= rho - xi))?;
@@ -216,12 +219,7 @@ impl<F> SoftBoost<F>
 
     /// Updates `self.dist`
     /// Returns `None` if the stopping criterion satisfied.
-    fn update_params_mut(
-        &mut self,
-        data: &DataFrame,
-        target: &Series,
-    ) -> Option<()>
-    {
+    fn update_params_mut(&mut self) -> Option<()> {
         loop {
             // Initialize GRBModel
             let mut model = Model::with_env("", &self.env).unwrap();
@@ -248,7 +246,7 @@ impl<F> SoftBoost<F>
             self.classifiers.iter()
                 .enumerate()
                 .for_each(|(j, h)| {
-                    let iter = target.i64()
+                    let iter = self.target.i64()
                         .expect("The target class is not a dtype i64");
                     let expr = vars.iter()
                         .zip(self.dist.iter().copied())
@@ -256,7 +254,7 @@ impl<F> SoftBoost<F>
                         .enumerate()
                         .map(|(i, ((v, d), y))| {
                             let y = y.unwrap() as f64;
-                            let p = h.confidence(data, i);
+                            let p = h.confidence(self.data, i);
                             y * p * (d + *v)
                         })
                         .grb_sum();
@@ -335,18 +333,16 @@ impl<F> SoftBoost<F>
 }
 
 
-impl<F> Booster<F> for SoftBoost<F>
+impl<F> Booster<F> for SoftBoost<'_, F>
     where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        let n_sample = data.shape().0;
+        let n_sample = self.data.shape().0;
 
         let uni = 1.0 / n_sample as f64;
 
@@ -363,8 +359,6 @@ impl<F> Booster<F> for SoftBoost<F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = F>,
@@ -374,16 +368,16 @@ impl<F> Booster<F> for SoftBoost<F>
         }
 
         // Receive a hypothesis from the base learner
-        let h = weak_learner.produce(data, target, &self.dist);
+        let h = weak_learner.produce(self.data, self.target, &self.dist);
 
         // update `self.gamma_hat`
-        let edge = target.i64()
+        let edge = self.target.i64()
             .expect("The target class is not a dtype i64")
             .into_iter()
             .zip(self.dist.iter().copied())
             .enumerate()
             .map(|(i, (y, d))|
-                d * y.unwrap() as f64 * h.confidence(data, i)
+                d * y.unwrap() as f64 * h.confidence(self.data, i)
             )
             .sum::<f64>();
 
@@ -398,7 +392,7 @@ impl<F> Booster<F> for SoftBoost<F>
         self.classifiers.push(h);
 
         // Update the parameters
-        if self.update_params_mut(data, target).is_none() {
+        if self.update_params_mut().is_none() {
             self.terminated = iteration;
             return State::Terminate;
         }
@@ -410,14 +404,12 @@ impl<F> Booster<F> for SoftBoost<F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
         // Set the weights on the hypotheses
         // by solving a linear program
-        let clfs = match self.set_weights(data, target) {
+        let clfs = match self.set_weights() {
             Err(e) => {
                 panic!("{e}");
             },
@@ -435,19 +427,19 @@ impl<F> Booster<F> for SoftBoost<F>
 
 
 
-impl<F> Logger for SoftBoost<F>
+impl<F> Logger for SoftBoost<'_, F>
     where F: Classifier
 {
-    fn weights_on_hypotheses(&mut self, data: &DataFrame, target: &Series) {
-        self.weights = self.set_weights(data, target).unwrap();
+    fn weights_on_hypotheses(&mut self) {
+        self.weights = self.set_weights().unwrap();
     }
 
     /// AdaBoost optimizes the exp loss
-    fn objective_value(&self, data: &DataFrame, target: &Series)
-        -> f64
+    fn objective_value(&self) -> f64
     {
         soft_margin_objective(
-            data, target, &self.weights[..], &self.classifiers[..], self.nu
+            self.data, self.target,
+            &self.weights[..], &self.classifiers[..], self.nu
         )
     }
 
@@ -458,5 +450,21 @@ impl<F> Logger for SoftBoost<F>
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
             .signum()
+    }
+
+
+    fn logging<L>(
+        &self,
+        loss_function: &L,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where L: Fn(f64, f64) -> f64
+    {
+        let objval = self.objective_value();
+        let train = self.loss(loss_function, self.data, self.target);
+        let test = self.loss(loss_function, test_data, test_target);
+
+        (objval, train, test)
     }
 }

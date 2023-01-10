@@ -29,7 +29,11 @@ use std::cell::RefCell;
 
 /// LPBoost struct.
 /// See [this paper](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf).
-pub struct LPBoost<F> {
+pub struct LPBoost<'a, F> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
+
     // Distribution over examples
     dist: Vec<f64>,
 
@@ -60,17 +64,20 @@ pub struct LPBoost<F> {
 }
 
 
-impl<F> LPBoost<F>
+impl<'a, F> LPBoost<'a, F>
     where F: Classifier
 {
     /// Initialize the `LPBoost`.
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
-        let (n_sample, _) = data.shape();
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
+        let n_sample = data.shape().0;
         assert!(n_sample != 0);
 
 
         let uni = 1.0 / n_sample as f64;
         LPBoost {
+            data,
+            target,
+
             dist:      vec![uni; n_sample],
             gamma_hat: 1.0,
             tolerance: uni,
@@ -129,33 +136,26 @@ impl<F> LPBoost<F>
     /// by solving a linear program
     /// over the hypotheses obtained in past steps.
     #[inline(always)]
-    fn update_distribution_mut(
-        &self,
-        data: &DataFrame,
-        target: &Series,
-        h: &F,
-    ) -> f64
+    fn update_distribution_mut(&self, h: &F) -> f64
     {
         self.lp_model.as_ref()
             .unwrap()
             .borrow_mut()
-            .update(data, target, h)
+            .update(self.data, self.target, h)
     }
 }
 
 
-impl<F> Booster<F> for LPBoost<F>
+impl<F> Booster<F> for LPBoost<'_, F>
     where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        let n_sample = data.shape().0;
+        let n_sample = self.data.shape().0;
         let uni = 1.0_f64 / n_sample as f64;
 
         self.init_solver();
@@ -171,22 +171,20 @@ impl<F> Booster<F> for LPBoost<F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         _iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = F>,
     {
-        let h = weak_learner.produce(data, target, &self.dist);
+        let h = weak_learner.produce(self.data, self.target, &self.dist);
 
         // Each element in `margins` is the product of
         // the predicted vector and the correct vector
 
-        let ghat = target.i64()
+        let ghat = self.target.i64()
             .expect("The target class is not a dtype of i64")
             .into_iter()
             .enumerate()
-            .map(|(i, y)| y.unwrap() as f64 * h.confidence(data, i))
+            .map(|(i, y)| y.unwrap() as f64 * h.confidence(self.data, i))
             .zip(self.dist.iter())
             .map(|(yh, &d)| d * yh)
             .sum::<f64>();
@@ -194,9 +192,7 @@ impl<F> Booster<F> for LPBoost<F>
         self.gamma_hat = ghat.min(self.gamma_hat);
 
 
-        let gamma_star = self.update_distribution_mut(
-            data, target, &h
-        );
+        let gamma_star = self.update_distribution_mut(&h);
 
 
         self.classifiers.push(h);
@@ -219,8 +215,6 @@ impl<F> Booster<F> for LPBoost<F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        _data: &DataFrame,
-        _target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
@@ -239,10 +233,10 @@ impl<F> Booster<F> for LPBoost<F>
 
 
 
-impl<F> Logger for LPBoost<F>
+impl<F> Logger for LPBoost<'_, F>
     where F: Classifier
 {
-    fn weights_on_hypotheses(&mut self, _data: &DataFrame, _target: &Series) {
+    fn weights_on_hypotheses(&mut self) {
         self.weights = self.lp_model.as_ref()
             .unwrap()
             .borrow()
@@ -252,11 +246,12 @@ impl<F> Logger for LPBoost<F>
 
 
     /// AdaBoost optimizes the exp loss
-    fn objective_value(&self, data: &DataFrame, target: &Series)
+    fn objective_value(&self)
         -> f64
     {
         soft_margin_objective(
-            data, target, &self.weights[..], &self.classifiers[..], self.nu
+            self.data, self.target,
+            &self.weights[..], &self.classifiers[..], self.nu
         )
     }
 
@@ -267,5 +262,21 @@ impl<F> Logger for LPBoost<F>
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
             .signum()
+    }
+
+
+    fn logging<L>(
+        &self,
+        loss_function: &L,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where L: Fn(f64, f64) -> f64
+    {
+        let objval = self.objective_value();
+        let train = self.loss(loss_function, self.data, self.target);
+        let test = self.loss(loss_function, test_data, test_target);
+
+        (objval, train, test)
     }
 }

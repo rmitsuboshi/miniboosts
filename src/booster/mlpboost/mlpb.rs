@@ -32,7 +32,11 @@ use std::cell::RefCell;
 
 
 /// MLPBoost struct. See [this paper](https://arxiv.org/abs/2209.10831).
-pub struct MLPBoost<F> {
+pub struct MLPBoost<'a, F> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
+
     // Tolerance parameter
     half_tolerance: f64,
 
@@ -78,9 +82,9 @@ pub struct MLPBoost<F> {
 }
 
 
-impl<F> MLPBoost<F> {
+impl<'a, F> MLPBoost<'a, F> {
     /// Initialize the `MLPBoost`.
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         let n_sample = data.shape().0;
         assert!(n_sample != 0);
 
@@ -90,6 +94,9 @@ impl<F> MLPBoost<F> {
         let nu  = 1.0;
 
         MLPBoost {
+            data,
+            target,
+
             half_tolerance: uni,
             n_sample,
             nu,
@@ -198,22 +205,16 @@ impl<F> MLPBoost<F> {
     }
 }
 
-impl<F> MLPBoost<F>
+impl<F> MLPBoost<'_, F>
     where F: Classifier,
 {
-    fn secondary_update(
-        &self,
-        data: &DataFrame,
-        target: &Series,
-        opt_h: Option<&F>
-    ) -> Vec<f64>
-    {
+    fn secondary_update(&self, opt_h: Option<&F>) -> Vec<f64> {
         match self.secondary {
             Secondary::LPB => {
                 self.lp_model.as_ref()
                     .unwrap()
                     .borrow_mut()
-                    .update(data, target, opt_h)
+                    .update(self.data, self.target, opt_h)
             }
         }
     }
@@ -221,25 +222,19 @@ impl<F> MLPBoost<F>
 
     /// Returns the objective value 
     /// `- \tilde{f}^\star (-Aw)` at the current weighting `w = weights`.
-    fn objval(
-        &self,
-        data: &DataFrame,
-        target: &Series,
-        weights: &[f64],
-    ) -> f64
-    {
+    fn objval(&self, weights: &[f64]) -> f64 {
         let dist = dist_at(
             self.eta,
             self.nu,
-            data,
-            target,
+            self.data,
+            self.target,
             &self.classifiers[..],
             weights
         );
 
 
         let margin = edge_of(
-            data, target, &dist[..], &self.classifiers[..], weights
+            self.data, self.target, &dist[..], &self.classifiers[..], weights
         );
 
 
@@ -255,8 +250,6 @@ impl<F> MLPBoost<F>
     /// Choose the better weights by some criterion.
     fn better_weight(
         &mut self,
-        data: &DataFrame,
-        target: &Series,
         dist: &[f64],
         prim: Vec<f64>,
         seco: Vec<f64>,
@@ -268,16 +261,16 @@ impl<F> MLPBoost<F>
         match self.condition {
             StopCondition::Edge => {
                 prim_val = edge_of(
-                    data, target, dist, &self.classifiers[..], &prim[..]
+                    self.data, self.target, dist, &self.classifiers[..], &prim[..]
                 );
                 seco_val = edge_of(
-                    data, target, dist, &self.classifiers[..], &seco[..]
+                    self.data, self.target, dist, &self.classifiers[..], &seco[..]
                 );
             },
 
             StopCondition::ObjVal => {
-                prim_val = self.objval(data, target, &prim[..]);
-                seco_val = self.objval(data, target, &seco[..]);
+                prim_val = self.objval(&prim[..]);
+                seco_val = self.objval(&seco[..]);
             },
         }
         self.weights = if prim_val >= seco_val { prim } else { seco };
@@ -285,18 +278,16 @@ impl<F> MLPBoost<F>
 }
 
 
-impl<F> Booster<F> for MLPBoost<F>
+impl<F> Booster<F> for MLPBoost<'_, F>
     where F: Classifier + Clone + PartialEq,
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        self.n_sample = data.shape().0;
+        self.n_sample = self.data.shape().0;
 
         self.init_params();
 
@@ -315,8 +306,6 @@ impl<F> Booster<F> for MLPBoost<F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = F>,
@@ -332,19 +321,19 @@ impl<F> Booster<F> for MLPBoost<F>
         let dist = dist_at(
             self.eta,
             self.nu,
-            data,
-            target,
+            self.data,
+            self.target,
             &self.classifiers[..],
             &self.weights[..]
         );
 
 
         // Obtain a hypothesis w.r.t. `dist`.
-        let h = weak_learner.produce(data, target, &dist);
+        let h = weak_learner.produce(self.data, self.target, &dist);
 
 
         // Compute the edge of newly-attained hypothesis `h`.
-        let edge_h = edge_of_h(data, target, &dist[..], &h);
+        let edge_h = edge_of_h(self.data, self.target, &dist[..], &h);
 
 
         // Update the estimation of `edge`.
@@ -359,16 +348,14 @@ impl<F> Booster<F> for MLPBoost<F>
             self.weights.push(1.0_f64);
 
             // **DO NOT FORGET** to update the LP model.
-            let _ = self.secondary_update(
-                data, target, self.classifiers.last()
-            );
+            let _ = self.secondary_update(self.classifiers.last());
 
             return State::Continue;
         }
 
 
         // Compute the objective value.
-        let objval = self.objval(data, target, &self.weights[..]);
+        let objval = self.objval(&self.weights[..]);
 
 
         // If the difference between `gamma` and `objval` is
@@ -402,8 +389,8 @@ impl<F> Booster<F> for MLPBoost<F>
         let prim = self.primary.update(
             self.eta,
             self.nu,
-            data,
-            target,
+            self.data,
+            self.target,
             &dist[..],
             pos,
             &self.classifiers[..],
@@ -412,11 +399,11 @@ impl<F> Booster<F> for MLPBoost<F>
         );
 
         // Secondary update
-        let seco = self.secondary_update(data, target, opt_h);
+        let seco = self.secondary_update(opt_h);
 
 
         // Choose the better one
-        self.better_weight(data, target, &dist[..], prim, seco);
+        self.better_weight(&dist[..], prim, seco);
 
         State::Continue
     }
@@ -425,8 +412,6 @@ impl<F> Booster<F> for MLPBoost<F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        _data: &DataFrame,
-        _target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
@@ -442,15 +427,16 @@ impl<F> Booster<F> for MLPBoost<F>
 }
 
 
-impl<F> Logger for MLPBoost<F>
+impl<F> Logger for MLPBoost<'_, F>
     where F: Classifier
 {
     /// MLPBoost optimizes the soft margin objective
-    fn objective_value(&self, data: &DataFrame, target: &Series)
+    fn objective_value(&self)
         -> f64
     {
         soft_margin_objective(
-            data, target, &self.weights[..], &self.classifiers[..], self.nu
+            self.data, self.target,
+            &self.weights[..], &self.classifiers[..], self.nu
         )
     }
 
@@ -461,5 +447,21 @@ impl<F> Logger for MLPBoost<F>
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
             .signum()
+    }
+
+
+    fn logging<L>(
+        &self,
+        loss_function: &L,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where L: Fn(f64, f64) -> f64
+    {
+        let objval = self.objective_value();
+        let train = self.loss(loss_function, self.data, self.target);
+        let test = self.loss(loss_function, test_data, test_target);
+
+        (objval, train, test)
     }
 }

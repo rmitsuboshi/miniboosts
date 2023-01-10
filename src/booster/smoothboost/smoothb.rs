@@ -24,7 +24,10 @@ use crate::research::{
 
 /// SmoothBoost. See Figure 1
 /// in [this paper](https://www.jmlr.org/papers/volume4/servedio03a/servedio03a.pdf).
-pub struct SmoothBoost<F> {
+pub struct SmoothBoost<'a, F> {
+    data: &'a DataFrame,
+    target: &'a Series,
+
     /// Desired accuracy
     kappa: f64,
 
@@ -57,15 +60,18 @@ pub struct SmoothBoost<F> {
 }
 
 
-impl<F> SmoothBoost<F> {
+impl<'a, F> SmoothBoost<'a, F> {
     /// Initialize `SmoothBoost`.
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         let n_sample = data.shape().0;
 
         let gamma = 0.5;
 
 
         Self {
+            data,
+            target,
+
             kappa: 0.5,
             theta: gamma / (2.0 + gamma), // gamma / (2.0 + gamma)
             gamma,
@@ -142,18 +148,16 @@ impl<F> SmoothBoost<F> {
 
 
 
-impl<F> Booster<F> for SmoothBoost<F>
+impl<F> Booster<F> for SmoothBoost<'_, F>
     where F: Classifier + Clone,
 {
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
-        data: &DataFrame,
-        _target: &Series,
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        self.n_sample = data.shape().0;
+        self.n_sample = self.data.shape().0;
         // Set the paremeter `theta`.
         self.theta();
 
@@ -176,8 +180,6 @@ impl<F> Booster<F> for SmoothBoost<F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        data: &DataFrame,
-        target: &Series,
         iteration: usize,
     ) -> State
         where W: WeakLearner<Hypothesis = F>
@@ -206,16 +208,16 @@ impl<F> Booster<F> for SmoothBoost<F>
 
         // Call weak learner to obtain a hypothesis.
         self.classifiers.push(
-            weak_learner.produce(data, target, &dist[..])
+            weak_learner.produce(self.data, self.target, &dist[..])
         );
         let h: &F = self.classifiers.last().unwrap();
 
 
-        let margins = target.i64()
+        let margins = self.target.i64()
             .expect("The target is not a dtype i64")
             .into_iter()
             .enumerate()
-            .map(|(i, y)| y.unwrap() as f64 * h.confidence(data, i));
+            .map(|(i, y)| y.unwrap() as f64 * h.confidence(self.data, i));
 
 
         // Update `n`
@@ -244,8 +246,6 @@ impl<F> Booster<F> for SmoothBoost<F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-        _data: &DataFrame,
-        _target: &Series,
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
@@ -260,11 +260,11 @@ impl<F> Booster<F> for SmoothBoost<F>
 }
 
 
-impl<F> Logger for SmoothBoost<F>
+impl<F> Logger for SmoothBoost<'_, F>
     where F: Classifier
 {
     /// AdaBoost optimizes the exp loss
-    fn objective_value(&self, data: &DataFrame, target: &Series)
+    fn objective_value(&self)
         -> f64
     {
         let unit = if self.current > 0 {
@@ -275,11 +275,11 @@ impl<F> Logger for SmoothBoost<F>
         let weights = vec![unit; self.current];
 
 
-        let n_sample = data.shape().0 as f64;
+        let n_sample = self.data.shape().0 as f64;
         let nu = self.kappa * n_sample;
 
         soft_margin_objective(
-            data, target, &weights[..], &self.classifiers[..], nu
+            self.data, self.target, &weights[..], &self.classifiers[..], nu
         )
     }
 
@@ -296,5 +296,21 @@ impl<F> Logger for SmoothBoost<F>
             .zip(&self.classifiers[..])
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
+    }
+
+
+    fn logging<L>(
+        &self,
+        loss_function: &L,
+        test_data: &DataFrame,
+        test_target: &Series,
+    ) -> (f64, f64, f64)
+        where L: Fn(f64, f64) -> f64
+    {
+        let objval = self.objective_value();
+        let train = self.loss(loss_function, self.data, self.target);
+        let test = self.loss(loss_function, test_data, test_target);
+
+        (objval, train, test)
     }
 }
