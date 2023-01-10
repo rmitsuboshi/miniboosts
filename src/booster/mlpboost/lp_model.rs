@@ -5,15 +5,15 @@ use grb::prelude::*;
 use crate::Classifier;
 
 pub(super) struct LPModel {
-    pub(self) model: Model,
-    pub(self) gamma: Var,
-    pub(self) dist: Vec<Var>,
-    pub(self) constrs: Vec<Constr>,
+    model: Model,
+    gamma: Var,
+    dist: Vec<Var>,
+    constrs: Vec<Constr>,
 }
 
 
 impl LPModel {
-    pub(super) fn init(size: usize, upper_bound: f64) -> Self {
+    pub(super) fn init(n_sample: usize, upper_bound: f64) -> Self {
         let mut env = Env::new("").unwrap();
         env.set(param::OutputFlag, 0).unwrap();
 
@@ -24,7 +24,7 @@ impl LPModel {
         let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
             .unwrap();
 
-        let dist = (0..size).map(|i| {
+        let dist = (0..n_sample).map(|i| {
                 let name = format!("d[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0.0..upper_bound)
                     .unwrap()
@@ -56,15 +56,16 @@ impl LPModel {
     /// Solve the edge minimization problem over the hypotheses
     /// `h1, ..., ht`.
     /// The argument `h` is the new hypothesis `ht`.
-    pub(super) fn update<C>(&mut self,
-                            data: &DataFrame,
-                            target: &Series,
-                            opt_h: Option<&C>)
-        -> Vec<f64>
+    pub(super) fn update<C>(
+        &mut self,
+        data: &DataFrame,
+        target: &Series,
+        opt_h: Option<&C>
+    ) -> Vec<f64>
         where C: Classifier
     {
         // If we got a new hypothesis,
-        // 1. append a constraint, and
+        // 1. append the corresponding constraint, and
         // 2. optimize the model.
         if let Some(h) = opt_h {
             let edge = target.i64()
@@ -86,12 +87,10 @@ impl LPModel {
             );
 
 
-            self.model.update()
-                .unwrap();
+            self.model.update().unwrap();
 
 
-            self.model.optimize()
-                .unwrap();
+            self.model.optimize().unwrap();
 
 
             let status = self.model.status().unwrap();

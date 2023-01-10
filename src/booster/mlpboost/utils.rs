@@ -4,12 +4,13 @@ use crate::Classifier;
 
 
 
-pub(super) fn edge_of<C>(data: &DataFrame,
-                         target: &Series,
-                         dist: &[f64],
-                         classifiers: &[C],
-                         weights: &[f64])
-    -> f64
+pub(super) fn edge_of<C>(
+    data: &DataFrame,
+    target: &Series,
+    dist: &[f64],
+    classifiers: &[C],
+    weights: &[f64]
+) -> f64
     where C: Classifier
 {
     target.i64()
@@ -26,11 +27,12 @@ pub(super) fn edge_of<C>(data: &DataFrame,
 }
 
 
-pub(super) fn edge_of_h<C>(data: &DataFrame,
-                           target: &Series,
-                           dist: &[f64],
-                           h: &C)
-    -> f64
+pub(super) fn edge_of_h<C>(
+    data: &DataFrame,
+    target: &Series,
+    dist: &[f64],
+    h: &C
+) -> f64
     where C: Classifier
 {
     target.i64()
@@ -45,11 +47,12 @@ pub(super) fn edge_of_h<C>(data: &DataFrame,
 }
 
 
-pub(super) fn confidence<C>(index: usize,
-                            data: &DataFrame,
-                            classifiers: &[C],
-                            weights: &[f64])
-    -> f64
+pub(super) fn confidence<C>(
+    index: usize,
+    data: &DataFrame,
+    classifiers: &[C],
+    weights: &[f64]
+) -> f64
     where C: Classifier
 {
     classifiers.iter()

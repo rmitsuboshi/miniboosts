@@ -5,12 +5,13 @@ use super::utils::*;
 use crate::Classifier;
 
 /// Returns the logarithmic distribution for the given weights.
-fn log_dist_at<C>(eta: f64,
-                  data: &DataFrame,
-                  target: &Series,
-                  classifiers: &[C],
-                  weights: &[f64])
-    -> Vec<f64>
+fn log_dist_at<C>(
+    eta: f64,
+    data: &DataFrame,
+    target: &Series,
+    classifiers: &[C],
+    weights: &[f64]
+) -> Vec<f64>
     where C: Classifier
 {
     // Assign the logarithmic distribution in `dist`.
@@ -30,17 +31,17 @@ fn log_dist_at<C>(eta: f64,
 /// onto the capped simplex.
 fn projection(nu: f64, dist: &[f64]) -> Vec<f64> {
 
-    let size = dist.len();
+    let n_sample = dist.len();
 
     // Sort the indices over `dist` in non-increasing order.
-    let mut ix = (0..size).collect::<Vec<_>>();
+    let mut ix = (0..n_sample).collect::<Vec<_>>();
     ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
 
 
     let mut dist = dist.to_vec();
 
 
-    let mut logsums: Vec<f64> = Vec::with_capacity(size);
+    let mut logsums: Vec<f64> = Vec::with_capacity(n_sample);
     ix.iter().rev()
         .copied()
         .for_each(|i| {
@@ -84,13 +85,14 @@ fn projection(nu: f64, dist: &[f64]) -> Vec<f64> {
 
 /// Computes the distribution (gradient) at current weight.
 #[inline(always)]
-pub(super) fn dist_at<C>(eta: f64,
-                         nu: f64,
-                         data: &DataFrame,
-                         target: &Series,
-                         classifiers: &[C],
-                         weights: &[f64])
-    -> Vec<f64>
+pub(super) fn dist_at<C>(
+    eta: f64,
+    nu: f64,
+    data: &DataFrame,
+    target: &Series,
+    classifiers: &[C],
+    weights: &[f64]
+) -> Vec<f64>
     where C: Classifier
 {
     let dist = log_dist_at(eta, data, target, classifiers, weights);

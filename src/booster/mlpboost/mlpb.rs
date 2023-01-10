@@ -3,7 +3,6 @@
 //! by Warmuth et al.
 //! 
 use polars::prelude::*;
-// use rayon::prelude::*;
 
 use super::{
     lp_model::LPModel,
@@ -35,7 +34,7 @@ use std::cell::RefCell;
 /// MLPBoost struct. See [this paper](https://arxiv.org/abs/2209.10831).
 pub struct MLPBoost<F> {
     // Tolerance parameter
-    tolerance: f64,
+    half_tolerance: f64,
 
 
     // Number of examples
@@ -86,12 +85,12 @@ impl<F> MLPBoost<F> {
         assert!(n_sample != 0);
 
 
-        let uni = 1.0 / n_sample as f64;
+        let uni = 0.5 / n_sample as f64;
         let eta = 2.0 * (n_sample as f64).ln() / uni;
         let nu  = 1.0;
 
         MLPBoost {
-            tolerance: uni,
+            half_tolerance: uni,
             n_sample,
             nu,
             eta,
@@ -147,7 +146,7 @@ impl<F> MLPBoost<F> {
     /// Set the tolerance parameter.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
-        self.tolerance = tolerance / 2.0;
+        self.half_tolerance = tolerance / 2.0;
         self
     }
 
@@ -156,7 +155,7 @@ impl<F> MLPBoost<F> {
     #[inline(always)]
     fn eta(&mut self) {
         let ln_m = (self.n_sample as f64 / self.nu).ln();
-        self.eta = ln_m / self.tolerance;
+        self.eta = ln_m / self.half_tolerance;
     }
 
 
@@ -176,11 +175,7 @@ impl<F> MLPBoost<F> {
     /// The methods `self.tolerance(..)`, `self.eta(..)`, and
     /// `self.init_solver(..)` are accessed only via this method.
     fn init_params(&mut self) {
-        // Set the tolerance parameter.
-        assert!((0.0..0.5).contains(&self.tolerance));
         // Set the regularization parameter.
-        // Note that this method must called after
-        // `self.tolerance(..)`.
         self.eta();
 
         // Initialize the solver.
@@ -189,10 +184,10 @@ impl<F> MLPBoost<F> {
 
 
     /// Returns the maximum iterations 
-    /// to obtain the solution with accuracy `tolerance`.
+    /// to obtain the solution with accuracy `self.half_tolerance`.
     pub fn max_loop(&self) -> usize {
         let ln_m = (self.n_sample as f64 / self.nu).ln();
-        (8.0_f64 * ln_m / self.tolerance.powi(2)).ceil() as usize
+        (8.0_f64 * ln_m / self.half_tolerance.powi(2)).ceil() as usize
     }
 
 
@@ -377,9 +372,9 @@ impl<F> Booster<F> for MLPBoost<F>
 
 
         // If the difference between `gamma` and `objval` is
-        // lower than `self.tolerance`,
+        // lower than `self.half_tolerance`,
         // optimality guaranteed with the precision.
-        if self.gamma - objval <= self.tolerance {
+        if self.gamma - objval <= self.half_tolerance {
             self.terminated = iteration;
             return State::Terminate;
         }
