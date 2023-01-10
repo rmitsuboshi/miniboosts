@@ -48,7 +48,7 @@ pub fn with_log<B, W, H, F, P>(
 
 
     // Cumulative time
-    let mut time_acc = 0.0;
+    let mut time_acc = 0;
 
     // ---------------------------------------------------------------------
     // Boosting step
