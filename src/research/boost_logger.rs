@@ -24,8 +24,6 @@ pub fn with_log<B, W, H, F, P>(
     mut booster: B,
     weak_learner: W,
     loss_function: F,
-    train_data: &DataFrame,
-    train_target: &Series,
     test_data: &DataFrame,
     test_target: &Series,
     file: P,
@@ -44,7 +42,7 @@ pub fn with_log<B, W, H, F, P>(
 
     // ---------------------------------------------------------------------
     // Pre-processing
-    booster.preprocess(&weak_learner, train_data, train_target);
+    booster.preprocess(&weak_learner);
 
 
     // Cumulative time
@@ -56,7 +54,7 @@ pub fn with_log<B, W, H, F, P>(
         // Start measuring time
         let now = Instant::now();
 
-        let state = booster.boost(&weak_learner, train_data, train_target, it);
+        let state = booster.boost(&weak_learner, it);
 
         // Stop measuring and convert `Duration` to Milliseconds.
         let time = now.elapsed().as_millis();
@@ -64,12 +62,11 @@ pub fn with_log<B, W, H, F, P>(
         // Update the cumulative time
         time_acc += time;
 
-        booster.weights_on_hypotheses(train_data, train_target);
+        booster.weights_on_hypotheses();
 
         // Get the objective value, train loss, and test loss
-        let (obj, train, test) = logging(
-            &booster, &loss_function,
-            train_data, train_target, test_data, test_target,
+        let (obj, train, test) = booster.logging(
+            &loss_function, test_data, test_target,
         );
 
         // Write the results to `file`.
@@ -85,27 +82,8 @@ pub fn with_log<B, W, H, F, P>(
 
     // ---------------------------------------------------------------------
     // Post-process
-    let f = booster.postprocess(&weak_learner, train_data, train_target);
+    let f = booster.postprocess(&weak_learner);
 
 
     Ok(f)
-}
-
-
-fn logging<B, F>(
-    booster: &B,
-    loss_function: &F,
-    train_data: &DataFrame,
-    train_target: &Series,
-    test_data: &DataFrame,
-    test_target: &Series,
-) -> (f64, f64, f64)
-    where B: Logger,
-          F: Fn(f64, f64) -> f64,
-{
-    let objval = booster.objective_value(train_data, train_target);
-    let train_loss = booster.loss(loss_function, train_data, train_target);
-    let test_loss  = booster.loss(loss_function, test_data, test_target);
-
-    (objval, train_loss, test_loss)
 }
