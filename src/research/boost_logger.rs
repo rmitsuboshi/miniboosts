@@ -44,33 +44,14 @@ pub fn with_log<B, W, H, F, P>(
 
     // ---------------------------------------------------------------------
     // Pre-processing
-
-    // Measure the preprocess time
-    let now = Instant::now();
-    // Preprocessing
     booster.preprocess(&weak_learner, train_data, train_target);
-
-    // Stop measuring and convert `Duration` to Milliseconds.
-    let time = now.elapsed().as_millis();
-
-
-    // ---------------------------------------------------------------------
-    // Boosting step
-
-    // Get the objective value, train loss, and test loss at init state.
-    let (obj, train, test) = logging(
-        &booster, &loss_function,
-        train_data, train_target, test_data, test_target,
-    );
-
-    // Write the results to `file`.
-    let line = format!("{obj},{train},{test},{time}\n");
-    file.write_all(line.as_bytes())?;
 
 
     // Cumulative time
-    let mut time_acc = time;
+    let mut time_acc = 0.0;
 
+    // ---------------------------------------------------------------------
+    // Boosting step
     for it in 1.. {
         // Start measuring time
         let now = Instant::now();
@@ -85,7 +66,7 @@ pub fn with_log<B, W, H, F, P>(
 
         booster.weights_on_hypotheses(train_data, train_target);
 
-        // Get the objective value, train loss, and test loss at init state.
+        // Get the objective value, train loss, and test loss
         let (obj, train, test) = logging(
             &booster, &loss_function,
             train_data, train_target, test_data, test_target,

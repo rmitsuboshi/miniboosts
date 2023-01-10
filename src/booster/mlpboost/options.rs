@@ -35,17 +35,18 @@ impl Primary {
     /// Returns a weight vector updated 
     /// by the Frank-Wolfe rule.
     #[inline(always)]
-    pub(super) fn update<C>(&self,
-                            eta: f64,
-                            nu: f64,
-                            data: &DataFrame,
-                            target: &Series,
-                            dist: &[f64],
-                            position: usize,
-                            classifiers: &[C],
-                            mut weights: Vec<f64>,
-                            iterate: usize)
-        -> Vec<f64>
+    pub(super) fn update<C>(
+        &self,
+        eta: f64,
+        nu: f64,
+        data: &DataFrame,
+        target: &Series,
+        dist: &[f64],
+        position: usize,
+        classifiers: &[C],
+        mut weights: Vec<f64>,
+        iterate: usize
+    ) -> Vec<f64>
         where C: Classifier
     {
         match self {
@@ -110,13 +111,13 @@ impl Primary {
 
 
             Primary::LineSearch => {
-                let size = data.shape().0;
+                let n_sample = data.shape().0;
                 let f: &C = &classifiers[position];
 
 
                 // base: -Aw
                 // dir:  -A(ej - w)
-                let mut base = vec![0.0; size];
+                let mut base = vec![0.0; n_sample];
                 let mut dir  = base.clone();
                 target.i64()
                     .expect("The target is not a dtype i64")
@@ -138,7 +139,7 @@ impl Primary {
                 let mut lb = 0.0;
 
 
-                // Check the step size `1`.
+                // Check the step n_sample `1`.
                 let dist = dist_at(
                     eta, nu, data, target, classifiers, &dir[..]
                 );
