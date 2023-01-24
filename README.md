@@ -115,7 +115,7 @@ fn main() {
 
     // Run boosting algorithm
     // Each booster returns a combined hypothesis.
-    let f = booster.run(&weak_learner, &data, &target);
+    let f = booster.run(&weak_learner);
 
 
     // Get the batch prediction for all examples in `data`.
