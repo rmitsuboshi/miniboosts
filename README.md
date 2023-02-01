@@ -41,13 +41,13 @@ You can combine them arbitrarily.
 
 ## Future work
 
-- Booster
+- Boosters
     - [AnyBoost](https://www.researchgate.net/publication/243689632_Functional_gradient_techniques_for_combining_hypotheses)
     - [GradientBoost](https://www.jstor.org/stable/2699986)
     - [SparsiBoost](http://proceedings.mlr.press/v97/mathiasen19a/mathiasen19a.pdf)
 
 
-- Weak Learner
+- Weak Learners
     - Bag of words
     - TF-IDF
     - Two-Layer Neural Network
@@ -132,9 +132,9 @@ fn main() {
 If you use boosting for soft margin optimization, 
 initialize booster like this:
 ```rust
-let m = df.shape().0;
-let nu = m as f64 * 0.2;
-let lpboost = LPBoost::init(&sample)
+let n_sample = df.shape().0;
+let nu = n_sample as f64 * 0.2;
+let lpboost = LPBoost::init(&data, &target)
     .tolerance(tol)
     .nu(nu); // Setting the capping parameter.
 ```
