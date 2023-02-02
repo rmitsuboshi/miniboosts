@@ -252,4 +252,3 @@ impl<F> Logger for AdaBoost<'_, F>
     }
 }
 
-

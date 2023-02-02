@@ -1,6 +1,7 @@
 /// Zero-one loss
 pub fn zero_one_loss(true_label: f64, prediction: f64) -> f64 {
-    if true_label == prediction { 0.0 } else { 1.0 }
+    let prediction = if prediction > 0.0 { 1.0 } else { -1.0 };
+    if true_label * prediction > 0.0 { 0.0 } else { 1.0 }
 }
 
 /// Squared loss

@@ -87,7 +87,7 @@ impl<'a, F> SoftBoost<'a, F>
             dist,
             gamma_hat,
             tolerance,
-            sub_tolerance: 1e-9,
+            sub_tolerance: 1e-6,
             nu: 1.0,
             env,
 
@@ -348,6 +348,8 @@ impl<F> Booster<F> for SoftBoost<'_, F>
 
         self.dist = vec![uni; n_sample];
 
+        self.sub_tolerance = self.tolerance / 10.0;
+
         self.max_iter = self.max_loop();
         self.terminated = self.max_iter;
         self.classifiers = Vec::new();
@@ -449,7 +451,6 @@ impl<F> Logger for SoftBoost<'_, F>
             .zip(&self.classifiers[..])
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
-            .signum()
     }
 
 

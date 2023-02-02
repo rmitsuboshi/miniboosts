@@ -446,7 +446,6 @@ impl<F> Logger for MLPBoost<'_, F>
             .zip(&self.classifiers[..])
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
-            .signum()
     }
 
 
