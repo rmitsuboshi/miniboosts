@@ -1,7 +1,9 @@
 /target
 
+.DS_Store
 local_test.rs
-
+.ipynb_checkpoints/
+img/csv/
 
 # Added by cargo
 #

@@ -2,8 +2,11 @@
 **A collection of boosting algorithms written in Rust 🦀.**
 
 
+![boosting comparison](img/example.png)
+
 This library uses [Gurobi optimizer](https://www.gurobi.com), 
 so you must acquire a license to use this library. 
+
 **Note** that you need to put `gurobi.lic` in your home directory; 
 otherwise, the compile fails. 
 See [this repository](https://github.com/ykrist/rust-grb) for details.
