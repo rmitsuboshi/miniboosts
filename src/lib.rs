@@ -9,20 +9,27 @@
 //! This crate includes three types of boosting algorithms. 
 //! 
 //! * Empirical risk minimizing (ERM) boosting
-//!     - `AdaBoost`.
+//!     - [`AdaBoost`](AdaBoost).
 //! 
 //! 
 //! * Hard margin maximizing boosting
-//!     - `AdaBoostV`,
-//!     - `TotalBoost`.
+//!     - [`AdaBoostV`](AdaBoostV),
+//!     - [`TotalBoost`](TotalBoost).
 //! 
 //! 
 //! * Soft margin maximizing boosting
-//!     - `LPBoost`,
-//!     - `SoftBoost`,
-//!     - `ERLPBoost`,
-//!     - `CERLPBoost`.
+//!     - [`LPBoost`](LPBoost),
+//!     - [`SoftBoost`](SoftBoost),
+//!     - [`SmoothBoost`](SmoothBoost),
+//!     - [`ERLPBoost`](ERLPBoost),
+//!     - [`CERLPBoost`](CERLPBoost),
+//!     - [`MLPBoost`](MLPBoost).
 //! 
+//! This crate also includes some Weak Learners.
+//! * Classification
+//!     - [`DTree`](DTree)
+//! * Regression
+//!     - [`RTree`](RTree). Note that the current implement is not efficient.
 
 pub mod hypothesis;
 pub mod booster;
@@ -74,13 +81,7 @@ pub use booster::{
 };
 
 
-// Export the boosting algorithms for regression
-pub use booster::{
-    SquareLevR,
-};
-
-
-// Export the `WeakLearner` trait.
+// Export the [`WeakLearner`](WeakLearner) trait.
 pub use weak_learner::WeakLearner;
 
 
@@ -91,13 +92,13 @@ pub use weak_learner::{
 
     WLUnion,
 
-
     GaussianNB,
 };
 
 
-// Export the instances of the `Classifier` trait.
-// The `CombinedClassifier` is the output of the `Boosting::run(..)`.
+// Export the instances of the [`Classifier`](Classifier) trait.
+// The [`CombinedClassifier`](CombinedClassifier) is 
+// the output of the `Boosting::run(..)`.
 pub use weak_learner::{
     DTreeClassifier,
     NBayesClassifier,

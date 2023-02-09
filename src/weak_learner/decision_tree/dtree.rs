@@ -18,44 +18,82 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use std::ops;
+use std::cmp;
+
+
+/// Struct `Depth` defines the maximal depth of a tree.
+/// This is just a wrapper for `usize`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub(crate) struct Depth(usize);
+
+
+impl ops::Sub<usize> for Depth {
+    type Output = Self;
+    /// Define the subtraction of the `Depth` struct.
+    /// The subtraction does not return a value less than or equals to 1.
+    #[inline]
+    fn sub(self, other: usize) -> Self::Output {
+        if self.0 <= 1 {
+            self
+        } else {
+            Self(self.0 - other)
+        }
+    }
+}
+
+impl cmp::PartialEq<usize> for Depth {
+    #[inline]
+    fn eq(&self, rhs: &usize) -> bool {
+        self.0.eq(rhs)
+    }
+}
+
+
+impl cmp::PartialOrd<usize> for Depth {
+    #[inline]
+    fn partial_cmp(&self, other: &usize) -> Option<cmp::Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
 
 
 /// Generates a `DTreeClassifier` for a given distribution
 /// over examples.
 pub struct DTree {
     criterion: Criterion,
-    max_depth: Option<usize>,
-    size: usize,
+    max_depth: Depth,
 }
 
 
 impl DTree {
-    /// Initialize `DTree`.
+    /// Initialize [`DTree`](DTree).
     #[inline]
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         let criterion = Criterion::Entropy;
-        let max_depth = None;
         let size = data.shape().0;
+        let depth = ((size as f64).log10() + 1.0).ceil() as usize;
 
         Self {
             criterion,
-            max_depth,
-            size,
+            max_depth: Depth(depth),
         }
     }
 
 
     /// Specify the maximal depth of the tree.
-    /// Default maximul depth is `None`.
+    /// Default maximal depth is `log` of number of training examples
     pub fn max_depth(mut self, depth: usize) -> Self {
         assert!(depth > 0);
-        self.max_depth = Some(depth);
+        self.max_depth = Depth(depth);
 
         self
     }
 
 
     /// Set criterion for node splitting.
+    /// See [Criterion](Criterion).
     #[inline]
     pub fn criterion(mut self, criterion: Criterion) -> Self {
         self.criterion = criterion;
@@ -66,20 +104,28 @@ impl DTree {
 
 impl WeakLearner for DTree {
     type Hypothesis = DTreeClassifier;
+    /// This method computes as follows;
+    /// 1. construct a `TrainNode` which contains some information
+    ///     to grow a tree (e.g., impurity, total distribution mass, etc.)
+    /// 2. Convert `TrainNode` to `Node` that pares redundant information
+    #[inline]
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
         -> Self::Hypothesis
     {
-        let mut indices = (0..self.size).into_iter()
-            // .filter(|&i| dist[i] > 0.0)
+        let n_sample = data.shape().0;
+
+        let mut indices = (0..n_sample).into_iter()
+            .filter(|&i| dist[i] > 0.0)
             .collect::<Vec<usize>>();
 
         indices.sort_by(|&i, &j| dist[i].partial_cmp(&dist[j]).unwrap());
 
         let criterion = self.criterion;
-        let depth = self.max_depth;
 
         // Construct a large binary tree
-        let tree = full_tree(data, target, dist, indices, criterion, depth);
+        let tree = full_tree(
+            data, target, dist, indices, criterion, self.max_depth
+        );
 
 
         tree.borrow_mut().remove_redundant_nodes();
@@ -107,7 +153,7 @@ fn full_tree(
     dist: &[f64],
     indices: Vec<usize>,
     criterion: Criterion,
-    max_depth: Option<usize>
+    depth: Depth,
 ) -> Rc<RefCell<TrainNode>>
 {
 
@@ -157,28 +203,21 @@ fn full_tree(
     }
 
 
-    // grow the tree.
+    // Grow the tree.
     let ltree; // Left child
     let rtree; // Right child
-    match max_depth {
-        Some(depth) => {
-            if depth == 1 {
-                // If `depth == 1`,
-                // the childs from this node must be leaves.
-                ltree = construct_leaf(target, dist, lindices);
-                rtree = construct_leaf(target, dist, rindices);
-            } else {
-                // If `depth > 1`,
-                // the childs from this node might be branches.
-                let d = Some(depth - 1);
-                ltree = full_tree(data, target, dist, lindices, criterion, d);
-                rtree = full_tree(data, target, dist, rindices, criterion, d);
-            }
-        },
-        None => {
-            ltree = full_tree(data, target, dist, lindices, criterion, None);
-            rtree = full_tree(data, target, dist, rindices, criterion, None);
-        }
+
+    if depth <= 1 {
+        // If `depth == 1`,
+        // the childs from this node must be leaves.
+        ltree = construct_leaf(target, dist, lindices);
+        rtree = construct_leaf(target, dist, rindices);
+    } else {
+        // If `depth > 1`,
+        // the childs from this node might be branches.
+        let depth = depth - 1;
+        ltree = full_tree(data, target, dist, lindices, criterion, depth);
+        rtree = full_tree(data, target, dist, rindices, criterion, depth);
     }
 
 
