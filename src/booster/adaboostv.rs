@@ -1,4 +1,4 @@
-//! Provides the `AdaBoost*` by Rätsch & Warmuth, 2005.
+//! Provides the `AdaBoostV*` by Rätsch & Warmuth, 2005.
 use polars::prelude::*;
 use rayon::prelude::*;
 
@@ -17,22 +17,109 @@ use crate::research::Logger;
 
 
 
-/// Struct `AdaBoostV` has 4 parameters.
+/// Defines `AdaBoostV`.
+/// This struct is based on the paper: 
+/// [Efficient Margin Maximizing with Boosting](https://www.jmlr.org/papers/v6/ratsch05a.html)
+/// by Gunnar Rätsch and Manfred K. Warmuth.
 /// 
-/// - `tolerance` is the gap parameter,
-/// - `rho` is a guess of the optimal margin,
-/// - `gamma` is the minimum edge over the past edges,
-/// - `dist` is the distribution over training examples,
+/// # Example
+/// The following code shows a small example 
+/// for running [`AdaBoostV`](AdaBoostV).  
+/// See also:
+/// - [`DTree`]
+/// - [`DTreeClassifier`]
+/// - [`CombinedHypothesis<F>`]
+/// - [`DTree::max_depth`]
+/// - [`DTree::criterion`]
+/// - [`DataFrame`]
+/// - [`Series`]
+/// - [`DataFrame::shape`]
+/// - [`CsvReader`]
+/// 
+/// [`DTree`]: crate::weak_learner::DTree
+/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
+/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
+/// [`DataFrame`]: polars::prelude::DataFrame
+/// [`Series`]: polars::prelude::Series
+/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
+/// [`CsvReader`]: polars::prelude::CsvReader
+/// 
+/// 
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// // Initialize `AdaBoostV` and set the tolerance parameter as `0.01`.
+/// // This means `booster` returns a hypothesis whose training error is
+/// // less than `0.01` if the traing examples are linearly separable.
+/// // Note that the default tolerance parameter is set as `1 / n_sample`,
+/// // where `n_sample = data.shape().0` is 
+/// // the number of training examples in `data`.
+/// let booster = AdaBoostV::init(&data, &target)
+///     .tolerance(0.01);
+/// 
+/// // Set the weak learner with setting parameters.
+/// let weak_learner = DecisionTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// 
+/// // Run `AdaBoostV` and obtain the resulting hypothesis `f`.
+/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// 
+/// // Get the predictions on the training set.
+/// let predictions: Vec<i64> = f.predict_all(&data);
+/// 
+/// // Get the number of training examples.
+/// let n_sample = data.shape().0 as f64;
+/// 
+/// // Calculate the training loss.
+/// let training_loss = target.i64()
+///     .unwrap()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(true_label, prediction) {
+///         let true_label = true_label.unwrap();
+///         if true_label == prediction { 0.0 } else { 1.0 }
+///     })
+///     .sum::<f64>()
+///     / n_sample;
+/// 
+///
+/// println!("Training Loss is: {training_loss}");
+/// ```
 pub struct AdaBoostV<'a, F> {
+    // Training data
     data: &'a DataFrame,
+    // Corresponding label
     target: &'a Series,
 
+    // Tolerance parameter
     tolerance: f64,
+
     rho: f64,
+
     gamma: f64,
+
+    // Distribution on data.
     dist: Vec<f64>,
 
-    weighted_classifiers: Vec<(f64, F)>,
+    // Weights on hypotheses in `classifiers`
+    weights: Vec<f64>,
+
+    // Hypohteses obtained by the weak-learner.
+    classifiers: Vec<F>,
 
     max_iter: usize,
 
@@ -41,7 +128,7 @@ pub struct AdaBoostV<'a, F> {
 
 
 impl<'a, F> AdaBoostV<'a, F> {
-    /// Initialize the `AdaBoostV<D, L>`.
+    /// Initialize the `AdaBoostV<'a, F>`.
     pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
         let n_sample = data.shape().0;
         assert!(n_sample != 0);
@@ -59,7 +146,8 @@ impl<'a, F> AdaBoostV<'a, F> {
             gamma:     1.0,
             dist,
 
-            weighted_classifiers: Vec::new(),
+            weights: Vec::new(),
+            classifiers: Vec::new(),
 
             max_iter: usize::MAX,
             terminated: usize::MAX,
@@ -81,7 +169,7 @@ impl<'a, F> AdaBoostV<'a, F> {
     /// of the `AdaBoostV` to find a combined hypothesis
     /// that has error at most `tolerance`.
     /// After the `self.max_loop()` iterations,
-    /// `AdaBoost` guarantees zero training error in terms of zero-one loss
+    /// `AdaBoostV` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
     #[inline]
     pub fn max_loop(&self) -> usize {
@@ -159,7 +247,8 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
         self.dist = vec![1.0 / n_sample as f64; n_sample];
 
 
-        self.weighted_classifiers = Vec::new();
+        self.weights = Vec::new();
+        self.classifiers = Vec::new();
 
 
         self.max_iter = self.max_loop();
@@ -201,14 +290,16 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
         // use it as the combined classifier.
         if edge.abs() >= 1.0 {
             self.terminated = iteration;
-            self.weighted_classifiers = vec![(edge.signum(), h)];
+            self.weights = vec![edge.signum()];
+            self.classifiers = vec![h];
             return State::Terminate;
         }
 
 
         // Compute the weight on the new hypothesis
         let weight = self.update_params(margins, edge);
-        self.weighted_classifiers.push((weight, h));
+        self.weights.push(weight);
+        self.classifiers.push(h);
 
         State::Continue
     }
@@ -220,7 +311,12 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
-        CombinedHypothesis::from(self.weighted_classifiers.clone())
+        let f = self.weights.iter()
+            .copied()
+            .zip(self.classifiers.iter().cloned())
+            .filter(|(w, _)| *w != 0.0)
+            .collect::<Vec<_>>();
+        CombinedHypothesis::from(f)
     }
 }
 
@@ -229,7 +325,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
 impl<F> Logger for AdaBoostV<'_, F>
     where F: Classifier
 {
-    /// AdaBoost optimizes the exp loss
+    /// AdaBoostV optimizes the hard-margin on training examples.
     fn objective_value(&self)
         -> f64
     {
@@ -247,7 +343,8 @@ impl<F> Logger for AdaBoostV<'_, F>
 
 
     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        self.weighted_classifiers.iter()
+        self.weights.iter()
+            .zip(&self.classifiers)
             .map(|(w, h)| w * h.confidence(data, i))
             .sum::<f64>()
     }
