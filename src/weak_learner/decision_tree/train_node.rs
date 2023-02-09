@@ -102,10 +102,11 @@ impl From<TrainBranchNode> for TrainLeafNode {
 impl TrainNode {
     /// Construct a leaf node from the given arguments.
     #[inline]
-    pub(super) fn leaf(prediction: i64,
-                       total_weight: f64,
-                       loss_as_leaf: f64)
-        -> Rc<RefCell<Self>>
+    pub(super) fn leaf(
+        prediction: i64,
+        total_weight: f64,
+        loss_as_leaf: f64
+    ) -> Rc<RefCell<Self>>
     {
         let prediction = prediction as f64;
         let leaf = TrainLeafNode {
@@ -121,13 +122,14 @@ impl TrainNode {
 
     /// Construct a branch node from the arguments.
     #[inline]
-    pub(super) fn branch(rule: Splitter,
-                         left: Rc<RefCell<TrainNode>>,
-                         right: Rc<RefCell<TrainNode>>,
-                         prediction: i64,
-                         total_weight: f64,
-                         loss_as_leaf: f64)
-        -> Rc<RefCell<Self>>
+    pub(super) fn branch(
+        rule: Splitter,
+        left: Rc<RefCell<TrainNode>>,
+        right: Rc<RefCell<TrainNode>>,
+        prediction: i64,
+        total_weight: f64,
+        loss_as_leaf: f64
+    ) -> Rc<RefCell<Self>>
     {
         let prediction = prediction as f64;
         let leaves = left.borrow().leaves() + right.borrow().leaves();
@@ -253,29 +255,6 @@ impl Classifier for TrainNode {
         }
     }
 }
-
-
-
-// pub(super) struct TrainNodeGuard<'a> {
-//     guard: Ref<'a, TrainNode>
-// }
-// 
-// 
-// impl<'b> Deref for TrainNodeGuard<'b> {
-//     type Target = TrainNode;
-// 
-//     fn deref(&self) -> &Self::Target {
-//         &self.guard
-//     }
-// }
-// 
-// 
-// pub(super) fn get_ref(node: &Rc<RefCell<TrainNode>>) -> TrainNodeGuard
-// {
-//     TrainNodeGuard {
-//         guard: node.borrow()
-//     }
-// }
 
 
 impl fmt::Debug for TrainBranchNode {
