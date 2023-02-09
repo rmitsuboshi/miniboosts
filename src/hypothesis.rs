@@ -72,21 +72,34 @@ pub trait Regressor {
 
 /// A struct that the boosting algorithms in this library return.
 /// You can read/write this struct by `Serde` trait.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CombinedHypothesis<F> {
     /// Each element is the pair of hypothesis and its weight
     pub inner: Vec<(f64, F)>,
-
-    /// The constant hypothesis that always predicts the same value.
-    pub constant: f64,
 }
 
 
 impl<F> CombinedHypothesis<F> {
-    /// Set the constant hypothesis that always predicts `value`.
-    pub fn constant(mut self, value: f64) -> Self {
-        self.constant = value;
-        self
+    /// Append a pair `(weight, F)` to the current combined hypothesis.
+    #[inline]
+    pub fn push(&mut self, weight: f64, hypothesis: F) {
+        self.inner.push((weight, hypothesis));
+    }
+
+
+    /// Normalize the `self.weights`, `\| w \|_1 = 1`.
+    #[inline]
+    pub fn normalize(&mut self) {
+        let norm = self.inner.iter()
+            .map(|(w, _)| w.abs())
+            .sum::<f64>();
+
+        if norm <= 0.0 { return; }
+
+        self.inner.iter_mut()
+            .for_each(|(w, _)| {
+                *w /= norm;
+            });
     }
 }
 
@@ -96,7 +109,6 @@ impl<F> From<Vec<(f64, F)>> for CombinedHypothesis<F>
     fn from(inner: Vec<(f64, F)>) -> Self {
         CombinedHypothesis {
             inner,
-            constant: 0.0,
         }
     }
 }
@@ -109,7 +121,6 @@ impl<F> Classifier for CombinedHypothesis<F>
         self.inner.iter()
             .map(|(w, h)| *w * h.confidence(df, row))
             .sum::<f64>()
-            + self.constant
     }
 }
 
@@ -121,7 +132,6 @@ impl<F> Regressor for CombinedHypothesis<F>
         self.inner.iter()
             .map(|(w, h)| *w * h.predict(df, row))
             .sum::<f64>()
-            + self.constant
     }
 }
 
