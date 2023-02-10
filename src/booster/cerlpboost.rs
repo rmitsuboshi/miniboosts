@@ -24,8 +24,93 @@ use crate::research::{
     soft_margin_objective,
 };
 
-/// Corrective ERLPBoost struct.
-/// This algorithm is based on the [paper](https://link.springer.com/content/pdf/10.1007/s10994-010-5173-z.pdf).
+/// Corrective ERLPBoost struct.  
+/// This algorithm is based on this paper:
+/// [On the equivalence of weak learnability and linear separability: new relaxations and efficient boosting algorithms](https://link.springer.com/article/10.1007/s10994-010-5173-z)
+/// by Shai Shalev-Shwartz and Yoram Singer.
+/// 
+/// # Example
+/// The following code shows a small example 
+/// for running [`CERLPBoost`](CERLPBoost).  
+/// See also:
+/// - [`CERLPBoost::nu`]
+/// - [`DTree`]
+/// - [`DTreeClassifier`]
+/// - [`CombinedHypothesis<F>`]
+/// - [`DTree::max_depth`]
+/// - [`DTree::criterion`]
+/// - [`DataFrame`]
+/// - [`Series`]
+/// - [`DataFrame::shape`]
+/// - [`CsvReader`]
+/// 
+/// [`CERLPBoost::nu`]: CERLPBoost::nu
+/// [`DTree`]: crate::weak_learner::DTree
+/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
+/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
+/// [`DataFrame`]: polars::prelude::DataFrame
+/// [`Series`]: polars::prelude::Series
+/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
+/// [`CsvReader`]: polars::prelude::CsvReader
+/// 
+/// 
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// // Get the number of training examples.
+/// let n_sample = data.shape().0 as f64;
+/// 
+/// // Initialize `CERLPBoost` and set the tolerance parameter as `0.01`.
+/// // This means `booster` returns a hypothesis 
+/// // whose soft margin objective value is differs at most `0.01`
+/// // from the optimal one.
+/// // Further, at the end of this chain,
+/// // CERLPBoost calls `CERLPBoost::nu` to set the capping parameter 
+/// // as `0.1 * n_sample`, which means that, 
+/// // at most, `0.1 * n_sample` examples are regarded as outliers.
+/// let booster = CERLPBoost::init(&data, &target)
+///     .tolerance(0.01)
+///     .nu(0.1 * n_sample);
+/// 
+/// // Set the weak learner with setting parameters.
+/// let weak_learner = DecisionTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// 
+/// // Run `CERLPBoost` and obtain the resulting hypothesis `f`.
+/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// 
+/// // Get the predictions on the training set.
+/// let predictions: Vec<i64> = f.predict_all(&data);
+/// 
+/// // Calculate the training loss.
+/// let training_loss = target.i64()
+///     .unwrap()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(true_label, prediction) {
+///         let true_label = true_label.unwrap();
+///         if true_label == prediction { 0.0 } else { 1.0 }
+///     })
+///     .sum::<f64>()
+///     / n_sample;
+///
+///
+/// println!("Training Loss is: {training_loss}");
+/// ```
 pub struct CERLPBoost<'a, F> {
     data: &'a DataFrame,
     target: &'a Series,

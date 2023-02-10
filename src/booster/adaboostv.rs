@@ -62,11 +62,9 @@ use crate::research::Logger;
 /// let target = data.drop_in_place(class_column_name).unwrap();
 /// 
 /// // Initialize `AdaBoostV` and set the tolerance parameter as `0.01`.
-/// // This means `booster` returns a hypothesis whose training error is
-/// // less than `0.01` if the traing examples are linearly separable.
-/// // Note that the default tolerance parameter is set as `1 / n_sample`,
-/// // where `n_sample = data.shape().0` is 
-/// // the number of training examples in `data`.
+/// // This means `booster` returns a hypothesis 
+/// // whose hard margin objective value is differs at most `0.01`
+/// // from the optimal one, if the training examples are linearly separable.
 /// let booster = AdaBoostV::init(&data, &target)
 ///     .tolerance(0.01);
 /// 

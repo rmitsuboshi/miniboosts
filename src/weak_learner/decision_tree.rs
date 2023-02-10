@@ -3,6 +3,9 @@ pub mod dtree;
 /// Defines the classifier produced by `DTree`.
 pub mod dtree_classifier;
 
+/// Defines binning.
+pub mod bin;
+
 /// Defines the inner representations of `DTreeClassifier`.
 mod node;
 mod criterion;

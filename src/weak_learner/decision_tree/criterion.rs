@@ -93,9 +93,12 @@ impl Add for Impurity {
 // TODO
 //      Add other criterions.
 //      E.g., Gini criterion, Twoing criterion (page 38 of CART)
-/// Maximization objectives.
-/// * `Criterion::Gini` is the gini-index,
-/// * `Criterion::Entropy` is the entropy.
+// * `Criterion::Gini` is the gini-index,
+
+/// Splitting criteria for growing decision tree.
+/// * `Criterion::Edge` maximizes the edge (weighted training accuracy)
+///     for given distribution.
+/// * `Criterion::Entropy` minimizes entropic impurity for given distribution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Criterion {
     /// Binary entropy function.
