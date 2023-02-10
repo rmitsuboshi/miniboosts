@@ -3,7 +3,6 @@
 //! by Warmuth et al.
 //! 
 use polars::prelude::*;
-// use rayon::prelude::*;
 
 use super::lp_model::LPModel;
 
@@ -27,10 +26,99 @@ use std::cell::RefCell;
 
 
 
-/// LPBoost struct.
-/// See [this paper](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf).
+/// LPBoost struct.  
+/// LPBoost is originally invented in this paper: [Linear Programming Boosting via Column Generation](https://www.researchgate.net/publication/220343627_Linear_Programming_Boosting_via_Column_Generation) by Ayhan Demiriz, Kristin P. Bennett, and John Shawe-Taylor.
+/// The code is based on this paper: [Boosting algorithms for Maximizing the Soft Margin](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf) by Manfred K. Warmuth, Karen Glocer, and Gunnar Rätsch.
+/// 
+/// # Example
+/// The following code shows a small example 
+/// for running [`LPBoost`](LPBoost).  
+/// See also:
+/// - [`LPBoost::nu`]
+/// - [`DTree`]
+/// - [`DTreeClassifier`]
+/// - [`CombinedHypothesis<F>`]
+/// - [`DTree::max_depth`]
+/// - [`DTree::criterion`]
+/// - [`DataFrame`]
+/// - [`Series`]
+/// - [`DataFrame::shape`]
+/// - [`CsvReader`]
+/// 
+/// [`LPBoost::nu`]: LPBoost::nu
+/// [`DTree`]: crate::weak_learner::DTree
+/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
+/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
+/// [`DataFrame`]: polars::prelude::DataFrame
+/// [`Series`]: polars::prelude::Series
+/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
+/// [`CsvReader`]: polars::prelude::CsvReader
+/// 
+/// 
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// // Get the number of training examples.
+/// let n_sample = data.shape().0 as f64;
+/// 
+/// // Initialize `LPBoost` and set the tolerance parameter as `0.01`.
+/// // This means `booster` returns a hypothesis whose training error is
+/// // less than `0.01` if the traing examples are linearly separable.
+/// // Note that the default tolerance parameter is set as `1 / n_sample`,
+/// // where `n_sample = data.shape().0` is 
+/// // the number of training examples in `data`.
+/// // Further, at the end of this chain,
+/// // LPBoost calls `LPBoost::nu` to set the capping parameter 
+/// // as `0.1 * n_sample`, which means that, 
+/// // at most, `0.1 * n_sample` examples are regarded as outliers.
+/// let booster = LPBoost::init(&data, &target)
+///     .tolerance(0.01)
+///     .nu(0.1 * n_sample);
+/// 
+/// // Set the weak learner with setting parameters.
+/// let weak_learner = DecisionTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// 
+/// // Run `LPBoost` and obtain the resulting hypothesis `f`.
+/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// 
+/// // Get the predictions on the training set.
+/// let predictions: Vec<i64> = f.predict_all(&data);
+/// 
+/// // Calculate the training loss.
+/// let training_loss = target.i64()
+///     .unwrap()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(true_label, prediction) {
+///         let true_label = true_label.unwrap();
+///         if true_label == prediction { 0.0 } else { 1.0 }
+///     })
+///     .sum::<f64>()
+///     / n_sample;
+/// 
+///
+/// println!("Training Loss is: {training_loss}");
+/// ```
 pub struct LPBoost<'a, F> {
+    // Training data
     data: &'a DataFrame,
+
+    // Corresponding label
     target: &'a Series,
 
 
@@ -89,7 +177,7 @@ impl<'a, F> LPBoost<'a, F>
             weights: Vec::new(),
 
 
-            terminated: 0_usize,
+            terminated: usize::MAX,
         }
     }
 
@@ -104,10 +192,12 @@ impl<'a, F> LPBoost<'a, F>
     }
 
 
+    /// Initializes the LP solver.
     fn init_solver(&mut self) {
-        let upper_bound = 1.0 / self.nu;
+        let n_sample = self.data.shape().0 as f64;
+        assert!((1.0..=n_sample).contains(&self.nu));
 
-        assert!((0.0..=1.0).contains(&upper_bound));
+        let upper_bound = 1.0 / self.nu;
 
         let lp_model = RefCell::new(LPModel::init(self.n_sample, upper_bound));
 
@@ -116,7 +206,9 @@ impl<'a, F> LPBoost<'a, F>
 
 
     /// Set the tolerance parameter.
-    /// Default is `1.0 / sample_size`/
+    /// LPBoost guarantees the `tolerance`-approximate solution to
+    /// the soft margin optimization.  
+    /// Default value is `1.0 / sample_size`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
@@ -125,7 +217,7 @@ impl<'a, F> LPBoost<'a, F>
 
 
     /// Returns the terminated iteration.
-    /// This method returns `0` before the boosting step.
+    /// This method returns `usize::MAX` before the boosting step.
     #[inline(always)]
     pub fn terminated(&self) -> usize {
         self.terminated
@@ -245,7 +337,8 @@ impl<F> Logger for LPBoost<'_, F>
     }
 
 
-    /// AdaBoost optimizes the exp loss
+    /// LPBoost optimizes the soft margin over the current hypotheses
+    /// obtained from the weak-learner.
     fn objective_value(&self)
         -> f64
     {

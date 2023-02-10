@@ -63,6 +63,8 @@ You can combine them arbitrarily.
 
 
 ## How to use
+You can see the document by `cargo doc --open` command.  
+
 This library uses 
 the `DataFrame` of [`polars`](https://github.com/pola-rs/polars) crate, 
 so that you need to import `polars`.
@@ -142,4 +144,4 @@ let lpboost = LPBoost::init(&data, &target)
     .nu(nu); // Setting the capping parameter.
 ```
 
-Note that the capping parameter satisfies `1 <= nu && nu <= m`.
+Note that the capping parameter must satisfies `1 <= nu && nu <= n_sample`.
