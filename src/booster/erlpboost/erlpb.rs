@@ -27,12 +27,101 @@ use std::cell::RefCell;
 
 
 /// ERLPBoost struct. 
-/// See [this paper](https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.141.1759&rep=rep1&type=pdf).
+/// This code is based on this paper: [Entropy Regularized LPBoost](https://link.springer.com/chapter/10.1007/978-3-540-87987-9_23) by Manfred K. Warmuth, Karen A. Glocer, and S. V. N. Vishwanathan.
+/// 
+/// # Example
+/// The following code shows a small example 
+/// for running [`ERLPBoost`](ERLPBoost).  
+/// See also:
+/// - [`ERLPBoost::nu`]
+/// - [`DTree`]
+/// - [`DTreeClassifier`]
+/// - [`CombinedHypothesis<F>`]
+/// - [`DTree::max_depth`]
+/// - [`DTree::criterion`]
+/// - [`DataFrame`]
+/// - [`Series`]
+/// - [`DataFrame::shape`]
+/// - [`CsvReader`]
+/// 
+/// [`ERLPBoost::nu`]: ERLPBoost::nu
+/// [`DTree`]: crate::weak_learner::DTree
+/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
+/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
+/// [`DataFrame`]: polars::prelude::DataFrame
+/// [`Series`]: polars::prelude::Series
+/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
+/// [`CsvReader`]: polars::prelude::CsvReader
+/// 
+/// 
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// // Get the number of training examples.
+/// let n_sample = data.shape().0 as f64;
+/// 
+/// // Initialize `ERLPBoost` and set the tolerance parameter as `0.01`.
+/// // This means `booster` returns a hypothesis whose training error is
+/// // less than `0.01` if the traing examples are linearly separable.
+/// // Note that the default tolerance parameter is set as `1 / n_sample`,
+/// // where `n_sample = data.shape().0` is 
+/// // the number of training examples in `data`.
+/// // Further, at the end of this chain,
+/// // ERLPBoost calls `ERLPBoost::nu` to set the capping parameter 
+/// // as `0.1 * n_sample`, which means that, 
+/// // at most, `0.1 * n_sample` examples are regarded as outliers.
+/// let booster = ERLPBoost::init(&data, &target)
+///     .tolerance(0.01)
+///     .nu(0.1 * n_sample);
+/// 
+/// // Set the weak learner with setting parameters.
+/// let weak_learner = DecisionTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// 
+/// // Run `ERLPBoost` and obtain the resulting hypothesis `f`.
+/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// 
+/// // Get the predictions on the training set.
+/// let predictions: Vec<i64> = f.predict_all(&data);
+/// 
+/// // Calculate the training loss.
+/// let training_loss = target.i64()
+///     .unwrap()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(true_label, prediction) {
+///         let true_label = true_label.unwrap();
+///         if true_label == prediction { 0.0 } else { 1.0 }
+///     })
+///     .sum::<f64>()
+///     / n_sample;
+/// 
+///
+/// println!("Training Loss is: {training_loss}");
+/// ```
 pub struct ERLPBoost<'a, F> {
+    // Training data
     data: &'a DataFrame,
+
+    // Corresponding label
     target: &'a Series,
 
 
+    // Distribution over examples
     dist: Vec<f64>,
 
     // `gamma_hat` corresponds to $\min_{q=1, .., t} P^q (d^{q-1})$
@@ -43,7 +132,7 @@ pub struct ERLPBoost<'a, F> {
     // regularization parameter defined in the paper
     eta: f64,
 
-    tolerance: f64,
+    half_tolerance: f64,
 
     qp_model: Option<RefCell<QPModel>>,
 
@@ -80,11 +169,11 @@ impl<'a, F> ERLPBoost<'a, F> {
 
 
         // Set tolerance
-        let tolerance = uni / 2.0;
+        let half_tolerance = uni / 2.0;
 
 
         // Set regularization parameter
-        let eta = 0.5_f64.max(2.0_f64 * ln_n_sample / tolerance);
+        let eta = 0.5_f64.max(ln_n_sample / half_tolerance);
 
         // Set gamma_hat and gamma_star
         let gamma_hat  = 1.0;
@@ -99,7 +188,7 @@ impl<'a, F> ERLPBoost<'a, F> {
             gamma_hat,
             gamma_star,
             eta,
-            tolerance,
+            half_tolerance,
             qp_model: None,
 
             classifiers: Vec::new(),
@@ -150,7 +239,7 @@ impl<'a, F> ERLPBoost<'a, F> {
     /// Set the tolerance parameter.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
-        self.tolerance = tolerance / 2.0;
+        self.half_tolerance = tolerance / 2.0;
         self
     }
 
@@ -161,7 +250,7 @@ impl<'a, F> ERLPBoost<'a, F> {
         let ln_n_sample = (self.n_sample as f64 / self.nu).ln();
 
 
-        self.eta = 0.5_f64.max(ln_n_sample / self.tolerance);
+        self.eta = 0.5_f64.max(ln_n_sample / self.half_tolerance);
     }
 
 
@@ -171,11 +260,11 @@ impl<'a, F> ERLPBoost<'a, F> {
     fn max_loop(&mut self) -> usize {
         let n_sample = self.n_sample as f64;
 
-        let mut max_iter = 4.0 / self.tolerance;
+        let mut max_iter = 4.0 / self.half_tolerance;
 
 
         let ln_n_sample = (n_sample / self.nu).ln();
-        let temp = 8.0 * ln_n_sample / self.tolerance.powi(2);
+        let temp = 8.0 * ln_n_sample / self.half_tolerance.powi(2);
 
 
         max_iter = max_iter.max(temp);
@@ -294,7 +383,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         self.gamma_star = -1.0;
 
 
-        assert!((0.0..1.0).contains(&self.tolerance));
+        assert!((0.0..1.0).contains(&self.half_tolerance));
         self.regularization_param();
         self.init_solver();
     }
@@ -321,7 +410,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
 
         // Check the stopping criterion
         let diff = self.gamma_hat - self.gamma_star;
-        if diff <= self.tolerance {
+        if diff <= self.half_tolerance {
             self.terminated = iteration;
             return State::Terminate;
         }
@@ -377,7 +466,7 @@ impl<F> Logger for ERLPBoost<'_, F>
     }
 
 
-    /// AdaBoost optimizes the exp loss
+    /// ERLPBoost optimizes the soft-margin objective.
     fn objective_value(&self) -> f64
     {
         soft_margin_objective(
