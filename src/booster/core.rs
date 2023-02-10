@@ -24,11 +24,6 @@ pub enum State {
 /// to write a new boosting algorithm.
 pub trait Booster<F> {
     /// A main function that runs boosting algorithm.
-    /// This method takes
-    /// 
-    /// - the reference of 
-    ///     an instance of the [`WeakLearner`](WeakLearner) trait,
-    /// - a reference of the training examples, and
     fn run<W>(
         &mut self,
         weak_learner: &W,
@@ -59,9 +54,11 @@ pub trait Booster<F> {
         where W: WeakLearner<Hypothesis = F>;
 
 
-    /// Boosting per iteration.
-    /// This method returns `true` if the stopping criterion is satisfied,
-    /// `false` otherwise.
+    /// Boosting step per iteration.
+    /// This method returns 
+    /// `State::Continue` if the stopping criterion is satisfied,
+    /// `State::Terminate` otherwise.  
+    /// See [`State`](State)
     fn boost<W>(
         &mut self,
         weak_learner: &W,

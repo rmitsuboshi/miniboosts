@@ -74,11 +74,9 @@ use std::cell::RefCell;
 /// let n_sample = data.shape().0 as f64;
 /// 
 /// // Initialize `ERLPBoost` and set the tolerance parameter as `0.01`.
-/// // This means `booster` returns a hypothesis whose training error is
-/// // less than `0.01` if the traing examples are linearly separable.
-/// // Note that the default tolerance parameter is set as `1 / n_sample`,
-/// // where `n_sample = data.shape().0` is 
-/// // the number of training examples in `data`.
+/// // This means `booster` returns a hypothesis 
+/// // whose soft margin objective value is differs at most `0.01`
+/// // from the optimal one.
 /// // Further, at the end of this chain,
 /// // ERLPBoost calls `ERLPBoost::nu` to set the capping parameter 
 /// // as `0.1 * n_sample`, which means that, 

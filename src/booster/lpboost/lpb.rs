@@ -75,11 +75,9 @@ use std::cell::RefCell;
 /// let n_sample = data.shape().0 as f64;
 /// 
 /// // Initialize `LPBoost` and set the tolerance parameter as `0.01`.
-/// // This means `booster` returns a hypothesis whose training error is
-/// // less than `0.01` if the traing examples are linearly separable.
-/// // Note that the default tolerance parameter is set as `1 / n_sample`,
-/// // where `n_sample = data.shape().0` is 
-/// // the number of training examples in `data`.
+/// // This means `booster` returns a hypothesis 
+/// // whose soft margin objective value is differs at most `0.01`
+/// // from the optimal one.
 /// // Further, at the end of this chain,
 /// // LPBoost calls `LPBoost::nu` to set the capping parameter 
 /// // as `0.1 * n_sample`, which means that, 
@@ -185,7 +183,8 @@ impl<'a, F> LPBoost<'a, F>
     /// This method updates the capping parameter.
     /// This parameter must be in `[1, n_sample]`.
     pub fn nu(mut self, nu: f64) -> Self {
-        assert!(1.0 <= nu && nu <= self.n_sample as f64);
+        let n_sample = self.n_sample as f64;
+        assert!((1.0..=n_sample).contains(&nu));
         self.nu = nu;
 
         self

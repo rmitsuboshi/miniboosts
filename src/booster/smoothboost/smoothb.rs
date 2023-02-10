@@ -22,8 +22,95 @@ use crate::research::{
 };
 
 
-/// SmoothBoost. See Figure 1
-/// in [this paper](https://www.jmlr.org/papers/volume4/servedio03a/servedio03a.pdf).
+/// `SmoothBoost`.
+/// Variable names, such as `kappa`, `gamma`, and `theta`, 
+/// come from the original paper.  
+/// **Note that** `SmoothBoost` needs to know 
+/// the weak learner guarantee `gamma`.  
+/// See Figure 1 in this paper: 
+/// [Smooth Boosting and Learning with Malicious Noise](https://link.springer.com/chapter/10.1007/3-540-44581-1_31) by Rocco A. Servedio.
+/// 
+/// # Example
+/// The following code shows a small example 
+/// for running [`SmoothBoost`](SmoothBoost).  
+/// See also:
+/// - [`SmoothBoost::tolerance`]
+/// - [`SmoothBoost::gamma`]
+/// - [`DTree`]
+/// - [`DTreeClassifier`]
+/// - [`CombinedHypothesis<F>`]
+/// - [`DTree::max_depth`]
+/// - [`DTree::criterion`]
+/// - [`DataFrame`]
+/// - [`Series`]
+/// - [`DataFrame::shape`]
+/// - [`CsvReader`]
+/// 
+/// [`SmoothBoost::tolerance`]: SmoothBoost::tolerance
+/// [`SmoothBoost::gamma`]: SmoothBoost::gamma
+/// [`DTree`]: crate::weak_learner::DTree
+/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
+/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
+/// [`DataFrame`]: polars::prelude::DataFrame
+/// [`Series`]: polars::prelude::Series
+/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
+/// [`CsvReader`]: polars::prelude::CsvReader
+/// 
+/// 
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// // Get the number of training examples.
+/// let n_sample = data.shape().0 as f64;
+/// 
+/// // Initialize `SmoothBoost` and 
+/// // set the weak learner guarantee `gamma` as `0.05`.
+/// // For this case, weak learner returns a hypothesis
+/// // that returns a hypothesis with weighted loss 
+/// // at most `0.45 = 0.5 - 0.05`.
+/// let booster = SmoothBoost::init(&data, &target)
+///     .tolerance(0.01)
+///     .gamma(0.05);
+/// 
+/// // Set the weak learner with setting parameters.
+/// let weak_learner = DecisionTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// 
+/// // Run `SmoothBoost` and obtain the resulting hypothesis `f`.
+/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// 
+/// // Get the predictions on the training set.
+/// let predictions: Vec<i64> = f.predict_all(&data);
+/// 
+/// // Calculate the training loss.
+/// let training_loss = target.i64()
+///     .unwrap()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(true_label, prediction) {
+///         let true_label = true_label.unwrap();
+///         if true_label == prediction { 0.0 } else { 1.0 }
+///     })
+///     .sum::<f64>()
+///     / n_sample;
+///
+///
+/// println!("Training Loss is: {training_loss}");
+/// ```
 pub struct SmoothBoost<'a, F> {
     data: &'a DataFrame,
     target: &'a Series,
@@ -91,7 +178,7 @@ impl<'a, F> SmoothBoost<'a, F> {
     }
 
 
-    /// Set the parameter `kappa`.
+    /// Set the tolerance parameter `kappa`.
     #[inline(always)]
     pub fn tolerance(mut self, kappa: f64) -> Self {
         self.kappa = kappa;
@@ -101,8 +188,16 @@ impl<'a, F> SmoothBoost<'a, F> {
 
 
     /// Set the parameter `gamma`.
+    /// `gamma` is the weak learner guarantee;  
+    /// `SmoothBoost` assumes the weak learner to returns a hypothesis `h`
+    /// such that
+    /// `0.5 * sum_i D[i] |h(x[i]) - y[i]| <= 0.5 - gamma`
+    /// for the given distribution.  
+    /// **Note that** this is an extremely assumption.
     #[inline(always)]
     pub fn gamma(mut self, gamma: f64) -> Self {
+        // `gamma` must be in [0.0, 0.5)
+        assert!((0.0..0.5).contains(&gamma));
         self.gamma = gamma;
 
         self
@@ -263,7 +358,6 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 impl<F> Logger for SmoothBoost<'_, F>
     where F: Classifier
 {
-    /// AdaBoost optimizes the exp loss
     fn objective_value(&self)
         -> f64
     {
