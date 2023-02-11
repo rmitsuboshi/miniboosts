@@ -10,8 +10,7 @@ categories  = ["science"]
 keywords    = ["boosting", "machine-learning"]
 
 exclude = ["/tests", "/img", "TODO.txt"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
 
 
 [dependencies]
