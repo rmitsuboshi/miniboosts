@@ -59,8 +59,37 @@ impl cmp::PartialOrd<usize> for Depth {
 }
 
 
-/// Generates a `DTreeClassifier` for a given distribution
-/// over examples.
+/// `DTree` is the factory that
+/// generates a `DTreeClassifier` for a given distribution over examples.
+/// 
+/// See also:
+/// - [`DTree::max_depth`](DTree::max_depth)
+/// - [`DTree::criterion`](DTree::criterion)
+/// - [`Criterion`](Criterion)
+/// 
+/// # Example
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// // Get an instance of decision tree weak learner.
+/// // In this example,
+/// // the output hypothesis is at most depth 2.
+/// // Further, this example uses `Criterion::Edge` for splitting rule.
+/// let weak_learner = DTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// ```
 pub struct DTree {
     criterion: Criterion,
     max_depth: Depth,
@@ -83,7 +112,7 @@ impl DTree {
 
 
     /// Specify the maximal depth of the tree.
-    /// Default maximal depth is `log` of number of training examples
+    /// Default maximal depth is `log10` of number of training examples.
     pub fn max_depth(mut self, depth: usize) -> Self {
         assert!(depth > 0);
         self.max_depth = Depth(depth);
@@ -93,7 +122,8 @@ impl DTree {
 
 
     /// Set criterion for node splitting.
-    /// See [Criterion](Criterion).
+    /// Default value is `Criterion::Entropy`.
+    /// See [`Criterion`](Criterion).
     #[inline]
     pub fn criterion(mut self, criterion: Criterion) -> Self {
         self.criterion = criterion;

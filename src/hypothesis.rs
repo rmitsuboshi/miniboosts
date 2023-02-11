@@ -1,19 +1,4 @@
-//! The core library for the base learner in the boosting protocol.
-//! 
-//! The base learner in the general boosting setting is as follows:
-//! 
-//! Given a distribution over training examples,
-//! the base learner returns a hypothesis that is slightly better than
-//! the random guessing, where the **edge** is the affine transformation of
-//! the weighted training error.
-//! 
-//! In this code, we assume that the base learner returns a hypothesis
-//! that **maximizes** the edge for a given distribution.
-//! This assumption is stronger than the previous one, but the resulting
-//! combined hypothesis becomes much stronger.
-//! 
-//! I'm planning to implement the code for the general base learner setting.
-//! 
+//! The core library for `Hypothesis` traits.
 use polars::prelude::*;
 use serde::{Serialize, Deserialize};
 
@@ -23,6 +8,9 @@ use serde::{Serialize, Deserialize};
 /// You only need to implement `confidence` method.
 pub trait Classifier {
     /// Computes the confidence of the i'th row of the `df`.
+    /// This code assumes that
+    /// `Classifier::confidence` returns a value in `[-1.0, 1.0]`.
+    /// Those hypotheses are called as **confidence-rated hypotheses**.
     fn confidence(&self, df: &DataFrame, row: usize) -> f64;
 
 
@@ -87,7 +75,7 @@ impl<F> CombinedHypothesis<F> {
     }
 
 
-    /// Normalize the `self.weights`, `\| w \|_1 = 1`.
+    /// Normalize `self.weights`, `\| w \|_1 = 1`.
     #[inline]
     pub fn normalize(&mut self) {
         let norm = self.inner.iter()

@@ -1,6 +1,6 @@
 //! This file defines `MLPBoost` based on the paper
-//! "Boosting algorithms for Maximizing the Soft Margin"
-//! by Warmuth et al.
+//! [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831).
+//! by Mitsuboshi et al.
 //! 
 use polars::prelude::*;
 
@@ -31,7 +31,102 @@ use std::cell::RefCell;
 
 
 
-/// MLPBoost struct. See [this paper](https://arxiv.org/abs/2209.10831).
+/// MLPBoost. This code is based on this paler: 
+/// [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831)
+/// by Ryotaro Mitsuboshi, Kohei Hatano, and Eiji Takimoto.
+/// 
+/// # Example
+/// The following code shows a small example 
+/// for running [`MLPBoost`](MLPBoost).  
+/// See also:
+/// - [`MLPBoost::nu`]
+/// - [`MLPBoost::primary`]
+/// - [`MLPBoost::stop_condition`]
+/// - [`StopCondition`]
+/// - [`Primary`]
+/// - [`DTree`]
+/// - [`DTreeClassifier`]
+/// - [`CombinedHypothesis<F>`]
+/// - [`DTree::max_depth`]
+/// - [`DTree::criterion`]
+/// - [`DataFrame`]
+/// - [`Series`]
+/// - [`DataFrame::shape`]
+/// - [`CsvReader`]
+/// 
+/// [`MLPBoost::nu`]: MLPBoost::nu
+/// [`MLPBoost::primary`]: MLPBoost::primary
+/// [`MLPBoost::stop_condition`]: MLPBoost::stop_condition
+/// [`StopCondition`]: StopCondition
+/// [`Primary`]: Primary
+/// [`DTree`]: crate::weak_learner::DTree
+/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
+/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
+/// [`DataFrame`]: polars::prelude::DataFrame
+/// [`Series`]: polars::prelude::Series
+/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
+/// [`CsvReader`]: polars::prelude::CsvReader
+/// 
+/// 
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// // Get the number of training examples.
+/// let n_sample = data.shape().0 as f64;
+/// 
+/// // Initialize `MLPBoost` and set the tolerance parameter as `0.01`.
+/// // This means `booster` returns a hypothesis 
+/// // whose soft margin objective value is differs at most `0.01`
+/// // from the optimal one.
+/// // Further, at the end of this chain,
+/// // MLPBoost calls `MLPBoost::nu` to set the capping parameter 
+/// // as `0.1 * n_sample`, which means that, 
+/// // at most, `0.1 * n_sample` examples are regarded as outliers.
+/// let booster = MLPBoost::init(&data, &target)
+///     .tolerance(0.01)
+///     .primary(Primary::ShortStep)
+///     .stop_condition(StopCondition::ObjVal)
+///     .nu(0.1 * n_sample);
+/// 
+/// // Set the weak learner with setting parameters.
+/// let weak_learner = DecisionTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// 
+/// // Run `MLPBoost` and obtain the resulting hypothesis `f`.
+/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// 
+/// // Get the predictions on the training set.
+/// let predictions: Vec<i64> = f.predict_all(&data);
+/// 
+/// // Calculate the training loss.
+/// let training_loss = target.i64()
+///     .unwrap()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(true_label, prediction) {
+///         let true_label = true_label.unwrap();
+///         if true_label == prediction { 0.0 } else { 1.0 }
+///     })
+///     .sum::<f64>()
+///     / n_sample;
+/// 
+///
+/// println!("Training Loss is: {training_loss}");
+/// ```
 pub struct MLPBoost<'a, F> {
     data: &'a DataFrame,
     target: &'a Series,

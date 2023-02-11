@@ -8,6 +8,38 @@ use crate::{
 
 
 /// The union of weak learners.
+/// One can use unify multiple weak learners by this struct.
+/// 
+/// See also:
+/// - [`DTree`](crate::weak_learner::DTree)
+/// 
+/// # Example
+/// ```no_run
+/// use polars::prelude::*;
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let mut data = CsvReader::from_path(path_to_csv_file)
+///     .unwrap()
+///     .has_header(true)
+///     .finish()
+///     .unwrap();
+/// 
+/// // Split the column corresponding to labels.
+/// let target = data.drop_in_place(class_column_name).unwrap();
+/// 
+/// 
+/// let t1 = DTree::init(&data, &target)
+///     .max_depth(1)
+///     .criterion(Criterion::Edge);
+/// let t2 = DTree::init(&data, &target)
+///     .max_depth(2)
+///     .criterion(Criterion::Edge);
+/// 
+/// let weak_learner = WLUnion::new()
+///     .union(Box::new(t1))
+///     .union(Box::new(t2));
+/// ```
 pub struct WLUnion<F> {
     weak_learners: Vec<Box<dyn WeakLearner<Hypothesis = F>>>,
 }
@@ -37,6 +69,8 @@ impl<F> WeakLearner for WLUnion<F>
 {
     type Hypothesis = Box<dyn Classifier>;
 
+    /// Output a boxed hypothesis which maximizes the edge
+    /// among the hypotheses returned by weak learners.
     fn produce(
         &self,
         data: &DataFrame,
