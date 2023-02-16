@@ -4,6 +4,7 @@ use polars::prelude::*;
 use crate::Regressor;
 
 
+use crate::weak_learner::type_and_struct::*;
 use super::split_rule::*;
 use super::train_node::*;
 
@@ -39,8 +40,11 @@ impl BranchNode {
     /// Returns the `BranchNode` from the given components.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(super) fn from_raw(rule: Splitter, left: Box<Node>, right: Box<Node>)
-        -> Self
+    pub(super) fn from_raw(
+        rule: Splitter,
+        left: Box<Node>,
+        right: Box<Node>
+    ) -> Self
     {
         Self {
             rule,
@@ -54,7 +58,7 @@ impl BranchNode {
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode {
-    pub(super) prediction: f64,
+    pub(super) prediction: Prediction,
 }
 
 
@@ -63,7 +67,7 @@ impl LeafNode {
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(prediction: f64) -> Self {
+    pub(crate) fn from_raw(prediction: Prediction) -> Self {
         Self { prediction }
     }
 }
@@ -117,7 +121,7 @@ impl From<TrainNode> for Node {
 impl Regressor for LeafNode {
     #[inline]
     fn predict(&self, _data: &DataFrame, _row: usize) -> f64 {
-        self.prediction
+        self.prediction.0
     }
 }
 
@@ -151,7 +155,7 @@ impl Node {
                 let b_info = format!(
                     "\tnode_{id} [ label = \"{feat} < {thr:.2} ?\" ];\n",
                     feat = b.rule.feature,
-                    thr = b.rule.threshold
+                    thr = b.rule.threshold.0
                 );
 
                 let (l_info, next_id) = b.left.to_dot_info(id + 1);
@@ -181,7 +185,7 @@ impl Node {
                      label = \"{p:.2}\", \
                      shape = box, \
                      ];\n",
-                    p = l.prediction
+                    p = l.prediction.0
                 );
 
                 (vec![info], id + 1)

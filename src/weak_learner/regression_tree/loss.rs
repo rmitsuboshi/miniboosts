@@ -7,9 +7,11 @@ use serde::{
 };
 
 
+use crate::weak_learner::type_and_struct::*;
+
 /// The type of loss (error) function.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum Loss {
+pub enum LossType {
     /// Least Absolute Error
     L1,
     /// Least Squared Error
@@ -17,7 +19,7 @@ pub enum Loss {
 }
 
 
-impl Loss {
+impl LossType {
     /// Returns the best splitting rule based on the loss function.
     pub(super) fn best_split<'a>(
         &self,
@@ -25,7 +27,7 @@ impl Loss {
         target: &Series,
         dist: &[f64],
         idx: &[usize],
-    ) -> (&'a str, f64)
+    ) -> (&'a str, Threshold)
     {
         data.get_columns()
             .into_par_iter()
@@ -53,12 +55,102 @@ impl Loss {
         target: &Series,
         dist: &[f64],
         idx: &[usize],
-    ) -> (f64, f64)
+    ) -> (LossValue, Threshold)
     {
         match self {
-            Loss::L1 => best_split_l1(column, target, dist, idx),
-            Loss::L2 => best_split_l2(column, target, dist, idx),
+            LossType::L1 => best_split_l1(column, target, dist, idx),
+            LossType::L2 => best_split_l2(column, target, dist, idx),
         }
+    }
+
+
+    pub(super) fn prediction_and_loss(
+        &self,
+        target: &Series,
+        indices: &[usize],
+        dist: &[f64],
+    ) -> (Prediction, LossValue)
+    {
+        let target = target.f64()
+            .expect("The target class is not a dtype i64");
+
+
+        let tuples = indices.into_par_iter()
+            .copied()
+            .map(|i| {
+                let y = target.get(i).unwrap();
+                (dist[i], y)
+            })
+            .collect::<Vec<(f64, f64)>>();
+
+        let sum_dist = tuples.iter()
+            .map(|(d, _)| d)
+            .sum::<f64>();
+
+        if sum_dist == 0.0 {
+            return (Prediction::from(0.0), LossValue::from(0.0));
+        }
+
+
+        let prediction;
+        let loss_value;
+        match self {
+            LossType::L1 => {
+                // For `L1`-loss, we use `inner_prediction_and_loss`
+                // to get the prediction and its loss.
+                // Function `inner_prediction_and_loss` takes the slice
+                // `&[(Feature, Mass, Target)]`
+                // but does not use the first argument.
+                // So I adopt the dummy feature value `0.0`.
+                let triplets = tuples.into_iter()
+                    .map(|(d, y)| (0.0.into(), d.into(), y.into()))
+                    .collect::<Vec<(Feature, Mass, Target)>>();
+                // // Sort the values of `tuples`
+                // // in the ascending order of `y`.
+                // tuples.sort_by(|(_, y1), (_, y2)|
+                //     y1.partial_cmp(&y2).unwrap()
+                // );
+
+                // let mut d_sum = 0.0;
+
+                // for (d, y) in tuples.iter() {
+                //     d_sum += d;
+                //     if d_sum >= 0.5 * sum_dist {
+                //         prediction = *y;
+                //         break;
+                //     }
+                // }
+
+
+                // assert_ne!(prediction, 1e9);
+
+                // loss_value = tuples.into_iter()
+                //     .map(|(d, y)| d * (y - prediction).abs())
+                //     .sum::<f64>()
+                //     / sum_dist;
+                (prediction, loss_value) = inner_prediction_and_loss(
+                    &triplets[..],
+                );
+            },
+            LossType::L2 => {
+                prediction = Prediction::from(
+                    tuples.iter()
+                        .map(|(d, y)| *d * *y)
+                        .sum::<f64>()
+                        / sum_dist
+                );
+
+
+                loss_value = LossValue::from(
+                    tuples.into_iter()
+                        .map(|(d, y)| d * (y - prediction.0).powi(2))
+                        .sum::<f64>()
+                        / sum_dist
+                );
+            }
+        }
+
+        (prediction, loss_value)
     }
 
 }
@@ -70,7 +162,7 @@ fn best_split_l1(
     target: &Series,
     dist: &[f64],
     idx: &[usize]
-) -> (f64, f64)
+) -> (LossValue, Threshold)
 {
     let target = target.f64()
         .expect("The target class is not a dtype i64");
@@ -86,28 +178,30 @@ fn best_split_l1(
         .map(|i| {
             let x = column.get(i).unwrap();
             let y = target.get(i).unwrap();
-            (x, dist[i], y)
+            (Feature::from(x), Mass::from(dist[i]), Target::from(y))
         })
-        .collect::<Vec<(f64, f64, f64)>>();
-    triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(x2).unwrap());
+        .collect::<Vec<_>>();
+    triplets.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
 
-    let mut node = LocalNodeL1::new(triplets);
-    let mut best_variance;
+    let mut node = BestSplitFinderL1::new(triplets);
+    let mut best_loss_value;
     let mut best_threshold;
 
 
-    (best_variance, best_threshold) = node.lae_and_threshold();
+    (best_loss_value, best_threshold) = node.lad_and_threshold();
 
 
-    while let Some((variance, threshold)) = node.move_to_left() {
-        if variance < best_variance {
-            best_variance = variance;
+    while let Some((loss_value, threshold)) = node.move_to_left() {
+        if loss_value < best_loss_value {
+            best_loss_value = loss_value;
             best_threshold = threshold;
         }
     }
 
-    (best_variance, best_threshold)
+    let loss = LossValue::from(best_loss_value);
+    let threshold = Threshold::from(best_threshold);
+    (loss, threshold)
 }
 
 
@@ -117,7 +211,7 @@ fn best_split_l2(
     target: &Series,
     dist: &[f64],
     idx: &[usize]
-) -> (f64, f64)
+) -> (LossValue, Threshold)
 {
     let target = target.f64()
         .expect("The target class is not a dtype i64");
@@ -139,7 +233,7 @@ fn best_split_l2(
     triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(x2).unwrap());
 
 
-    let mut node = LocalNodeL2::new(triplets);
+    let mut node = BestSplitFinderL2::new(triplets);
     let mut best_variance;
     let mut best_threshold;
 
@@ -154,12 +248,14 @@ fn best_split_l2(
         }
     }
 
-    (best_variance, best_threshold)
+    let loss = LossValue::from(best_variance);
+    let threshold = Threshold::from(best_threshold);
+    (loss, threshold)
 }
 
 
 /// This struct stores the temporary information to find a best split.
-struct LocalNodeL2 {
+struct BestSplitFinderL2 {
     /// The list of target values for the left/right nodes.
     left: Vec<(f64, f64, f64)>,
     right: Vec<(f64, f64, f64)>,
@@ -175,8 +271,8 @@ struct LocalNodeL2 {
 }
 
 
-impl LocalNodeL2 {
-    /// Create an instance of `LocalNodeL2` that contains
+impl BestSplitFinderL2 {
+    /// Create an instance of `BestSplitFinderL2` that contains
     /// all instances in `triplets`.
     /// Note that `triplets` is sorted in the ascending order
     /// with respect to the first element.
@@ -311,89 +407,81 @@ fn calc_variance(triplets: &[(f64, f64, f64)], y_sum: f64, sum_dist: f64)
 
 
 /// This struct stores the temporary information to find a best split.
-struct LocalNodeL1 {
+struct BestSplitFinderL1 {
     /// The list of target values for the left/right nodes.
-    left: Vec<(f64, f64, f64)>,
-    right: Vec<(f64, f64, f64)>,
-
-    /// sum of the target values reached to left/right nodes.
-    left_sum_target: f64,
-    right_sum_target: f64,
+    left: Vec<(Feature, Mass, Target)>,
+    right: Vec<(Feature, Mass, Target)>,
 }
 
 
-impl LocalNodeL1 {
-    /// Create an instance of `LocalNodeL1` that contains
+impl BestSplitFinderL1 {
+    /// Create an instance of `BestSplitFinderL1` that contains
     /// all instances in `triplets`.
     /// Note that `triplets` is sorted in the ascending order
     /// with respect to the first element.
-    pub(self) fn new(triplets: Vec<(f64, f64, f64)>) -> Self {
+    pub(self) fn new(triplets: Vec<(Feature, Mass, Target)>) -> Self {
         let m = triplets.len();
 
         let left = Vec::with_capacity(m);
         let right = triplets;
 
-        let left_sum_target: f64 = 0.0;
-        let right_sum_target = right.iter().map(|t| t.2).sum::<f64>();
-
-
         Self {
             left,
             right,
-
-            left_sum_target,
-            right_sum_target,
         }
     }
 
 
     /// Returns the pair of variance and threshold.
-    pub(self) fn lae_and_threshold(&self) -> (f64, f64) {
+    pub(self) fn lad_and_threshold(&self)
+        -> (LossValue, Threshold)
+    {
         // Compute the threshold to make the current split.
         let threshold;
         if self.right.is_empty() {
             let left_largest = self.left.last()
-                .map(|(x, _, _)| x).unwrap();
+                .map(|(x, _, _)| x.0)
+                .unwrap();
             threshold = left_largest + 1.0;
         } else {
             let right_smallest = self.right.last()
-                .map(|(x, _, _)| x)
+                .map(|(x, _, _)| x.0)
                 .unwrap();
             let left_largest = self.left.last()
-                .map(|(x, _, _)| *x)
+                .map(|(x, _, _)| x.0)
                 .unwrap_or(right_smallest - 2.0);
             threshold = (left_largest + right_smallest) / 2.0;
         }
 
+        let threshold = Threshold::from(threshold);
+
 
         // Compute the variance.
-        let left_lae = calc_lae(&self.left[..], self.left_sum_target);
+        let left_lad = inner_prediction_and_loss(&self.left[..]).1;
 
-        let right_lae = calc_lae(&self.right[..], self.right_sum_target);
+        let right_lad = inner_prediction_and_loss(&self.right[..]).1;
 
 
-        let lae = left_lae + right_lae;
+        let lad = left_lad + right_lad;
 
-        (lae, threshold)
+        (lad, threshold)
     }
 
 
 
     /// Move an instance of right node to the left node.
     /// After that, this method returns the pair of
-    /// the variance of the new threshold.
-    pub(self) fn move_to_left(&mut self) -> Option<(f64, f64)> {
+    /// the variance and the new threshold.
+    pub(self) fn move_to_left(&mut self)
+        -> Option<(LossValue, Threshold)>
+    {
         if let Some(r) = self.right.pop() {
-            self.right_sum_target -= r.2;
-            self.left_sum_target  += r.2;
-
             self.left.push(r);
 
-            while let Some(r2) = self.right.pop() {
-                if r.0 == r2.0 {
-                    self.right_sum_target -= r2.2;
-                    self.left_sum_target  += r2.2;
+            let feature = r.0;
 
+            while let Some(r2) = self.right.pop() {
+                if feature == r2.0 {
                     self.left.push(r2);
                 } else {
                     self.right.push(r2);
@@ -401,8 +489,8 @@ impl LocalNodeL1 {
                 }
             }
 
-            let lae_threshold = self.lae_and_threshold();
-            Some(lae_threshold)
+            let lad_threshold = self.lad_and_threshold();
+            Some(lad_threshold)
         } else {
             None
         }
@@ -410,14 +498,77 @@ impl LocalNodeL1 {
 }
 
 
-fn calc_lae(triplets: &[(f64, f64, f64)], y_sum: f64)
-    -> f64
+fn inner_prediction_and_loss(triplets: &[(Feature, Mass, Target)])
+    -> (Prediction, LossValue)
 {
-    let n_sample = triplets.len() as f64;
-    let y_mean = y_sum / n_sample;
-    triplets.into_par_iter()
-        .map(|(_, w, y)| w * (y - y_mean).abs())
-        .sum::<f64>()
+    let m_total = triplets.iter()
+        .map(|(_, m, _)| m.0)
+        .sum::<f64>();
+
+    if m_total == 0.0 {
+        let prediction = 0.0.into();
+        let loss = 0.0.into();
+        return (prediction, loss);
+    }
+
+    let mut triplets = triplets.to_vec();
+    triplets.sort_by(|(_, _, t1), (_, _, t2)|
+        t1.partial_cmp(&t2).unwrap()
+    );
+
+    // Find the median over `triplets`.
+    // let mut median = 1e9;
+    // let mut m_tmp_sum = 0.0;
+    // for (_, m, t) in triplets.iter() {
+    //     m_tmp_sum += m.0;
+    //     if m_tmp_sum >= 0.5 * m_total {
+    //         median = t.0;
+    //         break;
+    //     }
+    // }
+    // assert_ne!(median, 1e9);
+
+    // triplets.par_iter()
+    //     .map(|(_, m, t)| m.0 * (t.0 - median).abs())
+    //     .sum::<f64>()
+    //     .into()
+
+
+    let mut p_small = 1e9;
+    let mut p_large = 1e9;
+    let mut m_partial_sum = 0.0;
+    for (_, m, t) in triplets.iter() {
+        m_partial_sum += m.0;
+        if m_partial_sum >= 0.5 * m_total {
+            p_large = t.0;
+            if p_small == 1e9 {
+                p_small = t.0;
+            }
+            break;
+        }
+        p_small = t.0;
+    }
+
+    assert!(p_small < 1e9);
+    assert!(p_large < 1e9);
+
+    let loss_p_small = triplets.par_iter()
+        .map(|(_, m, t)| m.0 * (t.0 - p_small).abs())
+        .sum::<f64>();
+    let loss_p_large = triplets.par_iter()
+        .map(|(_, m, t)| m.0 * (t.0 - p_large).abs())
+        .sum::<f64>();
+
+    let prediction;
+    let loss;
+    if loss_p_small < loss_p_large {
+        prediction = p_small.into();
+        loss = loss_p_small.into();
+    } else {
+        prediction = p_large.into();
+        loss = loss_p_large.into();
+    }
+    (prediction, loss)
 }
 
 

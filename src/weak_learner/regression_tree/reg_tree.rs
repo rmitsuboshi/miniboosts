@@ -9,7 +9,7 @@ use super::{
     node::*,
     train_node::*,
     split_rule::*,
-    loss::Loss,
+    loss::LossType,
     rtree_regressor::RTreeRegressor,
 };
 
@@ -21,14 +21,14 @@ use std::cell::RefCell;
 /// This struct produces a regression tree for the given distribution.
 pub struct RTree {
     // The maximal depth of the output trees
-    max_depth: Option<usize>,
+    max_depth: usize,
 
     // The number of training instances
-    size: usize,
+    n_sample: usize,
 
 
-    // Loss function
-    loss_type: Loss,
+    // LossType function
+    loss_type: LossType,
 }
 
 
@@ -38,14 +38,15 @@ impl RTree {
     pub fn init(data: &DataFrame, _target: &Series)
         -> Self
     {
-        let max_depth = None;
-        let size = data.shape().0;
+        let n_sample = data.shape().0;
+
+        let max_depth = (n_sample as f64).log2().ceil() as usize;
 
         Self {
             max_depth,
-            size,
+            n_sample,
 
-            loss_type: Loss::L2,
+            loss_type: LossType::L2,
         }
     }
 
@@ -53,14 +54,14 @@ impl RTree {
     /// Set the maximum depth of the resulting tree.
     #[inline]
     pub fn max_depth(mut self, depth: usize) -> Self {
-        self.max_depth = Some(depth);
+        self.max_depth = depth;
         self
     }
 
 
     /// Set the loss type.
     #[inline]
-    pub fn loss_type(mut self, loss: Loss) -> Self {
+    pub fn loss_type(mut self, loss: LossType) -> Self {
         self.loss_type = loss;
         self
     }
@@ -72,7 +73,8 @@ impl WeakLearner for RTree {
     fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
         -> Self::Hypothesis
     {
-        let indices = (0..self.size).into_iter()
+        let indices = (0..self.n_sample).into_iter()
+            .filter(|&i| dist[i] > 0.0)
             .collect::<Vec<usize>>();
 
         let depth = self.max_depth;
@@ -102,8 +104,8 @@ fn full_tree(
     target: &Series,
     dist: &[f64],
     indices: Vec<usize>,
-    max_depth: Option<usize>,
-    loss_type: Loss
+    max_depth: usize,
+    loss_type: LossType
 ) -> Rc<RefCell<TrainNode>>
 {
     let total_weight = indices.par_iter()
@@ -114,7 +116,9 @@ fn full_tree(
 
     // Compute the best prediction that minimizes the training error
     // on this node.
-    let (pred, loss) = calc_loss_as_leaf(target, dist, &indices[..]);
+    let (pred, loss) = loss_type.prediction_and_loss(
+        target, &indices, dist
+    );
 
 
     // If sum of `dist` over `train` is zero, construct a leaf node.
@@ -151,25 +155,17 @@ fn full_tree(
     // grow the tree.
     let ltree; // Left child
     let rtree; // Right child
-    match max_depth {
-        Some(depth) => {
-            if depth == 1 {
-                // If `depth == 1`,
-                // the childs from this node must be leaves.
-                ltree = construct_leaf(target, dist, lindices);
-                rtree = construct_leaf(target, dist, rindices);
-            } else {
-                // If `depth > 1`,
-                // the childs from this node might be branches.
-                let d = Some(depth - 1);
-                ltree = full_tree(data, target, dist, lindices, d, loss_type);
-                rtree = full_tree(data, target, dist, rindices, d, loss_type);
-            }
-        },
-        None => {
-            ltree = full_tree(data, target, dist, lindices, None, loss_type);
-            rtree = full_tree(data, target, dist, rindices, None, loss_type);
-        }
+    if max_depth <= 1 {
+        // If `depth <= 1`,
+        // the childs from this node must be leaves.
+        ltree = construct_leaf(target, dist, lindices, loss_type);
+        rtree = construct_leaf(target, dist, rindices, loss_type);
+    } else {
+        // If `depth > 1`,
+        // the childs from this node might be branches.
+        let d = max_depth - 1;
+        ltree = full_tree(data, target, dist, lindices, d, loss_type);
+        rtree = full_tree(data, target, dist, rindices, d, loss_type);
     }
 
 
@@ -178,14 +174,16 @@ fn full_tree(
 
 
 #[inline]
-fn construct_leaf(target: &Series,
-                  dist: &[f64],
-                  indices: Vec<usize>)
-    -> Rc<RefCell<TrainNode>>
+fn construct_leaf(
+    target: &Series,
+    dist: &[f64],
+    indices: Vec<usize>,
+    loss_type: LossType,
+) -> Rc<RefCell<TrainNode>>
 {
     // Compute the best prediction that minimizes the training error
     // on this node.
-    let (pred, loss) = calc_loss_as_leaf(target, dist, &indices[..]);
+    let (p, l) = loss_type.prediction_and_loss(target, &indices, dist);
 
 
     let total_weight = indices.iter()
@@ -194,48 +192,5 @@ fn construct_leaf(target: &Series,
             .sum::<f64>();
 
 
-    TrainNode::leaf(pred, total_weight, loss)
+    TrainNode::leaf(p, total_weight, l)
 }
-
-
-/// This function returns a tuple `(y, e)` where
-/// - `y` is the mean of the target values, and
-/// - `e` is the training loss when the prediction is `y`.
-#[inline]
-fn calc_loss_as_leaf(target: &Series, dist: &[f64], indices: &[usize])
-    -> (f64, f64)
-{
-    let target = target.f64()
-        .expect("The target class is not a dtype i64");
-
-    let tuples = indices.into_par_iter()
-        .copied()
-        .map(|i| {
-            let y = target.get(i).unwrap();
-            (dist[i], y)
-        })
-        .collect::<Vec<(f64, f64)>>();
-
-    let sum_dist = tuples.iter()
-        .map(|(d, _)| *d)
-        .sum::<f64>();
-
-    if sum_dist == 0.0 {
-        return (0.0, 0.0);
-    }
-
-    let mean_y = tuples.iter()
-        .map(|(d, y)| *d * *y)
-        .sum::<f64>()
-        / sum_dist;
-
-
-    let l2_loss = tuples.into_iter()
-        .map(|(d, y)| d * (y - mean_y).powi(2))
-        .sum::<f64>()
-        / sum_dist;
-
-
-    (mean_y, l2_loss)
-}
-
