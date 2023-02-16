@@ -1,8 +1,8 @@
 //! This file defines split rules for decision tree.
 use polars::prelude::*;
-
-
 use serde::*;
+
+use crate::weak_learner::type_and_struct::*;
 
 
 /// The output of the function `split` of `SplitRule`.
@@ -16,13 +16,13 @@ pub enum LR {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(super) struct Splitter {
     pub(super) feature: String,
-    pub(super) threshold: f64,
+    pub(super) threshold: Threshold,
 }
 
 
 impl Splitter {
     #[inline]
-    pub(super) fn new(name: &str, threshold: f64) -> Self {
+    pub(super) fn new(name: &str, threshold: Threshold) -> Self {
         let feature = name.to_string();
         Self {
             feature,
@@ -40,7 +40,7 @@ impl Splitter {
             .expect("The target class is not a dtype f64")
             .get(row).unwrap();
 
-        if value < self.threshold {
+        if value < self.threshold.0 {
             LR::Left
         } else {
             LR::Right

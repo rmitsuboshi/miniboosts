@@ -20,15 +20,6 @@ pub struct RTreeRegressor {
     root: Node,
 }
 
-impl RTreeRegressor {
-    /// Construct a single node regression tree.
-    pub fn constant(prediction: f64) -> Self {
-        let root = Node::Leaf(LeafNode::from_raw(prediction));
-
-        Self { root }
-    }
-}
-
 
 impl From<Node> for RTreeRegressor {
     #[inline]
