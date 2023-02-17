@@ -4,7 +4,10 @@ use polars::prelude::*;
 use crate::Classifier;
 
 
-use super::split_rule::*;
+use crate::weak_learner::common::{
+    type_and_struct::*,
+    split_rule::*,
+};
 
 
 use std::rc::Rc;
@@ -40,7 +43,7 @@ pub struct TrainBranchNode {
 
 
     // A label that have most weight on this node.
-    pub(super) prediction: f64,
+    pub(super) prediction: Prediction<i64>,
 
 
     // Total mass on this node.
@@ -48,7 +51,7 @@ pub struct TrainBranchNode {
 
 
     // Training error as a leaf
-    pub(self) loss_as_leaf: f64,
+    pub(self) loss_as_leaf: LossValue,
 
 
     pub(self) leaves: usize,
@@ -59,7 +62,7 @@ impl TrainBranchNode {
     /// Returns the node misclassification cost of this node.
     #[inline]
     pub(self) fn node_misclassification_cost(&self) -> f64 {
-        let r = self.loss_as_leaf;
+        let r = self.loss_as_leaf.0;
         let p = self.total_weight;
 
         r * p
@@ -69,9 +72,9 @@ impl TrainBranchNode {
 
 /// Represents the leaf nodes of decision tree.
 pub struct TrainLeafNode {
-    pub(super) prediction: f64,
+    pub(super) prediction: Prediction<i64>,
     pub(self) total_weight: f64,
-    pub(self) loss_as_leaf: f64,
+    pub(self) loss_as_leaf: LossValue,
 }
 
 
@@ -79,7 +82,7 @@ impl TrainLeafNode {
     /// Returns the node misclassification cost of this node.
     #[inline]
     pub(self) fn node_misclassification_cost(&self) -> f64 {
-        let r = self.loss_as_leaf;
+        let r = self.loss_as_leaf.0;
         let p = self.total_weight;
 
         r * p
@@ -103,12 +106,11 @@ impl TrainNode {
     /// Construct a leaf node from the given arguments.
     #[inline]
     pub(super) fn leaf(
-        prediction: i64,
+        prediction: Prediction<i64>,
         total_weight: f64,
-        loss_as_leaf: f64
+        loss_as_leaf: LossValue,
     ) -> Rc<RefCell<Self>>
     {
-        let prediction = prediction as f64;
         let leaf = TrainLeafNode {
             prediction,
             total_weight,
@@ -126,12 +128,11 @@ impl TrainNode {
         rule: Splitter,
         left: Rc<RefCell<TrainNode>>,
         right: Rc<RefCell<TrainNode>>,
-        prediction: i64,
+        prediction: Prediction<i64>,
         total_weight: f64,
-        loss_as_leaf: f64
+        loss_as_leaf: LossValue,
     ) -> Rc<RefCell<Self>>
     {
-        let prediction = prediction as f64;
         let leaves = left.borrow().leaves() + right.borrow().leaves();
         let node = TrainBranchNode {
             rule,
@@ -230,7 +231,7 @@ impl TrainNode {
 impl Classifier for TrainLeafNode {
     #[inline]
     fn confidence(&self, _data: &DataFrame, _row: usize) -> f64 {
-        self.prediction
+        self.prediction.0 as f64
     }
 }
 
@@ -264,7 +265,7 @@ impl fmt::Debug for TrainBranchNode {
             .field("threshold", &self.rule)
             .field("leaves", &self.leaves)
             .field("p(t)", &self.total_weight)
-            .field("r(t)", &self.loss_as_leaf)
+            .field("r(t)", &self.loss_as_leaf.0)
             .field("left", &self.left)
             .field("right", &self.right)
             .finish()
@@ -276,9 +277,9 @@ impl fmt::Debug for TrainLeafNode {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TrainLeafNode")
-            .field("prediction", &self.prediction)
+            .field("prediction", &self.prediction.0)
             .field("p(t)", &self.total_weight)
-            .field("r(t)", &self.loss_as_leaf)
+            .field("r(t)", &self.loss_as_leaf.0)
             .finish()
     }
 }

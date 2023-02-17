@@ -5,10 +5,13 @@ use rayon::prelude::*;
 use crate::WeakLearner;
 
 
+use crate::weak_learner::common::{
+    split_rule::*,
+};
+
 use super::{
     node::*,
     train_node::*,
-    split_rule::*,
     loss::LossType,
     rtree_regressor::RTreeRegressor,
 };

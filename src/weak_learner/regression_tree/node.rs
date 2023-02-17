@@ -4,8 +4,10 @@ use polars::prelude::*;
 use crate::Regressor;
 
 
-use crate::weak_learner::type_and_struct::*;
-use super::split_rule::*;
+use crate::weak_learner::common::{
+    type_and_struct::*,
+    split_rule::*,
+};
 use super::train_node::*;
 
 
@@ -58,7 +60,7 @@ impl BranchNode {
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode {
-    pub(super) prediction: Prediction,
+    pub(super) prediction: Prediction<f64>,
 }
 
 
@@ -67,7 +69,7 @@ impl LeafNode {
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(prediction: Prediction) -> Self {
+    pub(crate) fn from_raw(prediction: Prediction<f64>) -> Self {
         Self { prediction }
     }
 }

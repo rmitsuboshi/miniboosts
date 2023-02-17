@@ -5,10 +5,13 @@ use rayon::prelude::*;
 use crate::WeakLearner;
 
 
+use crate::weak_learner::common::{
+    type_and_struct::*,
+    split_rule::*,
+};
 use super::{
     node::*,
     criterion::*,
-    split_rule::*,
     train_node::*,
     dtree_classifier::DTreeClassifier,
 };
@@ -17,46 +20,6 @@ use super::{
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
-
-use std::ops;
-use std::cmp;
-
-
-/// Struct `Depth` defines the maximal depth of a tree.
-/// This is just a wrapper for `usize`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub(crate) struct Depth(usize);
-
-
-impl ops::Sub<usize> for Depth {
-    type Output = Self;
-    /// Define the subtraction of the `Depth` struct.
-    /// The subtraction does not return a value less than or equals to 1.
-    #[inline]
-    fn sub(self, other: usize) -> Self::Output {
-        if self.0 <= 1 {
-            self
-        } else {
-            Self(self.0 - other)
-        }
-    }
-}
-
-impl cmp::PartialEq<usize> for Depth {
-    #[inline]
-    fn eq(&self, rhs: &usize) -> bool {
-        self.0.eq(rhs)
-    }
-}
-
-
-impl cmp::PartialOrd<usize> for Depth {
-    #[inline]
-    fn partial_cmp(&self, other: &usize) -> Option<cmp::Ordering> {
-        self.0.partial_cmp(other)
-    }
-}
 
 
 /// `DTree` is the factory that
@@ -102,20 +65,20 @@ impl DTree {
     pub fn init(data: &DataFrame, _target: &Series) -> Self {
         let criterion = Criterion::Entropy;
         let size = data.shape().0;
-        let depth = ((size as f64).log10() + 1.0).ceil() as usize;
+        let depth = ((size as f64).log2() + 1.0).ceil() as usize;
 
         Self {
             criterion,
-            max_depth: Depth(depth),
+            max_depth: Depth::from(depth),
         }
     }
 
 
     /// Specify the maximal depth of the tree.
-    /// Default maximal depth is `log10` of number of training examples.
+    /// Default maximal depth is `log2` of number of training examples.
     pub fn max_depth(mut self, depth: usize) -> Self {
         assert!(depth > 0);
-        self.max_depth = Depth(depth);
+        self.max_depth = Depth::from(depth);
 
         self
     }
@@ -195,7 +158,7 @@ fn full_tree(
 
     // Compute the best prediction that minimizes the training error
     // on this node.
-    let (pred, loss) = calc_loss_as_leaf(target, dist, &indices[..]);
+    let (pred, loss) = prediction_and_loss(target, dist, &indices[..]);
 
 
     // If sum of `dist` over `train` is zero, construct a leaf node.
@@ -213,7 +176,7 @@ fn full_tree(
 
     // Construct the splitting rule
     // from the best feature and threshold.
-    let rule = Splitter::new(feature, threshold);
+    let rule = Splitter::new(feature, Threshold::from(threshold));
 
 
     // Split the train data for left/right childrens
@@ -264,7 +227,7 @@ fn construct_leaf(
 {
     // Compute the best prediction that minimizes the training error
     // on this node.
-    let (pred, loss) = calc_loss_as_leaf(target, dist, &indices[..]);
+    let (pred, loss) = prediction_and_loss(target, dist, &indices[..]);
 
 
     let total_weight = indices.iter()
@@ -282,8 +245,8 @@ fn construct_leaf(
 /// - `y` is the prediction label that minimizes the training loss.
 /// - `e` is the training loss when the prediction is `y`.
 #[inline]
-fn calc_loss_as_leaf(target: &Series, dist: &[f64], indices: &[usize])
-    -> (i64, f64)
+fn prediction_and_loss(target: &Series, dist: &[f64], indices: &[usize])
+    -> (Prediction<i64>, LossValue)
 {
     let target = target.i64()
         .expect("The target class is not a dtype i64");
@@ -313,7 +276,9 @@ fn calc_loss_as_leaf(target: &Series, dist: &[f64], indices: &[usize])
         0.0
     };
 
-    (l, node_err)
+    let prediction = Prediction::from(l);
+    let loss = LossValue::from(node_err);
+    (prediction, loss)
 }
 
 

@@ -4,7 +4,10 @@ use polars::prelude::*;
 use crate::Classifier;
 
 
-use super::split_rule::*;
+use crate::weak_learner::common::{
+    type_and_struct::*,
+    split_rule::*,
+};
 use super::train_node::*;
 
 
@@ -39,14 +42,13 @@ impl BranchNode {
     /// Returns the `BranchNode` from the given components.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(super) fn from_raw(rule: Splitter, left: Box<Node>, right: Box<Node>)
-        -> Self
+    pub(super) fn from_raw(
+        rule: Splitter,
+        left: Box<Node>,
+        right: Box<Node>
+    ) -> Self
     {
-        Self {
-            rule,
-            left,
-            right,
-        }
+        Self { rule, left, right, }
     }
 }
 
@@ -54,7 +56,7 @@ impl BranchNode {
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode {
-    pub(super) prediction: f64,
+    pub(super) prediction: Prediction<i64>,
 }
 
 
@@ -63,7 +65,7 @@ impl LeafNode {
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(prediction: f64) -> Self {
+    pub(crate) fn from_raw(prediction: Prediction<i64>) -> Self {
         Self { prediction }
     }
 }
@@ -117,7 +119,7 @@ impl From<TrainNode> for Node {
 impl Classifier for LeafNode {
     #[inline]
     fn confidence(&self, _data: &DataFrame, _row: usize) -> f64 {
-        self.prediction
+        self.prediction.0 as f64
     }
 }
 
@@ -152,7 +154,7 @@ impl Node {
                 let b_info = format!(
                     "\tnode_{id} [ label = \"{feat} < {thr:.2} ?\" ];\n",
                     feat = b.rule.feature,
-                    thr = b.rule.threshold
+                    thr = b.rule.threshold.0
                 );
 
                 let (l_info, next_id) = b.left.to_dot_info(id + 1);
@@ -182,7 +184,7 @@ impl Node {
                      label = \"{p}\", \
                      shape = box, \
                      ];\n",
-                    p = l.prediction
+                    p = l.prediction.0
                 );
 
                 (vec![info], id + 1)

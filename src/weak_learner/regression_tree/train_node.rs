@@ -4,8 +4,10 @@ use polars::prelude::*;
 use crate::Regressor;
 
 
-use crate::weak_learner::type_and_struct::*;
-use super::split_rule::*;
+use crate::weak_learner::common::{
+    type_and_struct::*,
+    split_rule::*,
+};
 
 
 use std::rc::Rc;
@@ -41,7 +43,7 @@ pub struct TrainBranchNode {
 
 
     // A label that have most weight on this node.
-    pub(super) prediction: Prediction,
+    pub(super) prediction: Prediction<f64>,
 
 
     // The number of instances reach to this node.
@@ -70,7 +72,7 @@ impl TrainBranchNode {
 
 /// Represents the leaf nodes of decision tree.
 pub struct TrainLeafNode {
-    pub(super) prediction: Prediction,
+    pub(super) prediction: Prediction<f64>,
     pub(self) total_instances: f64,
     pub(self) loss_as_leaf: LossValue,
 }
@@ -104,7 +106,7 @@ impl TrainNode {
     /// Construct a leaf node from the given arguments.
     #[inline]
     pub(super) fn leaf(
-        prediction: Prediction,
+        prediction: Prediction<f64>,
         total_instances: f64,
         loss_as_leaf: LossValue,
     ) -> Rc<RefCell<Self>>
@@ -126,7 +128,7 @@ impl TrainNode {
         rule: Splitter,
         left: Rc<RefCell<TrainNode>>,
         right: Rc<RefCell<TrainNode>>,
-        prediction: Prediction,
+        prediction: Prediction<f64>,
         total_instances: f64,
         loss_as_leaf: LossValue,
     ) -> Rc<RefCell<Self>>

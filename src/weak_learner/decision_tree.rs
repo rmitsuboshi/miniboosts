@@ -11,8 +11,6 @@ mod node;
 mod criterion;
 mod train_node;
 
-mod split_rule;
-
 
 pub use dtree_classifier::DTreeClassifier;
 pub use dtree::DTree;

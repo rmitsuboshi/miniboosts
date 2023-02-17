@@ -7,7 +7,7 @@ use serde::{
 };
 
 
-use crate::weak_learner::type_and_struct::*;
+use crate::weak_learner::common::type_and_struct::*;
 
 /// The type of loss (error) function.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ impl LossType {
         target: &Series,
         indices: &[usize],
         dist: &[f64],
-    ) -> (Prediction, LossValue)
+    ) -> (Prediction<f64>, LossValue)
     {
         let target = target.f64()
             .expect("The target class is not a dtype i64");
@@ -499,7 +499,7 @@ impl BestSplitFinderL1 {
 
 
 fn inner_prediction_and_loss(triplets: &[(Feature, Mass, Target)])
-    -> (Prediction, LossValue)
+    -> (Prediction<f64>, LossValue)
 {
     let m_total = triplets.iter()
         .map(|(_, m, _)| m.0)
@@ -515,23 +515,6 @@ fn inner_prediction_and_loss(triplets: &[(Feature, Mass, Target)])
     triplets.sort_by(|(_, _, t1), (_, _, t2)|
         t1.partial_cmp(&t2).unwrap()
     );
-
-    // Find the median over `triplets`.
-    // let mut median = 1e9;
-    // let mut m_tmp_sum = 0.0;
-    // for (_, m, t) in triplets.iter() {
-    //     m_tmp_sum += m.0;
-    //     if m_tmp_sum >= 0.5 * m_total {
-    //         median = t.0;
-    //         break;
-    //     }
-    // }
-    // assert_ne!(median, 1e9);
-
-    // triplets.par_iter()
-    //     .map(|(_, m, t)| m.0 * (t.0 - median).abs())
-    //     .sum::<f64>()
-    //     .into()
 
 
     let mut p_small = 1e9;
