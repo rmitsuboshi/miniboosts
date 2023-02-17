@@ -4,18 +4,20 @@ use std::cmp;
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[repr(transparent)]
-pub(crate) struct Prediction(pub(crate) f64);
+pub(crate) struct Prediction<T>(pub(crate) T);
 
 
-impl From<f64> for Prediction {
+impl<T> From<T> for Prediction<T> {
     #[inline]
-    fn from(prediction: f64) -> Self {
+    fn from(prediction: T) -> Self {
         Self(prediction)
     }
 }
 
 
-impl ops::Add<Self> for Prediction {
+impl<T> ops::Add<Self> for Prediction<T>
+    where T: ops::Add<Output = T>,
+{
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self::Output {
@@ -67,6 +69,13 @@ impl cmp::PartialOrd<Self> for LossValue {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub(crate) struct Depth(usize);
+
+
+impl From<usize> for Depth {
+    fn from(depth: usize) -> Self {
+        Self(depth)
+    }
+}
 
 
 impl ops::Sub<usize> for Depth {

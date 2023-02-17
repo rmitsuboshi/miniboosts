@@ -89,6 +89,24 @@ impl<F> CombinedHypothesis<F> {
                 *w /= norm;
             });
     }
+
+
+    /// Decompose the combined hypothesis
+    /// into the two vectors `Vec<f64>` and `Vec<F>`
+    #[inline]
+    pub fn decompose(self) -> (Vec<f64>, Vec<F>) {
+        let n_hypotheses = self.inner.len();
+        let mut weights = Vec::with_capacity(n_hypotheses);
+        let mut hypotheses = Vec::with_capacity(n_hypotheses);
+
+        self.inner.into_iter()
+            .for_each(|(w, h)| {
+                weights.push(w);
+                hypotheses.push(h);
+            });
+
+        (weights, hypotheses)
+    }
 }
 
 
