@@ -119,7 +119,7 @@
 //!
 //! println!("Training Loss is: {training_loss}");
 //! ```
-
+pub mod common;
 pub mod hypothesis;
 pub mod booster;
 pub mod weak_learner;
@@ -170,6 +170,13 @@ pub use booster::{
 };
 
 
+// Export the boosting algorithms for regression
+pub use booster::{
+    SquareLevR,
+    GBM,
+};
+
+
 // Export the `WeakLearner` trait.
 pub use weak_learner::WeakLearner;
 
@@ -180,12 +187,13 @@ pub use weak_learner::{
     Criterion,
 
     WLUnion,
+
     GaussianNB,
 };
 
 
 // Export the instances of the `Classifier` trait.
-// The `CombinedClassifier` is the output of the `Booster::run`.
+// The `CombinedClassifier` is the output of the `Boosting::run(..)`.
 pub use weak_learner::{
     DTreeClassifier,
     NBayesClassifier,
@@ -194,5 +202,13 @@ pub use weak_learner::{
 pub use weak_learner::{
     RTree,
     RTreeRegressor,
-    Loss,
+    LossType,
+};
+
+/// Some useful functions / traits
+pub use self::common::{
+    loss_functions::{
+        GBMLoss,
+        LossFunction,
+    },
 };
