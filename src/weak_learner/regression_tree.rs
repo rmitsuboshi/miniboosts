@@ -8,7 +8,6 @@ pub mod loss;
 
 mod node;
 mod train_node;
-mod split_rule;
 
 
 pub use reg_tree::RTree;

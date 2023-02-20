@@ -2,7 +2,8 @@
 **A collection of boosting algorithms written in Rust 🦀.**
 
 
-![boosting comparison](img/example.png)
+![Training loss comparison](img/training-loss.png)
+![Soft margin objective comparison](img/soft-margin.png)
 
 This library uses [Gurobi optimizer](https://www.gurobi.com), 
 so you must acquire a license to use this library. 

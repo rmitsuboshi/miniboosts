@@ -56,7 +56,7 @@ impl BranchNode {
 /// Represents the leaf nodes of decision tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeafNode {
-    pub(super) prediction: Prediction<i64>,
+    pub(super) confidence: Confidence<f64>,
 }
 
 
@@ -65,8 +65,8 @@ impl LeafNode {
     /// given to this function.
     /// Note that this function does not assign the impurity.
     #[inline]
-    pub(crate) fn from_raw(prediction: Prediction<i64>) -> Self {
-        Self { prediction }
+    pub(crate) fn from_raw(confidence: Confidence<f64>) -> Self {
+        Self { confidence }
     }
 }
 
@@ -96,7 +96,7 @@ impl From<TrainBranchNode> for BranchNode {
 impl From<TrainLeafNode> for LeafNode {
     #[inline]
     fn from(leaf: TrainLeafNode) -> Self {
-        Self::from_raw(leaf.prediction)
+        Self::from_raw(leaf.confidence)
     }
 }
 
@@ -119,7 +119,7 @@ impl From<TrainNode> for Node {
 impl Classifier for LeafNode {
     #[inline]
     fn confidence(&self, _data: &DataFrame, _row: usize) -> f64 {
-        self.prediction.0 as f64
+        self.confidence.0
     }
 }
 
@@ -184,7 +184,7 @@ impl Node {
                      label = \"{p}\", \
                      shape = box, \
                      ];\n",
-                    p = l.prediction.0
+                    p = l.confidence.0
                 );
 
                 (vec![info], id + 1)

@@ -156,14 +156,14 @@ fn full_tree(
         .sum::<f64>();
 
 
-    // Compute the best prediction that minimizes the training error
+    // Compute the best confidence that minimizes the training error
     // on this node.
-    let (pred, loss) = prediction_and_loss(target, dist, &indices[..]);
+    let (conf, loss) = confidence_and_loss(target, dist, &indices[..]);
 
 
     // If sum of `dist` over `train` is zero, construct a leaf node.
     if loss == 0.0 {
-        return TrainNode::leaf(pred, total_weight, loss);
+        return TrainNode::leaf(conf, total_weight, loss);
     }
 
 
@@ -192,7 +192,7 @@ fn full_tree(
 
     // If the split has no meaning, construct a leaf node.
     if lindices.is_empty() || rindices.is_empty() {
-        return TrainNode::leaf(pred, total_weight, loss);
+        return TrainNode::leaf(conf, total_weight, loss);
     }
 
 
@@ -214,7 +214,7 @@ fn full_tree(
     }
 
 
-    TrainNode::branch(rule, ltree, rtree, pred, total_weight, loss)
+    TrainNode::branch(rule, ltree, rtree, conf, total_weight, loss)
 }
 
 
@@ -225,9 +225,9 @@ fn construct_leaf(
     indices: Vec<usize>
 ) -> Rc<RefCell<TrainNode>>
 {
-    // Compute the best prediction that minimizes the training error
+    // Compute the best confidence that minimizes the training error
     // on this node.
-    let (pred, loss) = prediction_and_loss(target, dist, &indices[..]);
+    let (conf, loss) = confidence_and_loss(target, dist, &indices[..]);
 
 
     let total_weight = indices.iter()
@@ -236,17 +236,20 @@ fn construct_leaf(
             .sum::<f64>();
 
 
-    TrainNode::leaf(pred, total_weight, loss)
+    TrainNode::leaf(conf, total_weight, loss)
 }
 
 
 
-/// This function returns a tuple `(y, e)` where
-/// - `y` is the prediction label that minimizes the training loss.
-/// - `e` is the training loss when the prediction is `y`.
+/// This function returns a tuple `(c, l)` where
+/// - `c` is the **confidence** for some label 'y'
+/// that minimizes the training loss.
+/// - `l` is the training loss when the confidence is `y`.
+/// 
+/// **Note that** this function assumes that the label is `+1` or `-1`.
 #[inline]
-fn prediction_and_loss(target: &Series, dist: &[f64], indices: &[usize])
-    -> (Prediction<i64>, LossValue)
+fn confidence_and_loss(target: &Series, dist: &[f64], indices: &[usize])
+    -> (Confidence<f64>, LossValue)
 {
     let target = target.i64()
         .expect("The target class is not a dtype i64");
@@ -263,22 +266,29 @@ fn prediction_and_loss(target: &Series, dist: &[f64], indices: &[usize])
 
 
     // Compute the max (key, val) that has maximal p(j, t)
-    let (l, p) = counter.into_par_iter()
+    let (label, p) = counter.into_par_iter()
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .unwrap();
 
 
     // From the update rule of boosting algorithm,
     // the sum of `dist` over `indices` may become zero,
-    let node_err = if total > 0.0 {
+    let loss = if total > 0.0 {
         total * (1.0 - (p / total))
     } else {
         0.0
     };
 
-    let prediction = Prediction::from(l);
-    let loss = LossValue::from(node_err);
-    (prediction, loss)
+    // `label` takes value in `{-1, +1}`.
+    let confidence = if total > 0.0 {
+        label as f64 * (2.0 * (p / total) - 1.0)
+    } else {
+        label as f64
+    };
+
+    let confidence = Confidence::from(confidence);
+    let loss = LossValue::from(loss);
+    (confidence, loss)
 }
 
 
