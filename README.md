@@ -40,6 +40,9 @@ You can combine them arbitrarily.
 
 
 ### Regression
+- Booster
+    - [GBM](https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full),
+        a. k. a. Gradient Boosting Machine, by Jerome H. Friedman.
 - Weak Learner
     - [RTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)
 
@@ -47,7 +50,6 @@ You can combine them arbitrarily.
 
 - Boosters
     - [AnyBoost](https://www.researchgate.net/publication/243689632_Functional_gradient_techniques_for_combining_hypotheses)
-    - [GradientBoost](https://www.jstor.org/stable/2699986)
     - [SparsiBoost](http://proceedings.mlr.press/v97/mathiasen19a/mathiasen19a.pdf)
 
 

@@ -25,6 +25,7 @@ pub use crate::booster::{
     MLPBoost,
 
     // Regression -------------------------------
+    GBM,
     SquareLevR,
 };
 
@@ -55,7 +56,7 @@ pub use crate::weak_learner::{
     // Regression -------------------------------
     RTree,
     RTreeRegressor,
-    Loss,
+    LossType,
 };
 
 
@@ -64,3 +65,6 @@ pub use crate::hypothesis::{
     Regressor,
     CombinedHypothesis,
 };
+
+
+pub use crate::common::loss_functions::GBMLoss;

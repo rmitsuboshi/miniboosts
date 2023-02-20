@@ -16,9 +16,12 @@ pub mod erlpboost;
 pub mod softboost;
 pub mod mlpboost;
 
+pub mod gradient_boost;
+
 
 // ------------------------------------------------
 // Regression
+pub mod soft_lae;
 pub mod leveragings;
 
 /// 
@@ -50,6 +53,8 @@ pub use self::smoothboost::SmoothBoost;
 pub use self::cerlpboost::CERLPBoost;
 
 pub use self::mlpboost::MLPBoost;
+
+pub use self::gradient_boost::GBM;
 
 // ------------------------------------------------
 // Regression
