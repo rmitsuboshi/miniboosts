@@ -43,7 +43,7 @@ pub struct TrainBranchNode {
 
 
     // A label that have most weight on this node.
-    pub(super) prediction: Prediction<i64>,
+    pub(super) confidence: Confidence<f64>,
 
 
     // Total mass on this node.
@@ -72,7 +72,7 @@ impl TrainBranchNode {
 
 /// Represents the leaf nodes of decision tree.
 pub struct TrainLeafNode {
-    pub(super) prediction: Prediction<i64>,
+    pub(super) confidence: Confidence<f64>,
     pub(self) total_weight: f64,
     pub(self) loss_as_leaf: LossValue,
 }
@@ -94,7 +94,7 @@ impl From<TrainBranchNode> for TrainLeafNode {
     #[inline]
     fn from(branch: TrainBranchNode) -> Self {
         Self {
-            prediction: branch.prediction,
+            confidence: branch.confidence,
             total_weight: branch.total_weight,
             loss_as_leaf: branch.loss_as_leaf,
         }
@@ -106,13 +106,13 @@ impl TrainNode {
     /// Construct a leaf node from the given arguments.
     #[inline]
     pub(super) fn leaf(
-        prediction: Prediction<i64>,
+        confidence: Confidence<f64>,
         total_weight: f64,
         loss_as_leaf: LossValue,
     ) -> Rc<RefCell<Self>>
     {
         let leaf = TrainLeafNode {
-            prediction,
+            confidence,
             total_weight,
             loss_as_leaf,
         };
@@ -128,7 +128,7 @@ impl TrainNode {
         rule: Splitter,
         left: Rc<RefCell<TrainNode>>,
         right: Rc<RefCell<TrainNode>>,
-        prediction: Prediction<i64>,
+        confidence: Confidence<f64>,
         total_weight: f64,
         loss_as_leaf: LossValue,
     ) -> Rc<RefCell<Self>>
@@ -139,7 +139,7 @@ impl TrainNode {
             left,
             right,
 
-            prediction,
+            confidence,
             total_weight,
             loss_as_leaf,
 
@@ -213,7 +213,7 @@ impl TrainNode {
                 if let TrainNode::Branch(branch) = self {
                     *self = TrainNode::Leaf(
                         TrainLeafNode {
-                            prediction: branch.prediction,
+                            confidence: branch.confidence,
                             total_weight: branch.total_weight,
                             loss_as_leaf: branch.loss_as_leaf,
                         }
@@ -231,7 +231,7 @@ impl TrainNode {
 impl Classifier for TrainLeafNode {
     #[inline]
     fn confidence(&self, _data: &DataFrame, _row: usize) -> f64 {
-        self.prediction.0 as f64
+        self.confidence.0
     }
 }
 
@@ -277,7 +277,7 @@ impl fmt::Debug for TrainLeafNode {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TrainLeafNode")
-            .field("prediction", &self.prediction.0)
+            .field("confidence", &self.confidence.0)
             .field("p(t)", &self.total_weight)
             .field("r(t)", &self.loss_as_leaf.0)
             .finish()

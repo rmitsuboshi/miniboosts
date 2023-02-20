@@ -26,6 +26,29 @@ impl<T> ops::Add<Self> for Prediction<T>
 }
 
 
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[repr(transparent)]
+pub(crate) struct Confidence<T>(pub(crate) T);
+
+
+impl<T> From<T> for Confidence<T> {
+    #[inline]
+    fn from(prediction: T) -> Self {
+        Self(prediction)
+    }
+}
+
+
+impl<T> ops::Add<Self> for Confidence<T>
+    where T: ops::Add<Output = T>,
+{
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
 
 #[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]

@@ -16,7 +16,8 @@ pub trait Classifier {
 
     /// Predicts the label of the i'th row of the `df`.
     fn predict(&self, df: &DataFrame, row: usize) -> i64 {
-        self.confidence(df, row).signum() as i64
+        let conf = self.confidence(df, row);
+        if conf >= 0.0 { 1 } else { -1 }
     }
 
 

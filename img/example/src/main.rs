@@ -35,7 +35,7 @@ fn main() {
     let n_sample = train_x.shape().0 as f64;
 
 
-    // Run AdaBoost
+    // // Run AdaBoost
     // let booster = AdaBoost::init(&train_x, &train_y)
     //     .tolerance(0.01);
     // let tree = DTree::init(&train_x, &train_y)
@@ -46,7 +46,7 @@ fn main() {
     // ).unwrap();
 
 
-    // Run AdaBoostV
+    // // Run AdaBoostV
     // let booster = AdaBoostV::init(&train_x, &train_y)
     //     .tolerance(0.01);
     // let tree = DTree::init(&train_x, &train_y)
@@ -57,7 +57,7 @@ fn main() {
     // ).unwrap();
 
 
-    // Run TotalBoost
+    // // Run TotalBoost
     // println!("Running TotalBoost");
     // let booster = TotalBoost::init(&train_x, &train_y)
     //     .tolerance(0.01);
@@ -73,12 +73,12 @@ fn main() {
     // // `gamma` is the weak-learner guarantee.
     // // For this case, the following holds;
     // // for any distribution, the weak learner returns a hypothesis
-    // // such that the edge is at least 0.017.
-    // // This value `0.017` is derived from the LPBoost.
+    // // such that the edge is at least 0.006.
+    // // This value `0.006` is derived from the LPBoost.
     // println!("Running SmoothBoost");
     // let booster = SmoothBoost::init(&train_x, &train_y)
     //     .tolerance(0.01)
-    //     .gamma(0.017);
+    //     .gamma(0.006);
     // let tree = DTree::init(&train_x, &train_y)
     //     .max_depth(2)
     //     .criterion(Criterion::Edge);
@@ -87,50 +87,50 @@ fn main() {
     // ).unwrap();
 
 
-    // // Run SoftBoost
-    // println!("Running SoftBoost");
-    // let booster = SoftBoost::init(&train_x, &train_y)
-    //     .tolerance(0.01)
-    //     .nu(0.1 * n_sample);
-    // let tree = DTree::init(&train_x, &train_y)
-    //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "softboost.csv"
-    // ).unwrap();
+    // Run SoftBoost
+    println!("Running SoftBoost");
+    let booster = SoftBoost::init(&train_x, &train_y)
+        .tolerance(0.01)
+        .nu(0.01 * n_sample);
+    let tree = DTree::init(&train_x, &train_y)
+        .max_depth(2)
+        .criterion(Criterion::Edge);
+    let _ = with_log(
+        booster, tree, zero_one_loss, &test_x, &test_y, "softboost.csv"
+    ).unwrap();
 
 
-    // // Run LPBoost
-    // println!("Running LPBoost");
-    // let booster = LPBoost::init(&train_x, &train_y)
-    //     .tolerance(0.01)
-    //     .nu(0.1 * n_sample);
-    // let tree = DTree::init(&train_x, &train_y)
-    //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "lpboost.csv"
-    // ).unwrap();
+    // Run LPBoost
+    println!("Running LPBoost");
+    let booster = LPBoost::init(&train_x, &train_y)
+        .tolerance(0.01)
+        .nu(0.01 * n_sample);
+    let tree = DTree::init(&train_x, &train_y)
+        .max_depth(2)
+        .criterion(Criterion::Edge);
+    let _ = with_log(
+        booster, tree, zero_one_loss, &test_x, &test_y, "lpboost.csv"
+    ).unwrap();
 
 
-    // // Run ERLPBoost
-    // println!("Running ERLPBoost");
-    // let booster = ERLPBoost::init(&train_x, &train_y)
-    //     .tolerance(0.01)
-    //     .nu(0.1 * n_sample);
-    // let tree = DTree::init(&train_x, &train_y)
-    //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "erlpboost.csv"
-    // ).unwrap();
+    // Run ERLPBoost
+    println!("Running ERLPBoost");
+    let booster = ERLPBoost::init(&train_x, &train_y)
+        .tolerance(0.01)
+        .nu(0.01 * n_sample);
+    let tree = DTree::init(&train_x, &train_y)
+        .max_depth(2)
+        .criterion(Criterion::Edge);
+    let _ = with_log(
+        booster, tree, zero_one_loss, &test_x, &test_y, "erlpboost.csv"
+    ).unwrap();
 
 
     // Run Corrective ERLPBoost
     println!("Running CERLPBoost");
     let booster = CERLPBoost::init(&train_x, &train_y)
         .tolerance(0.01)
-        .nu(0.1 * n_sample);
+        .nu(0.01 * n_sample);
     let tree = DTree::init(&train_x, &train_y)
         .max_depth(2)
         .criterion(Criterion::Edge);
@@ -139,15 +139,15 @@ fn main() {
     ).unwrap();
 
 
-    // // Run MLPBoost
-    // println!("Running MLPBoost");
-    // let booster = MLPBoost::init(&train_x, &train_y)
-    //     .tolerance(0.01)
-    //     .nu(0.1 * n_sample);
-    // let tree = DTree::init(&train_x, &train_y)
-    //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "mlpboost.csv"
-    // ).unwrap();
+    // Run MLPBoost
+    println!("Running MLPBoost");
+    let booster = MLPBoost::init(&train_x, &train_y)
+        .tolerance(0.01)
+        .nu(0.01 * n_sample);
+    let tree = DTree::init(&train_x, &train_y)
+        .max_depth(2)
+        .criterion(Criterion::Edge);
+    let _ = with_log(
+        booster, tree, zero_one_loss, &test_x, &test_y, "mlpboost.csv"
+    ).unwrap();
 }

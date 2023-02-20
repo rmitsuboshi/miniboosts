@@ -1,4 +1,7 @@
-//! Provides the `AdaBoostV*` by Rätsch & Warmuth, 2005.
+//! Provides `AdaBoost*` by Rätsch & Warmuth, 2005.
+//! Since one cannot use `*` as a struct name,
+//! We call `AdaBoost*` as `AdaBoostV`.
+//! (I found this name in the paper of `SparsiBoost`.
 use polars::prelude::*;
 use rayon::prelude::*;
 
@@ -135,11 +138,11 @@ impl<'a, F> AdaBoostV<'a, F> {
         let uni = 1.0 / n_sample as f64;
         let dist = vec![uni; n_sample];
 
-        AdaBoostV {
+        Self {
             data,
             target,
 
-            tolerance: 0.0,
+            tolerance: uni,
             rho:       1.0,
             gamma:     1.0,
             dist,
@@ -243,6 +246,9 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
         // Initialize parameters
         let n_sample = self.data.shape().0;
         self.dist = vec![1.0 / n_sample as f64; n_sample];
+
+        self.rho = 1.0;
+        self.gamma = 1.0;
 
 
         self.weights = Vec::new();

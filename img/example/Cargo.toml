@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 miniboosts = { path = "./../../../miniboosts" }
-polars     = { git = "https://github.com/pola-rs/polars" }
+polars     = "0.27.0"

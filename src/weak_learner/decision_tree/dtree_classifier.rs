@@ -31,12 +31,6 @@ impl Classifier for DTreeClassifier {
     fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
         self.root.confidence(data, row)
     }
-
-
-
-    fn predict(&self, data: &DataFrame, row: usize) -> i64 {
-        self.confidence(data, row) as i64
-    }
 }
 
 
