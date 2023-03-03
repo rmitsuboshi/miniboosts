@@ -2,13 +2,14 @@
 //! of the Decision Tree class.
 
 use rayon::prelude::*;
-use polars::prelude::*;
 
 use serde::{Serialize, Deserialize};
 
 use std::cmp::Ordering;
 use std::ops::{Mul, Add};
 use std::collections::HashMap;
+
+use crate::{Sample, Feature};
 
 
 /// Edge
@@ -117,16 +118,16 @@ impl Criterion {
     /// Returns the best splitting rule based on the criterion.
     pub(super) fn best_split<'a>(
         &self,
-        data: &'a DataFrame,
-        target: &Series,
+        sample: &'a Sample,
         dist: &[f64],
         idx: &[usize],
     ) -> (&'a str, f64)
     {
+        let target = sample.target();
         match self {
             Criterion::Entropy => {
-                data.get_columns()
-                    .into_par_iter()
+                sample.features()
+                    .into_iter()
                     .map(|column| {
                         let (threshold, decrease) = split_entropy(
                             column, target, dist, &idx[..]
@@ -139,8 +140,8 @@ impl Criterion {
                     .expect("No feature that decreases the entropic impurity")
             },
             Criterion::Edge => {
-                data.get_columns()
-                    .into_par_iter()
+                sample.features()
+                    .into_iter()
                     .map(|column| {
                         let (threshold, decrease) = split_edge(
                             column, target, dist, &idx[..]
@@ -158,25 +159,17 @@ impl Criterion {
 
 
 fn split_entropy(
-    column: &Series,
-    target: &Series,
+    column: &Feature,
+    target: &[f64],
     dist: &[f64],
     idx: &[usize]
 ) -> (f64, Impurity)
 {
-    let target = target.i64()
-        .expect("The target class is not a dtype i64");
-
-
-    let column = column.f64()
-        .expect("The column is not a dtype f64");
-
-
     let mut triplets = idx.into_par_iter()
         .copied()
         .map(|i| {
-            let x = column.get(i).unwrap();
-            let y = target.get(i).unwrap();
+            let x = column[i];
+            let y = target[i] as i64;
             (x, dist[i], y)
         })
         .collect::<Vec<(f64, f64, i64)>>();
@@ -244,26 +237,18 @@ fn split_entropy(
 
 
 fn split_edge(
-    column: &Series,
-    target: &Series,
+    column: &Feature,
+    target: &[f64],
     dist: &[f64],
     idx: &[usize]
 )
     -> (f64, Edge)
 {
-    let target = target.i64()
-        .expect("The target class is not a dtype i64");
-
-
-    let column = column.f64()
-        .expect("The column is not a dtype f64");
-
-
     let mut triplets = idx.into_par_iter()
         .copied()
         .map(|i| {
-            let x = column.get(i).unwrap();
-            let y = target.get(i).unwrap() as f64;
+            let x = column[i];
+            let y = target[i];
             (x, dist[i], y)
         })
         .collect::<Vec<(f64, f64, f64)>>();

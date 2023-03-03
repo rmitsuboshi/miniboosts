@@ -1,7 +1,6 @@
 //! The core library for `Hypothesis` traits.
-use polars::prelude::*;
 use serde::{Serialize, Deserialize};
-
+use crate::Sample;
 
 
 /// A trait that defines the behavor of classifier.
@@ -11,31 +10,31 @@ pub trait Classifier {
     /// This code assumes that
     /// `Classifier::confidence` returns a value in `[-1.0, 1.0]`.
     /// Those hypotheses are called as **confidence-rated hypotheses**.
-    fn confidence(&self, df: &DataFrame, row: usize) -> f64;
+    fn confidence(&self, sample: &Sample, row: usize) -> f64;
 
 
     /// Predicts the label of the i'th row of the `df`.
-    fn predict(&self, df: &DataFrame, row: usize) -> i64 {
-        let conf = self.confidence(df, row);
+    fn predict(&self, sample: &Sample, row: usize) -> i64 {
+        let conf = self.confidence(sample, row);
         if conf >= 0.0 { 1 } else { -1 }
     }
 
 
     /// Computes the confidence of `df`.
-    fn confidence_all(&self, df: &DataFrame) -> Vec<f64> {
-        let m = df.shape().0;
-        (0..m).into_iter()
-            .map(|row| self.confidence(df, row))
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        let n_sample = sample.shape().0;
+        (0..n_sample).into_iter()
+            .map(|row| self.confidence(sample, row))
             .collect::<Vec<_>>()
     }
 
 
     /// Predicts the labels of `df`.
-    fn predict_all(&self, df: &DataFrame) -> Vec<i64>
+    fn predict_all(&self, sample: &Sample) -> Vec<i64>
     {
-        let m = df.shape().0;
-        (0..m).into_iter()
-            .map(|row| self.predict(df, row))
+        let n_sample = sample.shape().0;
+        (0..n_sample).into_iter()
+            .map(|row| self.predict(sample, row))
             .collect::<Vec<_>>()
     }
 }
@@ -45,15 +44,15 @@ pub trait Classifier {
 /// You only need to implement `predict` method.
 pub trait Regressor {
     /// Predicts the target value of the i'th row of the `df`.
-    fn predict(&self, df: &DataFrame, row: usize) -> f64;
+    fn predict(&self, sample: &Sample, row: usize) -> f64;
 
 
     /// Predicts the labels of `df`.
-    fn predict_all(&self, df: &DataFrame) -> Vec<f64>
+    fn predict_all(&self, sample: &Sample) -> Vec<f64>
     {
-        let m = df.shape().0;
-        (0..m).into_iter()
-            .map(|row| self.predict(df, row))
+        let n_sample = sample.shape().0;
+        (0..n_sample).into_iter()
+            .map(|row| self.predict(sample, row))
             .collect::<Vec<_>>()
     }
 }
@@ -124,9 +123,9 @@ impl<F> From<Vec<(f64, F)>> for CombinedHypothesis<F>
 impl<F> Classifier for CombinedHypothesis<F>
     where F: Classifier,
 {
-    fn confidence(&self, df: &DataFrame, row: usize) -> f64 {
+    fn confidence(&self, sample: &Sample, row: usize) -> f64 {
         self.inner.iter()
-            .map(|(w, h)| *w * h.confidence(df, row))
+            .map(|(w, h)| *w * h.confidence(sample, row))
             .sum::<f64>()
     }
 }
@@ -135,11 +134,10 @@ impl<F> Classifier for CombinedHypothesis<F>
 impl<F> Regressor for CombinedHypothesis<F>
     where F: Regressor,
 {
-    fn predict(&self, df: &DataFrame, row: usize) -> f64 {
+    fn predict(&self, sample: &Sample, row: usize) -> f64 {
         self.inner.iter()
-            .map(|(w, h)| *w * h.predict(df, row))
+            .map(|(w, h)| *w * h.predict(sample, row))
             .sum::<f64>()
     }
 }
-
 

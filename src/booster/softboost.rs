@@ -2,10 +2,8 @@
 //! "Boosting Algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
-use polars::prelude::*;
-
-
 use crate::{
+    Sample,
     Booster,
     WeakLearner,
 
@@ -14,10 +12,10 @@ use crate::{
     CombinedHypothesis,
 };
 
-use crate::research::{
-    Logger,
-    soft_margin_objective,
-};
+// use crate::research::{
+//     Logger,
+//     soft_margin_objective,
+// };
 
 use grb::prelude::*;
 
@@ -111,8 +109,7 @@ use grb::prelude::*;
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct SoftBoost<'a, F> {
-    data: &'a DataFrame,
-    target: &'a Series,
+    sample: &'a Sample,
 
     pub(crate) dist: Vec<f64>,
 
@@ -141,8 +138,8 @@ impl<'a, F> SoftBoost<'a, F>
     where F: Classifier
 {
     /// Initialize the `SoftBoost`.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        let n_sample = data.shape().0;
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
         let mut env = Env::new("").unwrap();
@@ -164,8 +161,7 @@ impl<'a, F> SoftBoost<'a, F>
 
 
         SoftBoost {
-            data,
-            target,
+            sample,
 
             dist,
             gamma_hat,
@@ -186,7 +182,7 @@ impl<'a, F> SoftBoost<'a, F>
     /// Set the capping parameter.
     #[inline(always)]
     pub fn nu(mut self, nu: f64) -> Self {
-        let n_sample = self.data.shape().0 as f64;
+        let n_sample = self.sample.shape().0 as f64;
         assert!((1.0..=n_sample).contains(&nu));
 
         self.nu = nu;
@@ -207,7 +203,7 @@ impl<'a, F> SoftBoost<'a, F>
     /// that has error at most `tolerance`.
     pub fn max_loop(&mut self) -> usize {
 
-        let n_sample = self.data.shape().0 as f64;
+        let n_sample = self.sample.shape().0 as f64;
 
         let temp = (n_sample / self.nu).ln();
         let max_iter = 2.0 * temp / self.tolerance.powi(2);
@@ -233,7 +229,7 @@ impl<F> SoftBoost<'_, F>
     {
         let mut model = Model::with_env("", &self.env)?;
 
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
         let n_hypotheses = self.classifiers.len();
 
         // Initialize GRBVars
@@ -249,17 +245,15 @@ impl<F> SoftBoost<'_, F>
 
 
         // Set constraints
-        let iter = self.target.i64()
-            .expect("The target class is not a dtype i64")
+        let iter = self.sample.target()
             .into_iter()
             .zip(xi_vec.iter())
             .enumerate();
 
-        for (i, (y, &xi)) in iter {
-            let y = y.unwrap() as f64;
+        for (i, (&y, &xi)) in iter {
             let expr = wt_vec.iter()
                 .zip(&self.classifiers[..])
-                .map(|(&w, h)| w * h.confidence(self.data, i))
+                .map(|(&w, h)| w * h.confidence(self.sample, i))
                 .grb_sum();
             let name = format!("sample[{i}]");
             model.add_constr(&name, c!(y * expr >= rho - xi))?;
@@ -326,15 +320,12 @@ impl<F> SoftBoost<'_, F>
             self.classifiers.iter()
                 .enumerate()
                 .for_each(|(j, h)| {
-                    let iter = self.target.i64()
-                        .expect("The target class is not a dtype i64");
                     let expr = vars.iter()
                         .zip(self.dist.iter().copied())
-                        .zip(iter)
+                        .zip(self.sample.target())
                         .enumerate()
                         .map(|(i, ((v, d), y))| {
-                            let y = y.unwrap() as f64;
-                            let p = h.confidence(self.data, i);
+                            let p = h.confidence(self.sample, i);
                             y * p * (d + *v)
                         })
                         .grb_sum();
@@ -353,7 +344,7 @@ impl<F> SoftBoost<'_, F>
 
 
             // Set objective function
-            let n_sample = self.data.shape().0 as f64;
+            let n_sample = self.sample.shape().0 as f64;
             let objective = self.dist.iter()
                 .zip(vars.iter())
                 .map(|(&d, &v)| {
@@ -425,7 +416,7 @@ impl<F> Booster<F> for SoftBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
 
         let uni = 1.0 / n_sample as f64;
 
@@ -453,16 +444,15 @@ impl<F> Booster<F> for SoftBoost<'_, F>
         }
 
         // Receive a hypothesis from the base learner
-        let h = weak_learner.produce(self.data, self.target, &self.dist);
+        let h = weak_learner.produce(self.sample, &self.dist);
 
         // update `self.gamma_hat`
-        let edge = self.target.i64()
-            .expect("The target class is not a dtype i64")
+        let edge = self.sample.target()
             .into_iter()
             .zip(self.dist.iter().copied())
             .enumerate()
             .map(|(i, (y, d))|
-                d * y.unwrap() as f64 * h.confidence(self.data, i)
+                d * y * h.confidence(self.sample, i)
             )
             .sum::<f64>();
 
@@ -494,17 +484,12 @@ impl<F> Booster<F> for SoftBoost<'_, F>
     {
         // Set the weights on the hypotheses
         // by solving a linear program
-        let clfs = match self.set_weights() {
-            Err(e) => {
-                panic!("{e}");
-            },
-            Ok(weights) => {
-                weights.into_iter()
-                    .zip(self.classifiers.clone())
-                    .filter(|(w, _)| *w != 0.0)
-                    .collect::<Vec<(f64, F)>>()
-            }
-        };
+        self.weights = self.set_weights().unwrap();
+        let clfs = self.weights.iter()
+            .copied()
+            .zip(self.classifiers.clone())
+            .filter(|(w, _)| *w != 0.0)
+            .collect::<Vec<(f64, F)>>();
 
         CombinedHypothesis::from(clfs)
     }
@@ -512,43 +497,43 @@ impl<F> Booster<F> for SoftBoost<'_, F>
 
 
 
-impl<F> Logger for SoftBoost<'_, F>
-    where F: Classifier
-{
-    fn weights_on_hypotheses(&mut self) {
-        self.weights = self.set_weights().unwrap();
-    }
-
-    /// SoftBoost optimizes the soft margin objective.
-    fn objective_value(&self) -> f64
-    {
-        soft_margin_objective(
-            self.data, self.target,
-            &self.weights[..], &self.classifiers[..], self.nu
-        )
-    }
-
-
-    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        self.weights.iter()
-            .zip(&self.classifiers[..])
-            .map(|(w, h)| w * h.confidence(data, i))
-            .sum::<f64>()
-    }
-
-
-    fn logging<L>(
-        &self,
-        loss_function: &L,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where L: Fn(f64, f64) -> f64
-    {
-        let objval = self.objective_value();
-        let train = self.loss(loss_function, self.data, self.target);
-        let test = self.loss(loss_function, test_data, test_target);
-
-        (objval, train, test)
-    }
-}
+// impl<F> Logger for SoftBoost<'_, F>
+//     where F: Classifier
+// {
+//     fn weights_on_hypotheses(&mut self) {
+//         self.weights = self.set_weights().unwrap();
+//     }
+// 
+//     /// SoftBoost optimizes the soft margin objective.
+//     fn objective_value(&self) -> f64
+//     {
+//         soft_margin_objective(
+//             self.data, self.target,
+//             &self.weights[..], &self.classifiers[..], self.nu
+//         )
+//     }
+// 
+// 
+//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+//         self.weights.iter()
+//             .zip(&self.classifiers[..])
+//             .map(|(w, h)| w * h.confidence(data, i))
+//             .sum::<f64>()
+//     }
+// 
+// 
+//     fn logging<L>(
+//         &self,
+//         loss_function: &L,
+//         test_data: &DataFrame,
+//         test_target: &Series,
+//     ) -> (f64, f64, f64)
+//         where L: Fn(f64, f64) -> f64
+//     {
+//         let objval = self.objective_value();
+//         let train = self.loss(loss_function, self.data, self.target);
+//         let test = self.loss(loss_function, test_data, test_target);
+// 
+//         (objval, train, test)
+//     }
+// }

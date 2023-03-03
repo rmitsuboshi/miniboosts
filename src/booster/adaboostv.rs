@@ -2,11 +2,11 @@
 //! Since one cannot use `*` as a struct name,
 //! We call `AdaBoost*` as `AdaBoostV`.
 //! (I found this name in the paper of `SparsiBoost`.
-use polars::prelude::*;
 use rayon::prelude::*;
 
 
 use crate::{
+    Sample,
     Booster,
     WeakLearner,
 
@@ -16,7 +16,7 @@ use crate::{
 };
 
 
-use crate::research::Logger;
+// use crate::research::Logger;
 
 
 
@@ -101,10 +101,8 @@ use crate::research::Logger;
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct AdaBoostV<'a, F> {
-    // Training data
-    data: &'a DataFrame,
-    // Corresponding label
-    target: &'a Series,
+    // Training sample
+    sample: &'a Sample,
 
     // Tolerance parameter
     tolerance: f64,
@@ -130,8 +128,8 @@ pub struct AdaBoostV<'a, F> {
 
 impl<'a, F> AdaBoostV<'a, F> {
     /// Initialize the `AdaBoostV<'a, F>`.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        let n_sample = data.shape().0;
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
 
@@ -139,8 +137,7 @@ impl<'a, F> AdaBoostV<'a, F> {
         let dist = vec![uni; n_sample];
 
         Self {
-            data,
-            target,
+            sample,
 
             tolerance: uni,
             rho:       1.0,
@@ -244,7 +241,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
         where W: WeakLearner<Hypothesis = F>
     {
         // Initialize parameters
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
         self.dist = vec![1.0 / n_sample as f64; n_sample];
 
         self.rho = 1.0;
@@ -271,16 +268,15 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
         }
 
         // Get a new hypothesis
-        let h = weak_learner.produce(self.data, self.target, &self.dist);
+        let h = weak_learner.produce(self.sample, &self.dist);
 
 
         // Each element in `predictions` is the product of
         // the predicted vector and the correct vector
-        let margins = self.target.i64()
-            .expect("The target class is not an dtype i64")
+        let margins = self.sample.target()
             .into_iter()
             .enumerate()
-            .map(|(i, y)| (y.unwrap() as f64 * h.confidence(self.data, i)))
+            .map(|(i, y)| y * h.confidence(self.sample, i))
             .collect::<Vec<f64>>();
 
 
@@ -290,7 +286,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
             .sum::<f64>();
 
 
-        // If `h` predicted all the examples in `data` correctly,
+        // If `h` predicted all the examples in `self.sample` correctly,
         // use it as the combined classifier.
         if edge.abs() >= 1.0 {
             self.terminated = iteration;
@@ -326,46 +322,46 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
 
 
 
-impl<F> Logger for AdaBoostV<'_, F>
-    where F: Classifier
-{
-    /// AdaBoostV optimizes the hard-margin on training examples.
-    fn objective_value(&self)
-        -> f64
-    {
-        let n_sample = self.data.shape().0 as f64;
-
-        self.target.i64()
-            .expect("The target class is not a dtype i64")
-            .into_iter()
-            .map(|y| y.unwrap() as f64)
-            .enumerate()
-            .map(|(i, y)| (- y * self.prediction(self.data, i)).exp())
-            .sum::<f64>()
-            / n_sample
-    }
-
-
-    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        self.weights.iter()
-            .zip(&self.classifiers)
-            .map(|(w, h)| w * h.confidence(data, i))
-            .sum::<f64>()
-    }
-
-
-    fn logging<L>(
-        &self,
-        loss_function: &L,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where L: Fn(f64, f64) -> f64
-    {
-        let objval = self.objective_value();
-        let train = self.loss(loss_function, self.data, self.target);
-        let test = self.loss(loss_function, test_data, test_target);
-
-        (objval, train, test)
-    }
-}
+// impl<F> Logger for AdaBoostV<'_, F>
+//     where F: Classifier
+// {
+//     /// AdaBoostV optimizes the hard-margin on training examples.
+//     fn objective_value(&self)
+//         -> f64
+//     {
+//         let n_sample = self.data.shape().0 as f64;
+// 
+//         self.target.i64()
+//             .expect("The target class is not a dtype i64")
+//             .into_iter()
+//             .map(|y| y.unwrap() as f64)
+//             .enumerate()
+//             .map(|(i, y)| (- y * self.prediction(self.data, i)).exp())
+//             .sum::<f64>()
+//             / n_sample
+//     }
+// 
+// 
+//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+//         self.weights.iter()
+//             .zip(&self.classifiers)
+//             .map(|(w, h)| w * h.confidence(data, i))
+//             .sum::<f64>()
+//     }
+// 
+// 
+//     fn logging<L>(
+//         &self,
+//         loss_function: &L,
+//         test_data: &DataFrame,
+//         test_target: &Series,
+//     ) -> (f64, f64, f64)
+//         where L: Fn(f64, f64) -> f64
+//     {
+//         let objval = self.objective_value();
+//         let train = self.loss(loss_function, self.data, self.target);
+//         let test = self.loss(loss_function, test_data, test_target);
+// 
+//         (objval, train, test)
+//     }
+// }

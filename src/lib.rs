@@ -119,20 +119,27 @@
 //!
 //! println!("Training Loss is: {training_loss}");
 //! ```
-pub mod common;
+pub mod sample;
 pub mod hypothesis;
 pub mod booster;
 pub mod weak_learner;
 pub mod prelude;
 
-pub mod research;
+// pub mod research;
+
+
+// Export the struct that represents batch sample
+pub use sample::{
+    Sample,
+    Feature,
+};
 
 
 // Export some traits and the combined hypothesis struct.
 pub use hypothesis::{
     Classifier,
     Regressor,
-    CombinedHypothesis
+    CombinedHypothesis,
 };
 
 
@@ -155,6 +162,7 @@ pub use booster::{
 pub use booster::{
     AdaBoostV,
     TotalBoost,
+    // SparsiBoost,
 };
 
 
@@ -165,15 +173,6 @@ pub use booster::{
     SoftBoost,
     SmoothBoost,
     CERLPBoost,
-
-    MLPBoost,
-};
-
-
-// Export the boosting algorithms for regression
-pub use booster::{
-    SquareLevR,
-    GBM,
 };
 
 
@@ -186,9 +185,9 @@ pub use weak_learner::{
     DTree,
     Criterion,
 
-    WLUnion,
+    // WLUnion,
 
-    GaussianNB,
+    // GaussianNB,
 };
 
 
@@ -196,19 +195,20 @@ pub use weak_learner::{
 // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
 pub use weak_learner::{
     DTreeClassifier,
-    NBayesClassifier,
+    // NBayesClassifier,
 };
 
-pub use weak_learner::{
-    RTree,
-    RTreeRegressor,
-    LossType,
-};
+// pub use weak_learner::{
+//     RTree,
+//     RTreeRegressor,
+//     LossType,
+// };
 
-/// Some useful functions / traits
-pub use self::common::{
-    loss_functions::{
-        GBMLoss,
-        LossFunction,
-    },
-};
+// /// Some useful functions / traits
+// pub use common::{
+//     loss_functions::{
+//         GBMLoss,
+//         LossFunction,
+//     },
+// };
+

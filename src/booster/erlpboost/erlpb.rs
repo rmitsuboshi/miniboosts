@@ -2,10 +2,8 @@
 //! "Entropy Regularized LPBoost"
 //! by Warmuth et al.
 //! 
-use polars::prelude::*;
-
-
 use crate::{
+    Sample,
     Booster,
     WeakLearner,
 
@@ -14,10 +12,10 @@ use crate::{
     CombinedHypothesis,
 };
 
-use crate::research::{
-    Logger,
-    soft_margin_objective,
-};
+// use crate::research::{
+//     Logger,
+//     soft_margin_objective,
+// };
 
 use super::qp_model::QPModel;
 
@@ -112,12 +110,8 @@ use std::cell::RefCell;
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct ERLPBoost<'a, F> {
-    // Training data
-    data: &'a DataFrame,
-
-    // Corresponding label
-    target: &'a Series,
-
+    // Training sample
+    sample: &'a Sample,
 
     // Distribution over examples
     dist: Vec<f64>,
@@ -154,8 +148,8 @@ impl<'a, F> ERLPBoost<'a, F> {
     /// Use `data` for argument.
     /// This method does not care 
     /// whether the label is included in `data` or not.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        let n_sample = data.shape().0;
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
 
@@ -179,8 +173,7 @@ impl<'a, F> ERLPBoost<'a, F> {
 
 
         ERLPBoost {
-            data,
-            target,
+            sample,
 
             dist: vec![uni; n_sample],
             gamma_hat,
@@ -280,14 +273,11 @@ impl<F> ERLPBoost<'_, F>
     #[inline]
     fn update_gamma_hat_mut(&mut self, h: &F)
     {
-        let edge = self.target.i64()
-            .expect("The target class is not a dtype i64")
+        let edge = self.sample.target()
             .into_iter()
             .zip(self.dist.iter().copied())
             .enumerate()
-            .map(|(i, (y, d))|
-                d * y.unwrap() as f64 * h.confidence(self.data, i)
-            )
+            .map(|(i, (y, d))| d * y * h.confidence(self.sample, i))
             .sum::<f64>();
 
 
@@ -310,14 +300,11 @@ impl<F> ERLPBoost<'_, F>
     {
         let max_edge = self.classifiers.iter()
             .map(|h|
-                self.target.i64()
-                    .expect("The target class is not a dtype i64")
+                self.sample.target()
                     .into_iter()
                     .zip(self.dist.iter().copied())
                     .enumerate()
-                    .map(|(i, (y, d))|
-                        d * y.unwrap() as f64 * h.confidence(self.data, i)
-                    )
+                    .map(|(i, (y, d))| d * y * h.confidence(self.sample, i))
                     .sum::<f64>()
             )
             .reduce(f64::max)
@@ -330,8 +317,8 @@ impl<F> ERLPBoost<'_, F>
             .sum::<f64>();
 
 
-        let m = self.dist.len() as f64;
-        self.gamma_star = max_edge + (entropy + m.ln()) / self.eta;
+        let ln_m = (self.n_sample as f64).ln();
+        self.gamma_star = max_edge + (entropy + ln_m) / self.eta;
     }
 
 
@@ -348,7 +335,7 @@ impl<F> ERLPBoost<'_, F>
         self.qp_model.as_ref()
             .unwrap()
             .borrow_mut()
-            .update(self.data, self.target, &mut self.dist[..], clf);
+            .update(self.sample, &mut self.dist[..], clf);
 
         self.dist = self.qp_model.as_ref()
             .unwrap()
@@ -367,7 +354,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
         let uni = 1.0 / n_sample as f64;
 
         self.dist = vec![uni; n_sample];
@@ -399,7 +386,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         }
 
         // Receive a hypothesis from the base learner
-        let h = weak_learner.produce(self.data, self.target, &self.dist[..]);
+        let h = weak_learner.produce(self.sample, &self.dist[..]);
 
 
         // update `self.gamma_hat`
@@ -436,10 +423,13 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
-        let clfs = self.qp_model.as_ref()
+        self.weights = self.qp_model.as_ref()
             .unwrap()
             .borrow_mut()
             .weight()
+            .collect::<Vec<_>>();
+        let clfs = self.weights.iter()
+            .copied()
             .zip(self.classifiers.clone())
             .filter(|(w, _)| *w != 0.0)
             .collect::<Vec<(f64, F)>>();
@@ -451,49 +441,49 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
 
 
 
-impl<F> Logger for ERLPBoost<'_, F>
-    where F: Classifier
-{
-    fn weights_on_hypotheses(&mut self) {
-        self.weights = self.qp_model.as_ref()
-            .unwrap()
-            .clone()
-            .borrow_mut()
-            .weight()
-            .collect::<Vec<f64>>();
-    }
-
-
-    /// ERLPBoost optimizes the soft-margin objective.
-    fn objective_value(&self) -> f64
-    {
-        soft_margin_objective(
-            self.data, self.target,
-            &self.weights[..], &self.classifiers[..], self.nu
-        )
-    }
-
-
-    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        self.weights.iter()
-            .zip(&self.classifiers[..])
-            .map(|(w, h)| w * h.confidence(data, i))
-            .sum::<f64>()
-    }
-
-
-    fn logging<L>(
-        &self,
-        loss_function: &L,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where L: Fn(f64, f64) -> f64
-    {
-        let objval = self.objective_value();
-        let train = self.loss(loss_function, self.data, self.target);
-        let test = self.loss(loss_function, test_data, test_target);
-
-        (objval, train, test)
-    }
-}
+// impl<F> Logger for ERLPBoost<'_, F>
+//     where F: Classifier
+// {
+//     fn weights_on_hypotheses(&mut self) {
+//         self.weights = self.qp_model.as_ref()
+//             .unwrap()
+//             .clone()
+//             .borrow_mut()
+//             .weight()
+//             .collect::<Vec<f64>>();
+//     }
+// 
+// 
+//     /// ERLPBoost optimizes the soft-margin objective.
+//     fn objective_value(&self) -> f64
+//     {
+//         soft_margin_objective(
+//             self.data, self.target,
+//             &self.weights[..], &self.classifiers[..], self.nu
+//         )
+//     }
+// 
+// 
+//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+//         self.weights.iter()
+//             .zip(&self.classifiers[..])
+//             .map(|(w, h)| w * h.confidence(data, i))
+//             .sum::<f64>()
+//     }
+// 
+// 
+//     fn logging<L>(
+//         &self,
+//         loss_function: &L,
+//         test_data: &DataFrame,
+//         test_target: &Series,
+//     ) -> (f64, f64, f64)
+//         where L: Fn(f64, f64) -> f64
+//     {
+//         let objval = self.objective_value();
+//         let train = self.loss(loss_function, self.data, self.target);
+//         let test = self.loss(loss_function, test_data, test_target);
+// 
+//         (objval, train, test)
+//     }
+// }

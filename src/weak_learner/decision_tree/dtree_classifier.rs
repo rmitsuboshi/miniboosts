@@ -1,6 +1,5 @@
 //! Defines the decision tree classifier.
-use polars::prelude::*;
-use crate::Classifier;
+use crate::{Classifier, Sample};
 
 
 use super::node::*;
@@ -28,8 +27,8 @@ impl From<Node> for DTreeClassifier {
 
 
 impl Classifier for DTreeClassifier {
-    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
-        self.root.confidence(data, row)
+    fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+        self.root.confidence(sample, row)
     }
 }
 

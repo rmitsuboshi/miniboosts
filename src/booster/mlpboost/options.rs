@@ -1,13 +1,12 @@
 //! This file defines some options of MLPBoost.
 
-use polars::prelude::*;
 use rayon::prelude::*;
 
 use super::{
     utils::*,
     dist::*,
 };
-use crate::Classifier;
+use crate::{Sample, Classifier};
 
 
 /// Primary updates.
@@ -39,8 +38,7 @@ impl Primary {
         &self,
         eta: f64,
         nu: f64,
-        data: &DataFrame,
-        target: &Series,
+        sample: &Sample,
         dist: &[f64],
         position: usize,
         classifiers: &[C],
@@ -70,8 +68,6 @@ impl Primary {
                 if classifiers.len() == 1 {
                     return vec![1.0];
                 }
-                let target = target.i64()
-                    .expect("The target is not a dtype i64");
 
 
                 let new_h: &C = &classifiers[position];
@@ -79,14 +75,14 @@ impl Primary {
                 let mut numer: f64 = 0.0;
                 let mut denom: f64 = f64::MIN;
 
-                target.into_iter()
+                sample.target()
+                    .into_iter()
                     .zip(dist)
                     .enumerate()
                     .for_each(|(i, (y, &d))| {
-                        let y = y.unwrap() as f64;
-                        let np = new_h.confidence(data, i);
+                        let np = new_h.confidence(sample, i);
                         let op = confidence(
-                            i, data, classifiers, &weights[..]
+                            i, sample, classifiers, &weights[..]
                         );
 
                         let gap = y * (np - op);
@@ -111,7 +107,7 @@ impl Primary {
 
 
             Primary::LineSearch => {
-                let n_sample = data.shape().0;
+                let n_sample = sample.shape().0;
                 let f: &C = &classifiers[position];
 
 
@@ -119,15 +115,13 @@ impl Primary {
                 // dir:  -A(ej - w)
                 let mut base = vec![0.0; n_sample];
                 let mut dir  = base.clone();
-                target.i64()
-                    .expect("The target is not a dtype i64")
+                sample.target()
                     .into_iter()
                     .enumerate()
                     .for_each(|(i, y)| {
-                        let y = y.unwrap() as f64;
-                        let fc = f.confidence(data, i);
+                        let fc = f.confidence(sample, i);
                         let wc = confidence(
-                            i, data, classifiers, &weights[..]
+                            i, sample, classifiers, &weights[..]
                         );
 
                         dir[i]  = y * (wc - fc);
@@ -140,14 +134,10 @@ impl Primary {
 
 
                 // Check the step n_sample `1`.
-                let dist = dist_at(
-                    eta, nu, data, target, classifiers, &dir[..]
-                );
+                let dist = dist_at(eta, nu, sample, classifiers, &dir[..]);
 
 
-                let edge = edge_of(
-                    data, target, &dist[..], classifiers, &dir[..]
-                );
+                let edge = edge_of(sample, &dist[..], classifiers, &dir[..]);
 
 
                 if edge >= 0.0 {
@@ -172,13 +162,13 @@ impl Primary {
 
 
                     let dist = dist_at(
-                        eta, nu, data, target, classifiers, &tmp[..]
+                        eta, nu, sample, classifiers, &tmp[..]
                     );
 
 
                     // Compute the gradient for the direction `dir`.
                     let edge = edge_of(
-                        data, target, &dist[..], classifiers, &dir[..]
+                        sample, &dist[..], classifiers, &dir[..]
                     );
 
                     if edge > 0.0 {
