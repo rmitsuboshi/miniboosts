@@ -68,10 +68,6 @@ You can combine them arbitrarily.
 ## How to use
 You can see the document by `cargo doc --open` command.  
 
-This library uses 
-the `DataFrame` of [`polars`](https://github.com/pola-rs/polars) crate, 
-so that you need to import `polars`.
-
 You need to write the following line to `Cargo.toml`.
 
 ```TOML
@@ -82,7 +78,6 @@ miniboosts = { git = "https://github.com/rmitsuboshi/miniboosts" }
 Here is a sample code:
 
 ```rust
-use polars::prelude::*;
 use miniboosts::prelude::*;
 
 
@@ -91,17 +86,10 @@ fn main() {
     let file = "/path/to/input/data.csv";
 
     // Read a CSV file
-    // Note that each feature of `data`, except the target column,
-    // must be the `f64` type with no missing values.
-    let mut data = CsvReader::from_path(file)
+    // The column named `class` is corresponds to the labels (targets).
+    let sample = Sample::from_csv(file)
         .unwrap()
-        .has_header(true)
-        .finish()
-        .unwrap();
-
-
-    // Pick the target class. Each element is 1 or -1 of type `i64`.
-    let target: Series = data.drop_in_place(&"class").unwrap();
+        .set_target("class");
 
 
     // Set tolerance parameter
@@ -109,16 +97,16 @@ fn main() {
 
 
     // Initialize Booster
-    let mut booster = AdaBoost::init(&data, &target)
+    let mut booster = AdaBoost::init(&sample)
         .tolerance(tol); // Set the tolerance parameter.
 
 
     // Initialize Weak Learner
     // For decision tree, the default `max_depth` is `None` so that 
     // The tree grows extremely large.
-    let weak_learner = DTree::init(&data, &target)
+    let weak_learner = DTree::init(&sample)
         .max_depth(2) // Specify the max depth (default is not specified)
-        .criterion(Criterion::Edge); // Choose the split rule that maximizes the edge.
+        .criterion(Criterion::Edge); // Choose the split criterion
 
 
     // Run boosting algorithm
@@ -127,12 +115,12 @@ fn main() {
 
 
     // Get the batch prediction for all examples in `data`.
-    let predictions = f.predict_all(&data);
+    let predictions = f.predict_all(&sample);
 
 
     // You can predict the `i`th instance.
     let i = 0_usize;
-    let prediction = f.predict(&data, i);
+    let prediction = f.predict(&sample, i);
 }
 ```
 
