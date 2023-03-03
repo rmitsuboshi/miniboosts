@@ -2,7 +2,6 @@
 //! [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831).
 //! by Mitsuboshi et al.
 //! 
-use polars::prelude::*;
 
 use super::{
     lp_model::LPModel,
@@ -11,13 +10,14 @@ use super::{
     utils::*,
 };
 
-use crate::research::{
-    Logger,
-    soft_margin_objective,
-};
+// use crate::research::{
+//     Logger,
+//     soft_margin_objective,
+// };
 
 
 use crate::{
+    Sample,
     Booster,
     WeakLearner,
 
@@ -128,8 +128,8 @@ use std::cell::RefCell;
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct MLPBoost<'a, F> {
-    data: &'a DataFrame,
-    target: &'a Series,
+    // Training sample
+    sample: &'a Sample,
 
 
     // Tolerance parameter
@@ -179,8 +179,8 @@ pub struct MLPBoost<'a, F> {
 
 impl<'a, F> MLPBoost<'a, F> {
     /// Initialize the `MLPBoost`.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        let n_sample = data.shape().0;
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
 
@@ -189,8 +189,7 @@ impl<'a, F> MLPBoost<'a, F> {
         let nu  = 1.0;
 
         MLPBoost {
-            data,
-            target,
+            sample,
 
             half_tolerance: uni,
             n_sample,
@@ -309,7 +308,7 @@ impl<F> MLPBoost<'_, F>
                 self.lp_model.as_ref()
                     .unwrap()
                     .borrow_mut()
-                    .update(self.data, self.target, opt_h)
+                    .update(self.sample, opt_h)
             }
         }
     }
@@ -321,15 +320,14 @@ impl<F> MLPBoost<'_, F>
         let dist = dist_at(
             self.eta,
             self.nu,
-            self.data,
-            self.target,
+            self.sample,
             &self.classifiers[..],
             weights
         );
 
 
         let margin = edge_of(
-            self.data, self.target, &dist[..], &self.classifiers[..], weights
+            self.sample, &dist[..], &self.classifiers[..], weights
         );
 
 
@@ -356,10 +354,10 @@ impl<F> MLPBoost<'_, F>
         match self.condition {
             StopCondition::Edge => {
                 prim_val = edge_of(
-                    self.data, self.target, dist, &self.classifiers[..], &prim[..]
+                    self.sample, dist, &self.classifiers[..], &prim[..]
                 );
                 seco_val = edge_of(
-                    self.data, self.target, dist, &self.classifiers[..], &seco[..]
+                    self.sample, dist, &self.classifiers[..], &seco[..]
                 );
             },
 
@@ -382,7 +380,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        self.n_sample = self.data.shape().0;
+        self.n_sample = self.sample.shape().0;
 
         self.init_params();
 
@@ -416,19 +414,18 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         let dist = dist_at(
             self.eta,
             self.nu,
-            self.data,
-            self.target,
+            self.sample,
             &self.classifiers[..],
             &self.weights[..]
         );
 
 
         // Obtain a hypothesis w.r.t. `dist`.
-        let h = weak_learner.produce(self.data, self.target, &dist);
+        let h = weak_learner.produce(self.sample, &dist);
 
 
         // Compute the edge of newly-attained hypothesis `h`.
-        let edge_h = edge_of_h(self.data, self.target, &dist[..], &h);
+        let edge_h = edge_of_h(self.sample, &dist[..], &h);
 
 
         // Update the estimation of `edge`.
@@ -484,8 +481,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         let prim = self.primary.update(
             self.eta,
             self.nu,
-            self.data,
-            self.target,
+            self.sample,
             &dist[..],
             pos,
             &self.classifiers[..],
@@ -522,40 +518,40 @@ impl<F> Booster<F> for MLPBoost<'_, F>
 }
 
 
-impl<F> Logger for MLPBoost<'_, F>
-    where F: Classifier
-{
-    /// MLPBoost optimizes the soft margin objective
-    fn objective_value(&self)
-        -> f64
-    {
-        soft_margin_objective(
-            self.data, self.target,
-            &self.weights[..], &self.classifiers[..], self.nu
-        )
-    }
-
-
-    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        self.weights.iter()
-            .zip(&self.classifiers[..])
-            .map(|(w, h)| w * h.confidence(data, i))
-            .sum::<f64>()
-    }
-
-
-    fn logging<L>(
-        &self,
-        loss_function: &L,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where L: Fn(f64, f64) -> f64
-    {
-        let objval = self.objective_value();
-        let train = self.loss(loss_function, self.data, self.target);
-        let test = self.loss(loss_function, test_data, test_target);
-
-        (objval, train, test)
-    }
-}
+// impl<F> Logger for MLPBoost<'_, F>
+//     where F: Classifier
+// {
+//     /// MLPBoost optimizes the soft margin objective
+//     fn objective_value(&self)
+//         -> f64
+//     {
+//         soft_margin_objective(
+//             self.data, self.target,
+//             &self.weights[..], &self.classifiers[..], self.nu
+//         )
+//     }
+// 
+// 
+//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+//         self.weights.iter()
+//             .zip(&self.classifiers[..])
+//             .map(|(w, h)| w * h.confidence(data, i))
+//             .sum::<f64>()
+//     }
+// 
+// 
+//     fn logging<L>(
+//         &self,
+//         loss_function: &L,
+//         test_data: &DataFrame,
+//         test_target: &Series,
+//     ) -> (f64, f64, f64)
+//         where L: Fn(f64, f64) -> f64
+//     {
+//         let objval = self.objective_value();
+//         let train = self.loss(loss_function, self.data, self.target);
+//         let test = self.loss(loss_function, test_data, test_target);
+// 
+//         (objval, train, test)
+//     }
+// }

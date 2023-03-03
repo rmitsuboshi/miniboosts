@@ -1,7 +1,6 @@
 //! Defines the inner representation 
 //! of the Decision Tree class.
-use polars::prelude::*;
-use crate::Classifier;
+use crate::{Classifier, Sample};
 
 
 use crate::weak_learner::common::{
@@ -230,7 +229,7 @@ impl TrainNode {
 
 impl Classifier for TrainLeafNode {
     #[inline]
-    fn confidence(&self, _data: &DataFrame, _row: usize) -> f64 {
+    fn confidence(&self, _sample: &Sample, _row: usize) -> f64 {
         self.confidence.0
     }
 }
@@ -238,10 +237,10 @@ impl Classifier for TrainLeafNode {
 
 impl Classifier for TrainBranchNode {
     #[inline]
-    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
-        match self.rule.split(data, row) {
-            LR::Left => self.left.borrow().confidence(data, row),
-            LR::Right => self.right.borrow().confidence(data, row)
+    fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+        match self.rule.split(sample, row) {
+            LR::Left => self.left.borrow().confidence(sample, row),
+            LR::Right => self.right.borrow().confidence(sample, row)
         }
     }
 }
@@ -249,10 +248,10 @@ impl Classifier for TrainBranchNode {
 
 impl Classifier for TrainNode {
     #[inline]
-    fn confidence(&self, data: &DataFrame, row: usize) -> f64 {
+    fn confidence(&self, sample: &Sample, row: usize) -> f64 {
         match self {
-            TrainNode::Branch(ref node) => node.confidence(data, row),
-            TrainNode::Leaf(ref node) => node.confidence(data, row)
+            TrainNode::Branch(ref node) => node.confidence(sample, row),
+            TrainNode::Leaf(ref node) => node.confidence(sample, row)
         }
     }
 }

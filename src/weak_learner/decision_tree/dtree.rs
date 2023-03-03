@@ -1,8 +1,7 @@
-use polars::prelude::*;
 use rayon::prelude::*;
 
 
-use crate::WeakLearner;
+use crate::{Sample, WeakLearner};
 
 
 use crate::weak_learner::common::{
@@ -62,10 +61,10 @@ pub struct DTree {
 impl DTree {
     /// Initialize [`DTree`](DTree).
     #[inline]
-    pub fn init(data: &DataFrame, _target: &Series) -> Self {
+    pub fn init(sample: &Sample) -> Self {
         let criterion = Criterion::Entropy;
-        let size = data.shape().0;
-        let depth = ((size as f64).log2() + 1.0).ceil() as usize;
+        let n_sample = sample.shape().0;
+        let depth = ((n_sample as f64).log2() + 1.0).ceil() as usize;
 
         Self {
             criterion,
@@ -102,10 +101,10 @@ impl WeakLearner for DTree {
     ///     to grow a tree (e.g., impurity, total distribution mass, etc.)
     /// 2. Convert `TrainNode` to `Node` that pares redundant information
     #[inline]
-    fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
+    fn produce(&self, sample: &Sample, dist: &[f64])
         -> Self::Hypothesis
     {
-        let n_sample = data.shape().0;
+        let n_sample = sample.shape().0;
 
         let mut indices = (0..n_sample).into_iter()
             .filter(|&i| dist[i] > 0.0)
@@ -117,7 +116,7 @@ impl WeakLearner for DTree {
 
         // Construct a large binary tree
         let tree = full_tree(
-            data, target, dist, indices, criterion, self.max_depth
+            sample, dist, indices, criterion, self.max_depth
         );
 
 
@@ -141,8 +140,7 @@ impl WeakLearner for DTree {
 /// that perfectly classify the given examples.
 #[inline]
 fn full_tree(
-    data: &DataFrame,
-    target: &Series,
+    sample: &Sample,
     dist: &[f64],
     indices: Vec<usize>,
     criterion: Criterion,
@@ -158,7 +156,7 @@ fn full_tree(
 
     // Compute the best confidence that minimizes the training error
     // on this node.
-    let (conf, loss) = confidence_and_loss(target, dist, &indices[..]);
+    let (conf, loss) = confidence_and_loss(sample, dist, &indices[..]);
 
 
     // If sum of `dist` over `train` is zero, construct a leaf node.
@@ -170,7 +168,7 @@ fn full_tree(
     // Find the best pair of feature name and threshold
     // based on the `criterion`.
     let (feature, threshold) = criterion.best_split(
-        data, target, dist, &indices[..]
+        sample, dist, &indices[..]
     );
 
 
@@ -183,7 +181,7 @@ fn full_tree(
     let mut lindices = Vec::new();
     let mut rindices = Vec::new();
     for i in indices.into_iter() {
-        match rule.split(data, i) {
+        match rule.split(sample, i) {
             LR::Left  => { lindices.push(i); },
             LR::Right => { rindices.push(i); },
         }
@@ -203,14 +201,14 @@ fn full_tree(
     if depth <= 1 {
         // If `depth == 1`,
         // the childs from this node must be leaves.
-        ltree = construct_leaf(target, dist, lindices);
-        rtree = construct_leaf(target, dist, rindices);
+        ltree = construct_leaf(sample, dist, lindices);
+        rtree = construct_leaf(sample, dist, rindices);
     } else {
         // If `depth > 1`,
         // the childs from this node might be branches.
         let depth = depth - 1;
-        ltree = full_tree(data, target, dist, lindices, criterion, depth);
-        rtree = full_tree(data, target, dist, rindices, criterion, depth);
+        ltree = full_tree(sample, dist, lindices, criterion, depth);
+        rtree = full_tree(sample, dist, rindices, criterion, depth);
     }
 
 
@@ -220,14 +218,14 @@ fn full_tree(
 
 #[inline]
 fn construct_leaf(
-    target: &Series,
+    sample: &Sample,
     dist: &[f64],
     indices: Vec<usize>
 ) -> Rc<RefCell<TrainNode>>
 {
     // Compute the best confidence that minimizes the training error
     // on this node.
-    let (conf, loss) = confidence_and_loss(target, dist, &indices[..]);
+    let (conf, loss) = confidence_and_loss(sample, dist, &indices[..]);
 
 
     let total_weight = indices.iter()
@@ -248,15 +246,14 @@ fn construct_leaf(
 /// 
 /// **Note that** this function assumes that the label is `+1` or `-1`.
 #[inline]
-fn confidence_and_loss(target: &Series, dist: &[f64], indices: &[usize])
+fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
     -> (Confidence<f64>, LossValue)
 {
-    let target = target.i64()
-        .expect("The target class is not a dtype i64");
+    let target = sample.target();
     let mut counter: HashMap<i64, f64> = HashMap::new();
 
     for &i in indices {
-        let l = target.get(i).unwrap();
+        let l = target[i] as i64;
         let cnt = counter.entry(l).or_insert(0.0);
         *cnt += dist[i];
     }
@@ -290,5 +287,3 @@ fn confidence_and_loss(target: &Series, dist: &[f64], indices: &[usize])
     let loss = LossValue::from(loss);
     (confidence, loss)
 }
-
-

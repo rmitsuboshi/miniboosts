@@ -3,10 +3,10 @@
 //! by Rocco A. Servedio.
 
 
-use polars::prelude::*;
 use rayon::prelude::*;
 
 use crate::{
+    Sample,
     Booster,
     WeakLearner,
 
@@ -16,10 +16,10 @@ use crate::{
 };
 
 
-use crate::research::{
-    Logger,
-    soft_margin_objective,
-};
+// use crate::research::{
+//     Logger,
+//     soft_margin_objective,
+// };
 
 
 /// `SmoothBoost`.
@@ -112,8 +112,8 @@ use crate::research::{
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct SmoothBoost<'a, F> {
-    data: &'a DataFrame,
-    target: &'a Series,
+    // Training sample
+    sample: &'a Sample,
 
     /// Desired accuracy
     kappa: f64,
@@ -149,15 +149,14 @@ pub struct SmoothBoost<'a, F> {
 
 impl<'a, F> SmoothBoost<'a, F> {
     /// Initialize `SmoothBoost`.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        let n_sample = data.shape().0;
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_sample = sample.shape().0;
 
         let gamma = 0.5;
 
 
         Self {
-            data,
-            target,
+            sample,
 
             kappa: 0.5,
             theta: gamma / (2.0 + gamma), // gamma / (2.0 + gamma)
@@ -252,7 +251,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        self.n_sample = self.data.shape().0;
+        self.n_sample = self.sample.shape().0;
         // Set the paremeter `theta`.
         self.theta();
 
@@ -303,16 +302,15 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 
         // Call weak learner to obtain a hypothesis.
         self.classifiers.push(
-            weak_learner.produce(self.data, self.target, &dist[..])
+            weak_learner.produce(self.sample, &dist[..])
         );
         let h: &F = self.classifiers.last().unwrap();
 
 
-        let margins = self.target.i64()
-            .expect("The target is not a dtype i64")
+        let margins = self.sample.target()
             .into_iter()
             .enumerate()
-            .map(|(i, y)| y.unwrap() as f64 * h.confidence(self.data, i));
+            .map(|(i, y)| y * h.confidence(self.sample, i));
 
 
         // Update `n`
@@ -355,56 +353,56 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 }
 
 
-impl<F> Logger for SmoothBoost<'_, F>
-    where F: Classifier
-{
-    fn objective_value(&self)
-        -> f64
-    {
-        let unit = if self.current > 0 {
-            1.0 / self.current as f64
-        } else {
-            0.0
-        };
-        let weights = vec![unit; self.current];
-
-
-        let n_sample = self.data.shape().0 as f64;
-        let nu = self.kappa * n_sample;
-
-        soft_margin_objective(
-            self.data, self.target, &weights[..], &self.classifiers[..], nu
-        )
-    }
-
-
-    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        let unit = if self.current > 0 {
-            1.0 / self.current as f64
-        } else {
-            0.0
-        };
-        let weights = vec![unit; self.current];
-
-        weights.iter()
-            .zip(&self.classifiers[..])
-            .map(|(w, h)| w * h.confidence(data, i))
-            .sum::<f64>()
-    }
-
-
-    fn logging<L>(
-        &self,
-        loss_function: &L,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where L: Fn(f64, f64) -> f64
-    {
-        let objval = self.objective_value();
-        let train = self.loss(loss_function, self.data, self.target);
-        let test = self.loss(loss_function, test_data, test_target);
-
-        (objval, train, test)
-    }
-}
+// impl<F> Logger for SmoothBoost<'_, F>
+//     where F: Classifier
+// {
+//     fn objective_value(&self)
+//         -> f64
+//     {
+//         let unit = if self.current > 0 {
+//             1.0 / self.current as f64
+//         } else {
+//             0.0
+//         };
+//         let weights = vec![unit; self.current];
+// 
+// 
+//         let n_sample = self.data.shape().0 as f64;
+//         let nu = self.kappa * n_sample;
+// 
+//         soft_margin_objective(
+//             self.data, self.target, &weights[..], &self.classifiers[..], nu
+//         )
+//     }
+// 
+// 
+//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+//         let unit = if self.current > 0 {
+//             1.0 / self.current as f64
+//         } else {
+//             0.0
+//         };
+//         let weights = vec![unit; self.current];
+// 
+//         weights.iter()
+//             .zip(&self.classifiers[..])
+//             .map(|(w, h)| w * h.confidence(data, i))
+//             .sum::<f64>()
+//     }
+// 
+// 
+//     fn logging<L>(
+//         &self,
+//         loss_function: &L,
+//         test_data: &DataFrame,
+//         test_target: &Series,
+//     ) -> (f64, f64, f64)
+//         where L: Fn(f64, f64) -> f64
+//     {
+//         let objval = self.objective_value();
+//         let train = self.loss(loss_function, self.data, self.target);
+//         let test = self.loss(loss_function, test_data, test_target);
+// 
+//         (objval, train, test)
+//     }
+// }

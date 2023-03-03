@@ -1,8 +1,7 @@
-use polars::prelude::*;
 use grb::prelude::*;
 
 
-use crate::Classifier;
+use crate::{Sample, Classifier};
 
 pub(super) struct LPModel {
     model: Model,
@@ -58,8 +57,7 @@ impl LPModel {
     /// The argument `h` is the new hypothesis `ht`.
     pub(super) fn update<C>(
         &mut self,
-        data: &DataFrame,
-        target: &Series,
+        sample: &Sample,
         opt_h: Option<&C>
     ) -> Vec<f64>
         where C: Classifier
@@ -68,11 +66,10 @@ impl LPModel {
         // 1. append the corresponding constraint, and
         // 2. optimize the model.
         if let Some(h) = opt_h {
-            let edge = target.i64()
-                .expect("The target is not a dtype i64")
+            let edge = sample.target()
                 .into_iter()
                 .enumerate()
-                .map(|(i, y)| y.unwrap() as f64 * h.confidence(data, i))
+                .map(|(i, y)| y * h.confidence(sample, i))
                 .zip(self.dist.iter().copied())
                 .map(|(yh, d)| d * yh)
                 .grb_sum();

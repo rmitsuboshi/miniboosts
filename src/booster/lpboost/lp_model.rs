@@ -1,7 +1,7 @@
-use polars::prelude::*;
 use grb::prelude::*;
 
 
+use crate::Sample;
 use crate::hypothesis::Classifier;
 
 /// A linear programming model for edge minimization. 
@@ -63,8 +63,7 @@ impl LPModel {
     /// and outputs the optimal value.
     pub(super) fn update<F>(
         &mut self,
-        data: &DataFrame,
-        target: &Series,
+        sample: &Sample,
         clf: &F
     ) -> f64
         where F: Classifier
@@ -72,11 +71,10 @@ impl LPModel {
         // If we got a new hypothesis,
         // 1. append a constraint, and
         // 2. optimize the model.
-        let edge = target.i64()
-            .expect("The target is not a dtype i64")
+        let edge = sample.target()
             .into_iter()
             .enumerate()
-            .map(|(i, y)| y.unwrap() as f64 * clf.confidence(data, i))
+            .map(|(i, y)| y * clf.confidence(sample, i))
             .zip(self.dist.iter().copied())
             .map(|(yh, d)| d * yh)
             .grb_sum();

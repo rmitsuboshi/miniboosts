@@ -1,5 +1,4 @@
 //! Provides [`AdaBoost`](AdaBoost) by Freund & Schapire, 1995.
-use polars::prelude::*;
 use rayon::prelude::*;
 
 
@@ -8,10 +7,11 @@ use crate::{
     WeakLearner,
     State,
     Classifier,
-    CombinedHypothesis
+    CombinedHypothesis,
+    Sample,
 };
 
-use crate::research::Logger;
+// use crate::research::Logger;
 
 
 /// Defines `AdaBoost`.
@@ -98,9 +98,7 @@ use crate::research::Logger;
 /// ```
 pub struct AdaBoost<'a, F> {
     // Training data
-    data: &'a DataFrame,
-    // Correponding label
-    target: &'a Series,
+    sample: &'a Sample,
 
     // Distribution on data.
     dist: Vec<f64>,
@@ -129,21 +127,18 @@ pub struct AdaBoost<'a, F> {
 impl<'a, F> AdaBoost<'a, F> {
     /// Initialize the `AdaBoost`.
     /// This method sets some parameters `AdaBoost` holds.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        assert!(!data.is_empty());
-
-        let n_sample = data.shape().0;
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_sample = sample.shape().0;
 
         let uni = 1.0 / n_sample as f64;
         AdaBoost {
+            sample,
+
             dist: vec![uni; n_sample],
             tolerance: 1.0 / (n_sample as f64 + 1.0),
 
             weights: Vec::new(),
             classifiers: Vec::new(),
-
-            data,
-            target,
 
             max_iter: usize::MAX,
 
@@ -159,7 +154,7 @@ impl<'a, F> AdaBoost<'a, F> {
     /// `AdaBoost` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
     pub fn max_loop(&self) -> usize {
-        let n_sample = self.data.shape().0 as f64;
+        let n_sample = self.sample.shape().0 as f64;
 
         (n_sample.ln() / self.tolerance.powi(2)) as usize
     }
@@ -181,7 +176,7 @@ impl<'a, F> AdaBoost<'a, F> {
         edge: f64
     ) -> f64
     {
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
 
 
         // Compute the weight on new hypothesis.
@@ -236,7 +231,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
         where W: WeakLearner<Hypothesis = F>
     {
         // Initialize parameters
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
         let uni = 1.0 / n_sample as f64;
         self.dist = vec![uni; n_sample];
 
@@ -261,16 +256,15 @@ impl<F> Booster<F> for AdaBoost<'_, F>
 
 
         // Get a new hypothesis
-        let h = weak_learner.produce(self.data, self.target, &self.dist);
+        let h = weak_learner.produce(self.sample, &self.dist);
 
 
         // Each element in `margins` is the product of
         // the predicted vector and the correct vector
-        let margins = self.target.i64()
-            .expect("The target class is not an dtype i64")
+        let margins = self.sample.target()
             .into_iter()
             .enumerate()
-            .map(|(i, y)| (y.unwrap() as f64 * h.confidence(self.data, i)))
+            .map(|(i, y)| y * h.confidence(self.sample, i))
             .collect::<Vec<f64>>();
 
 
@@ -315,47 +309,43 @@ impl<F> Booster<F> for AdaBoost<'_, F>
 }
 
 
-impl<F> Logger for AdaBoost<'_, F>
-    where F: Classifier
-{
-    /// AdaBoost optimizes the exp loss, so that this method returns
-    /// the sum of `exp( -y * f(x) )`, 
-    /// where `f` is the current confidence-rated combined hypothesis.
-    fn objective_value(&self) -> f64 {
-        let n_sample = self.data.shape().0 as f64;
-
-        self.target.i64()
-            .expect("The target class is not a dtype i64")
-            .into_iter()
-            .map(|y| y.unwrap() as f64)
-            .enumerate()
-            .map(|(i, y)| (- y * self.prediction(self.data, i)).exp())
-            .sum::<f64>()
-            / n_sample
-    }
-
-
-    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        self.weights.iter()
-            .zip(&self.classifiers)
-            .map(|(w, h)| w * h.confidence(data, i))
-            .sum::<f64>()
-    }
-
-
-    fn logging<L>(
-        &self,
-        loss_function: &L,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where L: Fn(f64, f64) -> f64
-    {
-        let objval = self.objective_value();
-        let train = self.loss(loss_function, self.data, self.target);
-        let test = self.loss(loss_function, test_data, test_target);
-
-        (objval, train, test)
-    }
-}
-
+// impl<F> Logger for AdaBoost<'_, F>
+//     where F: Classifier
+// {
+//     /// AdaBoost optimizes the exp loss, so that this method returns
+//     /// the sum of `exp( -y * f(x) )`, 
+//     /// where `f` is the current confidence-rated combined hypothesis.
+//     fn objective_value(&self) -> f64 {
+//         let n_sample = self.sample.shape().0 as f64;
+// 
+//         self.sample.target()
+//             .into_iter()
+//             .enumerate()
+//             .map(|(i, y)| (- y * self.prediction(self.sample, i)).exp())
+//             .sum::<f64>()
+//             / n_sample
+//     }
+// 
+// 
+//     fn prediction(&self, sample: &DataFrame, i: usize) -> f64 {
+//         self.weights.iter()
+//             .zip(&self.classifiers)
+//             .map(|(w, h)| w * h.confidence(sample, i))
+//             .sum::<f64>()
+//     }
+// 
+// 
+//     fn logging<L>(
+//         &self,
+//         loss_function: &L,
+//         test: &Sample,
+//     ) -> (f64, f64, f64)
+//         where L: Fn(f64, f64) -> f64
+//     {
+//         let objval = self.objective_value();
+//         let train = self.loss(loss_function, self.sample);
+//         let test = self.loss(loss_function, test);
+// 
+//         (objval, train, test)
+//     }
+// }

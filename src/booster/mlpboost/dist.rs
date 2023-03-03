@@ -1,27 +1,24 @@
 //! Defines some functions that compute the distribution.
 
-use polars::prelude::*;
 use super::utils::*;
-use crate::Classifier;
+use crate::{Sample, Classifier};
 
 /// Returns the logarithmic distribution for the given weights.
 fn log_dist_at<C>(
     eta: f64,
-    data: &DataFrame,
-    target: &Series,
+    sample: &Sample,
     classifiers: &[C],
     weights: &[f64]
 ) -> Vec<f64>
     where C: Classifier
 {
     // Assign the logarithmic distribution in `dist`.
-    target.i64()
-        .expect("The target is not a dtype i64")
+    sample.target()
         .into_iter()
         .enumerate()
         .map(|(i, y)| {
-            let p = confidence(i, data, classifiers, weights);
-            - eta * y.unwrap() as f64 * p
+            let p = confidence(i, sample, classifiers, weights);
+            - eta * y * p
         })
         .collect::<Vec<_>>()
 }
@@ -88,14 +85,13 @@ fn projection(nu: f64, dist: &[f64]) -> Vec<f64> {
 pub(super) fn dist_at<C>(
     eta: f64,
     nu: f64,
-    data: &DataFrame,
-    target: &Series,
+    sample: &Sample,
     classifiers: &[C],
     weights: &[f64]
 ) -> Vec<f64>
     where C: Classifier
 {
-    let dist = log_dist_at(eta, data, target, classifiers, weights);
+    let dist = log_dist_at(eta, sample, classifiers, weights);
 
     projection(nu, &dist[..])
 }

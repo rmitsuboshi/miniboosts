@@ -6,10 +6,10 @@
 //! since it is referred as `the Corrective version of CERLPBoost`
 //! in "Entropy Regularized LPBoost" by Warmuth et al.
 //!
-use polars::prelude::*;
 use rayon::prelude::*;
 
 use crate::{
+    Sample,
     Booster,
     WeakLearner,
 
@@ -19,10 +19,10 @@ use crate::{
 };
 
 
-use crate::research::{
-    Logger,
-    soft_margin_objective,
-};
+// use crate::research::{
+//     Logger,
+//     soft_margin_objective,
+// };
 
 /// Corrective ERLPBoost struct.  
 /// This algorithm is based on this paper:
@@ -112,8 +112,8 @@ use crate::research::{
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct CERLPBoost<'a, F> {
-    data: &'a DataFrame,
-    target: &'a Series,
+    // Training sample
+    sample: &'a Sample,
 
     dist: Vec<f64>,
     // A regularization parameter defined in the paper
@@ -133,9 +133,8 @@ pub struct CERLPBoost<'a, F> {
 
 impl<'a, F> CERLPBoost<'a, F> {
     /// Initialize the `CERLPBoost`.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        assert!(!data.is_empty());
-        let n_sample = data.shape().0;
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_sample = sample.shape().0;
 
         // Set uni as an uniform weight
         let uni = 1.0 / n_sample as f64;
@@ -148,8 +147,7 @@ impl<'a, F> CERLPBoost<'a, F> {
         let eta = 2.0 * (n_sample as f64 / nu).ln() / tolerance;
 
         Self {
-            data,
-            target,
+            sample,
 
             dist: vec![uni; n_sample],
             tolerance,
@@ -192,13 +190,12 @@ impl<'a, F> CERLPBoost<'a, F> {
     {
         self.dual_optval = self.classifiers.iter()
             .map(|(h, _)| {
-                self.target.i64()
-                    .expect("The target class is not a dtype i64")
+                self.sample.target()
                     .into_iter()
                     .zip(self.dist.iter().copied())
                     .enumerate()
                     .map(|(i, (y, d))|
-                        d * y.unwrap() as f64 * h.confidence(self.data, i)
+                        d * y * h.confidence(self.sample, i)
                     )
                     .sum::<f64>()
             })
@@ -247,14 +244,14 @@ impl<F> CERLPBoost<'_, F>
     {
         self.dist
             .iter_mut()
-            .zip(self.target.i64().expect("The target is not a dtype i64"))
+            .zip(self.sample.target())
             .enumerate()
             .for_each(|(i, (d, y))| {
-                let p = prediction(i, self.data, &self.classifiers[..]);
-                *d = - self.eta * y.unwrap() as f64 * p
+                let p = prediction(i, self.sample, &self.classifiers[..]);
+                *d = - self.eta * y * p
             });
 
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
         // Sort the indices over `self.dist` in non-increasing order.
         let mut indices = (0..n_sample).collect::<Vec<_>>();
         indices.sort_by(|&i, &j|
@@ -351,7 +348,7 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
         let uni = 1.0 / n_sample as f64;
 
         self.dist = vec![uni; n_sample];
@@ -381,19 +378,20 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
         self.update_distribution_mut();
 
         // Receive a hypothesis from the base learner
-        let h = weak_learner.produce(self.data, self.target, &self.dist);
+        let h = weak_learner.produce(self.sample, &self.dist);
 
         // println!("h: {h:?}");
 
-        let gap_vec = self.target.i64()
-            .expect("The target class is not a dtype of i64")
+        let gap_vec = self.sample.target()
             .into_iter()
             .enumerate()
             .map(|(i, y)| {
-                let old_pred = prediction(i, self.data, &self.classifiers[..]);
-                let new_pred = h.confidence(self.data, i);
+                let old_pred = prediction(
+                    i, self.sample, &self.classifiers[..]
+                );
+                let new_pred = h.confidence(self.sample, i);
 
-                y.unwrap() as f64 * (new_pred - old_pred)
+                y * (new_pred - old_pred)
             })
             .collect::<Vec<_>>();
 
@@ -435,56 +433,59 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
     }
 }
 
-fn prediction<F>(i: usize, data: &DataFrame, classifiers: &[(F, f64)]) -> f64
-where
-    F: Classifier,
+fn prediction<F>(
+    i: usize,
+    sample: &Sample,
+    classifiers: &[(F, f64)]
+) -> f64
+    where F: Classifier,
 {
     classifiers.iter()
-        .map(|(h, w)| w * h.confidence(data, i))
+        .map(|(h, w)| w * h.confidence(sample, i))
         .sum()
 }
 
 
 
-impl<F> Logger for CERLPBoost<'_, F>
-    where F: Classifier + Clone
-{
-    /// AdaBoost optimizes the exp loss
-    fn objective_value(&self)
-        -> f64
-    {
-        let weights = self.classifiers.iter()
-            .map(|(_, w)| *w)
-            .collect::<Vec<_>>();
-        let classifiers = self.classifiers.iter()
-            .map(|(h, _)| h.clone())
-            .collect::<Vec<_>>();
-
-        soft_margin_objective(
-            self.data, self.target, &weights[..], &classifiers[..], self.nu
-        )
-    }
-
-
-    fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-        self.classifiers.iter()
-            .map(|(h, w)| w * h.confidence(data, i))
-            .sum::<f64>()
-    }
-
-
-    fn logging<L>(
-        &self,
-        loss_function: &L,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where L: Fn(f64, f64) -> f64
-    {
-        let objval = self.objective_value();
-        let train = self.loss(loss_function, self.data, self.target);
-        let test = self.loss(loss_function, test_data, test_target);
-
-        (objval, train, test)
-    }
-}
+// impl<F> Logger for CERLPBoost<'_, F>
+//     where F: Classifier + Clone
+// {
+//     /// AdaBoost optimizes the exp loss
+//     fn objective_value(&self)
+//         -> f64
+//     {
+//         let weights = self.classifiers.iter()
+//             .map(|(_, w)| *w)
+//             .collect::<Vec<_>>();
+//         let classifiers = self.classifiers.iter()
+//             .map(|(h, _)| h.clone())
+//             .collect::<Vec<_>>();
+// 
+//         soft_margin_objective(
+//             self.data, self.target, &weights[..], &classifiers[..], self.nu
+//         )
+//     }
+// 
+// 
+//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
+//         self.classifiers.iter()
+//             .map(|(h, w)| w * h.confidence(data, i))
+//             .sum::<f64>()
+//     }
+// 
+// 
+//     fn logging<L>(
+//         &self,
+//         loss_function: &L,
+//         test_data: &DataFrame,
+//         test_target: &Series,
+//     ) -> (f64, f64, f64)
+//         where L: Fn(f64, f64) -> f64
+//     {
+//         let objval = self.objective_value();
+//         let train = self.loss(loss_function, self.data, self.target);
+//         let test = self.loss(loss_function, test_data, test_target);
+// 
+//         (objval, train, test)
+//     }
+// }

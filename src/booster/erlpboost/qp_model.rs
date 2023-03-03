@@ -1,7 +1,7 @@
-use polars::prelude::*;
 use grb::prelude::*;
 
 
+use crate::Sample;
 use crate::hypothesis::Classifier;
 
 const QP_TOLERANCE: f64 = 1e-9;
@@ -65,21 +65,19 @@ impl QPModel {
     /// and outputs the optimal value.
     pub(super) fn update<F>(
         &mut self,
-        data: &DataFrame,
-        target: &Series,
+        sample: &Sample,
         dist: &mut [f64],
-        clf: &F
+        clf: &F,
     )
         where F: Classifier
     {
         // If we got a new hypothesis,
         // 1. append a constraint, and
         // 2. optimize the model.
-        let edge = target.i64()
-            .expect("The target is not a dtype i64")
+        let edge = sample.target()
             .into_iter()
             .enumerate()
-            .map(|(i, y)| y.unwrap() as f64 * clf.confidence(data, i))
+            .map(|(i, y)| y * clf.confidence(sample, i))
             .zip(self.dist.iter().copied())
             .map(|(yh, d)| d * yh)
             .grb_sum();

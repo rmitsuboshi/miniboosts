@@ -1,8 +1,8 @@
 //! This file defines split rules for decision tree.
-use polars::prelude::*;
 use serde::*;
 
 use crate::weak_learner::type_and_struct::*;
+use crate::Sample;
 
 
 /// The output of the function `split` of `SplitRule`.
@@ -33,12 +33,10 @@ impl Splitter {
 
     /// Defines the splitting.
     #[inline]
-    pub fn split(&self, data: &DataFrame, row: usize) -> LR {
-        let name = self.feature.as_ref();
-        let value = data[name]
-            .f64()
-            .expect("The target class is not a dtype f64")
-            .get(row).unwrap();
+    pub fn split(&self, data: &Sample, row: usize) -> LR {
+        let name = &self.feature;
+
+        let value = data[name][row];
 
         if value < self.threshold.0 {
             LR::Left
