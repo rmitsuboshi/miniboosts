@@ -15,14 +15,9 @@ use crate::{
 
     State,
     Classifier,
-    CombinedHypothesis
+    CombinedHypothesis,
+    research::Research,
 };
-
-
-// use crate::research::{
-//     Logger,
-//     soft_margin_objective,
-// };
 
 /// Corrective ERLPBoost struct.  
 /// This algorithm is based on this paper:
@@ -446,46 +441,16 @@ fn prediction<F>(
 }
 
 
+impl<H> Research<H> for CERLPBoost<'_, H>
+    where H: Classifier + Clone,
+{
+    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
 
-// impl<F> Logger for CERLPBoost<'_, F>
-//     where F: Classifier + Clone
-// {
-//     /// AdaBoost optimizes the exp loss
-//     fn objective_value(&self)
-//         -> f64
-//     {
-//         let weights = self.classifiers.iter()
-//             .map(|(_, w)| *w)
-//             .collect::<Vec<_>>();
-//         let classifiers = self.classifiers.iter()
-//             .map(|(h, _)| h.clone())
-//             .collect::<Vec<_>>();
-// 
-//         soft_margin_objective(
-//             self.data, self.target, &weights[..], &classifiers[..], self.nu
-//         )
-//     }
-// 
-// 
-//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-//         self.classifiers.iter()
-//             .map(|(h, w)| w * h.confidence(data, i))
-//             .sum::<f64>()
-//     }
-// 
-// 
-//     fn logging<L>(
-//         &self,
-//         loss_function: &L,
-//         test_data: &DataFrame,
-//         test_target: &Series,
-//     ) -> (f64, f64, f64)
-//         where L: Fn(f64, f64) -> f64
-//     {
-//         let objval = self.objective_value();
-//         let train = self.loss(loss_function, self.data, self.target);
-//         let test = self.loss(loss_function, test_data, test_target);
-// 
-//         (objval, train, test)
-//     }
-// }
+        let f = self.classifiers.clone()
+            .into_iter()
+            .filter_map(|(h, w)| if w != 0.0 { Some((w, h)) } else { None })
+            .collect::<Vec<_>>();
+
+        CombinedHypothesis::from(f)
+    }
+}

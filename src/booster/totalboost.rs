@@ -12,9 +12,9 @@ use crate::{
     CombinedHypothesis,
 
     SoftBoost,
-};
 
-// use crate::research::Logger;
+    research::Research,
+};
 
 
 /// `TotalBoost`.
@@ -168,37 +168,12 @@ impl<F> Booster<F> for TotalBoost<'_, F>
     }
 }
 
+impl<H> Research<H> for TotalBoost<'_, H>
+    where H: Classifier + Clone,
+{
+    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+        self.softboost.current_hypothesis()
+    }
+}
 
-// impl<F> Logger for TotalBoost<'_, F>
-//     where F: Classifier
-// {
-//     fn weights_on_hypotheses(&mut self) {
-//         self.softboost.weights_on_hypotheses();
-//     }
-// 
-//     /// `TotalBoost` optimizes the hard margin objective,
-//     /// which corresponds to the soft margin objective
-//     /// with capping parameter `nu = 1.0`.
-//     fn objective_value(&self)
-//         -> f64
-//     {
-//         self.softboost.objective_value()
-//     }
-// 
-// 
-//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-//         self.softboost.prediction(data, i)
-//     }
-// 
-// 
-//     fn logging<L>(
-//         &self,
-//         loss_function: &L,
-//         test_data: &DataFrame,
-//         test_target: &Series,
-//     ) -> (f64, f64, f64)
-//         where L: Fn(f64, f64) -> f64
-//     {
-//         self.softboost.logging(loss_function, test_data, test_target)
-//     }
-// }
+

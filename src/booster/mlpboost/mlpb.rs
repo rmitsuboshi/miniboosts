@@ -10,11 +10,6 @@ use super::{
     utils::*,
 };
 
-// use crate::research::{
-//     Logger,
-//     soft_margin_objective,
-// };
-
 
 use crate::{
     Sample,
@@ -23,7 +18,8 @@ use crate::{
 
     State,
     Classifier,
-    CombinedHypothesis
+    CombinedHypothesis,
+    research::Research,
 };
 
 
@@ -518,40 +514,20 @@ impl<F> Booster<F> for MLPBoost<'_, F>
 }
 
 
-// impl<F> Logger for MLPBoost<'_, F>
-//     where F: Classifier
-// {
-//     /// MLPBoost optimizes the soft margin objective
-//     fn objective_value(&self)
-//         -> f64
-//     {
-//         soft_margin_objective(
-//             self.data, self.target,
-//             &self.weights[..], &self.classifiers[..], self.nu
-//         )
-//     }
-// 
-// 
-//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-//         self.weights.iter()
-//             .zip(&self.classifiers[..])
-//             .map(|(w, h)| w * h.confidence(data, i))
-//             .sum::<f64>()
-//     }
-// 
-// 
-//     fn logging<L>(
-//         &self,
-//         loss_function: &L,
-//         test_data: &DataFrame,
-//         test_target: &Series,
-//     ) -> (f64, f64, f64)
-//         where L: Fn(f64, f64) -> f64
-//     {
-//         let objval = self.objective_value();
-//         let train = self.loss(loss_function, self.data, self.target);
-//         let test = self.loss(loss_function, test_data, test_target);
-// 
-//         (objval, train, test)
-//     }
-// }
+
+impl<H> Research<H> for MLPBoost<'_, H>
+    where H: Classifier + Clone,
+{
+    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+
+        let f = self.weights.iter()
+            .copied()
+            .zip(self.classifiers.iter().cloned())
+            .filter(|(w, _)| *w > 0.0)
+            .collect::<Vec<(f64, H)>>();
+
+        CombinedHypothesis::from(f)
+    }
+}
+
+

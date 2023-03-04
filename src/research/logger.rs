@@ -1,49 +1,116 @@
-use polars::prelude::*;
+use crate::{
+    Sample,
+    State,
+    Booster,
+    WeakLearner,
+    CombinedHypothesis,
+    common::ObjectiveFunction,
+};
+
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
+use std::time::Instant;
+
+const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 
 
-/// Defines some stats around boosting process.
-pub trait Logger {
-    /// Update the weights on hypotheses
-    fn weights_on_hypotheses(&mut self) {}
-
-
-    /// Objective value at an intermediate state of boosting process
-    fn objective_value(&self) -> f64;
-
-
-    /// Prediction at an intermediate state of boosting process
-    fn prediction(&self, data: &DataFrame, index: usize) -> f64;
-
-
-    /// Train/Test error at an intermediate state of boosting process
-    fn loss<F>(
-        &self,
-        loss_function: &F, // Loss function
-        data: &DataFrame, // Dataset to be predicted
-        target: &Series,  // True target values
-    ) -> f64
-        where F: Fn(f64, f64) -> f64
-    {
-        let n_sample = data.shape().0 as f64;
-
-        target.i64()
-            .expect("The target class is not a dtype i64")
-            .into_iter()
-            .map(|y| y.unwrap() as f64)
-            .enumerate()
-            .map(|(i, y)| loss_function(y, self.prediction(data, i)))
-            .sum::<f64>()
-            / n_sample
-    }
-
-
-    /// Returns the triplet `(ObjectiveValue, TrainLoss, TestLoss)`
-    /// of types `(f64, f64, f64)`
-    fn logging<F>(
-        &self,
-        loss_function: &F,
-        test_data: &DataFrame,
-        test_target: &Series,
-    ) -> (f64, f64, f64)
-        where F: Fn(f64, f64) -> f64;
+/// Struct `Logger` provides a generic function that
+/// logs objective value, train / test loss value
+/// for each step of boosting.
+pub struct Logger<'a, B, W, F, G> {
+    booster: B,
+    weak_learner: W,
+    objective_func: F,
+    loss_func: G,
+    train: &'a Sample,
+    test: &'a Sample,
 }
+
+
+impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
+    /// Create a new instance of `Logger`.
+    pub fn new(
+        booster: B,
+        weak_learner: W,
+        objective_func: F,
+        loss_func: G,
+        train: &'a Sample,
+        test: &'a Sample,
+    ) -> Self
+    {
+        Self { booster, weak_learner, loss_func, objective_func, train, test }
+    }
+}
+
+impl<'a, H, B, W, F, G> Logger<'a, B, W, F, G>
+    where B: Booster<H> + Research<H>,
+          W: WeakLearner<Hypothesis = H>,
+          F: ObjectiveFunction<H>,
+          G: Fn(&Sample, &CombinedHypothesis<H>) -> f64,
+{
+    /// Run the given boosting algorithm with logging.
+    /// Note that this method is almost the same as `Booster::run`.
+    /// This method measures running time per iteration.
+    pub fn run<P: AsRef<Path>>(&mut self, file: P)
+        -> std::io::Result<CombinedHypothesis<H>>
+    {
+        // Open file
+        let mut file = File::create(file)?;
+
+        // Write header to the file
+        file.write_all(HEADER.as_bytes())?;
+
+
+        // ---------------------------------------------------------------------
+        // Pre-processing
+        self.booster.preprocess(&self.weak_learner);
+
+
+        // Cumulative time
+        let mut time_acc = 0;
+
+        // ---------------------------------------------------------------------
+        // Boosting step
+        for it in 1.. {
+            // Start measuring time
+            let now = Instant::now();
+
+            let state = self.booster.boost(&self.weak_learner, it);
+
+            // Stop measuring and convert `Duration` to Milliseconds.
+            let time = now.elapsed().as_millis();
+
+            // Update the cumulative time
+            time_acc += time;
+
+            let hypothesis = self.booster.current_hypothesis();
+
+            let obj = self.objective_func.eval(&self.train, &hypothesis);
+            let train = (self.loss_func)(&self.train, &hypothesis);
+            let test = (self.loss_func)(&self.test, &hypothesis);
+
+            // Write the results to `file`.
+            let line = format!("{obj},{train},{test},{time_acc}\n");
+            file.write_all(line.as_bytes())?;
+
+
+            if state == State::Terminate {
+                break;
+            }
+        }
+
+        let f = self.booster.postprocess(&self.weak_learner);
+        Ok(f)
+    }
+}
+
+
+/// Implementing this trait allows you to use `Logger` to
+/// log algorithm's behavor.
+pub trait Research<H> {
+    /// Returns the combined hypothesis at current state.
+    fn current_hypothesis(&self) -> CombinedHypothesis<H>;
+}
+
+
