@@ -15,12 +15,15 @@ pub mod lpboost;
 pub mod cerlpboost;
 pub mod erlpboost;
 pub mod softboost;
-// 
-// pub mod gradient_boost;
+pub mod mlpboost;
+
+pub mod gradient_boost;
 
 
 // ------------------------------------------------
 // Regression
+// pub mod soft_lae;
+// pub mod leveragings;
 
 
 // Export the Boosters
@@ -51,11 +54,13 @@ pub use self::softboost::SoftBoost;
 pub use self::smoothboost::SmoothBoost;
 pub use self::cerlpboost::CERLPBoost;
 
-// 
-// pub use self::gradient_boost::GBM;
-// 
+pub use self::mlpboost::MLPBoost;
+
+pub use self::gradient_boost::GBM;
+
 // // ------------------------------------------------
 // // Regression
+// pub use self::soft_lae::SLBoost;
 // pub use self::leveragings::{
 //     SquareLevR,
 // };

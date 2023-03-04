@@ -1,8 +1,7 @@
-use polars::prelude::*;
 use rayon::prelude::*;
 
 
-use crate::WeakLearner;
+use crate::{Sample, WeakLearner};
 
 
 use crate::weak_learner::common::{
@@ -38,10 +37,10 @@ pub struct RTree {
 impl RTree {
     /// Initialize `RTree`.
     #[inline]
-    pub fn init(data: &DataFrame, _target: &Series)
+    pub fn init(sample: &Sample)
         -> Self
     {
-        let n_sample = data.shape().0;
+        let n_sample = sample.shape().0;
 
         let max_depth = (n_sample as f64).log2().ceil() as usize;
 
@@ -73,7 +72,7 @@ impl RTree {
 
 impl WeakLearner for RTree {
     type Hypothesis = RTreeRegressor;
-    fn produce(&self, data: &DataFrame, target: &Series, dist: &[f64])
+    fn produce(&self, sample: &Sample, dist: &[f64])
         -> Self::Hypothesis
     {
         let indices = (0..self.n_sample).into_iter()
@@ -83,7 +82,7 @@ impl WeakLearner for RTree {
         let depth = self.max_depth;
 
         let tree = full_tree(
-            data, target, dist, indices, depth, self.loss_type
+            sample, dist, indices, depth, self.loss_type
         );
 
 
@@ -103,8 +102,7 @@ impl WeakLearner for RTree {
 
 #[inline]
 fn full_tree(
-    data: &DataFrame,
-    target: &Series,
+    sample: &Sample,
     dist: &[f64],
     indices: Vec<usize>,
     max_depth: usize,
@@ -119,6 +117,8 @@ fn full_tree(
 
     // Compute the best prediction that minimizes the training error
     // on this node.
+    let target = sample.target();
+    let target = &target[..];
     let (pred, loss) = loss_type.prediction_and_loss(
         target, &indices, dist
     );
@@ -132,7 +132,7 @@ fn full_tree(
 
     // Find the best splitting rule.
     let (feature, threshold) = loss_type.best_split(
-        data, target, dist, &indices[..],
+        sample, dist, &indices[..],
     );
 
     let rule = Splitter::new(feature, threshold);
@@ -142,7 +142,7 @@ fn full_tree(
     let mut lindices = Vec::new();
     let mut rindices = Vec::new();
     for i in indices.into_iter() {
-        match rule.split(data, i) {
+        match rule.split(sample, i) {
             LR::Left  => { lindices.push(i); },
             LR::Right => { rindices.push(i); },
         }
@@ -167,8 +167,8 @@ fn full_tree(
         // If `depth > 1`,
         // the childs from this node might be branches.
         let d = max_depth - 1;
-        ltree = full_tree(data, target, dist, lindices, d, loss_type);
-        rtree = full_tree(data, target, dist, rindices, d, loss_type);
+        ltree = full_tree(sample, dist, lindices, d, loss_type);
+        rtree = full_tree(sample, dist, rindices, d, loss_type);
     }
 
 
@@ -178,7 +178,7 @@ fn full_tree(
 
 #[inline]
 fn construct_leaf(
-    target: &Series,
+    target: &[f64],
     dist: &[f64],
     indices: Vec<usize>,
     loss_type: LossType,

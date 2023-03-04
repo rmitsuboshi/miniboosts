@@ -22,8 +22,16 @@ pub use crate::booster::{
     SmoothBoost,
     CERLPBoost,
 
+    MLPBoost,
+
     // // Regression -------------------------------
-    // GBM,
+    GBM,
+};
+
+pub use crate::booster::mlpboost::{
+    Primary,
+    Secondary,
+    StopCondition,
 };
 
 
@@ -44,19 +52,19 @@ pub use crate::weak_learner::{
     // NBayesClassifier,
 
 
-    // // Regression -------------------------------
-    // RTree,
-    // RTreeRegressor,
-    // LossType,
+    // Regression -------------------------------
+    RTree,
+    RTreeRegressor,
+    LossType,
 };
 
 
 pub use crate::hypothesis::{
     Classifier,
-    // Regressor,
+    Regressor,
     CombinedHypothesis,
 };
 
 pub use crate::Sample;
 
-// pub use crate::common::loss_functions::GBMLoss;
+pub use crate::common::loss_functions::GBMLoss;

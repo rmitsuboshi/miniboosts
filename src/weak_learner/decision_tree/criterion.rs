@@ -124,6 +124,7 @@ impl Criterion {
     ) -> (&'a str, f64)
     {
         let target = sample.target();
+        let target = &target[..];
         match self {
             Criterion::Entropy => {
                 sample.features()

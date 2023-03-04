@@ -120,6 +120,7 @@
 //! println!("Training Loss is: {training_loss}");
 //! ```
 pub mod sample;
+pub mod common;
 pub mod hypothesis;
 pub mod booster;
 pub mod weak_learner;
@@ -173,6 +174,14 @@ pub use booster::{
     SoftBoost,
     SmoothBoost,
     CERLPBoost,
+
+    MLPBoost,
+};
+
+
+// Export the boosting algorithms for regression
+pub use booster::{
+    GBM,
 };
 
 
@@ -198,17 +207,17 @@ pub use weak_learner::{
     // NBayesClassifier,
 };
 
-// pub use weak_learner::{
-//     RTree,
-//     RTreeRegressor,
-//     LossType,
-// };
+pub use weak_learner::{
+    RTree,
+    RTreeRegressor,
+    LossType,
+};
 
-// /// Some useful functions / traits
-// pub use common::{
-//     loss_functions::{
-//         GBMLoss,
-//         LossFunction,
-//     },
-// };
+/// Some useful functions / traits
+pub use common::{
+    loss_functions::{
+        GBMLoss,
+        LossFunction,
+    },
+};
 

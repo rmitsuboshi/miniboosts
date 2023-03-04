@@ -244,7 +244,7 @@ impl<F> CERLPBoost<'_, F>
     {
         self.dist
             .iter_mut()
-            .zip(self.sample.target())
+            .zip(self.sample.target().into_iter())
             .enumerate()
             .for_each(|(i, (d, y))| {
                 let p = prediction(i, self.sample, &self.classifiers[..]);

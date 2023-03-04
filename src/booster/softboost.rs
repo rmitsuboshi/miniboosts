@@ -245,8 +245,8 @@ impl<F> SoftBoost<'_, F>
 
 
         // Set constraints
-        let iter = self.sample.target()
-            .into_iter()
+        let target = self.sample.target();
+        let iter = target.into_iter()
             .zip(xi_vec.iter())
             .enumerate();
 
@@ -322,7 +322,7 @@ impl<F> SoftBoost<'_, F>
                 .for_each(|(j, h)| {
                     let expr = vars.iter()
                         .zip(self.dist.iter().copied())
-                        .zip(self.sample.target())
+                        .zip(self.sample.target().into_iter())
                         .enumerate()
                         .map(|(i, ((v, d), y))| {
                             let p = h.confidence(self.sample, i);

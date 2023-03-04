@@ -1,9 +1,8 @@
 //! Provides [`GBM`](GBM) by Friedman, 2001.
-use polars::prelude::*;
-
 
 use crate::{
     common::loss_functions::*,
+    Sample,
     Booster,
     WeakLearner,
     State,
@@ -94,15 +93,11 @@ use crate::{
 /// ```
 pub struct GBM<'a, F> {
     // Training data
-    data: &'a DataFrame,
+    sample: &'a Sample,
 
 
-    // Correponding label
-    target: &'a Series,
-
-
-    // Modified labels
-    residuals: Vec<f64>,
+    // Original labels
+    original_target: Vec<f64>,
 
     // Distribution on examples.
     // Since GBM does not maintain a distribution over examples,
@@ -139,22 +134,20 @@ impl<'a, F> GBM<'a, F>
 {
     /// Initialize the `GBM`.
     /// This method sets some parameters `GBM` holds.
-    pub fn init(data: &'a DataFrame, target: &'a Series) -> Self {
-        assert!(!data.is_empty());
+    pub fn init(sample: &'a Sample) -> Self {
 
-        let n_sample = data.shape().0;
+        let n_sample = sample.shape().0;
+        let original_target = sample.target().to_vec();
 
 
         Self {
+            sample,
+            original_target,
             tolerance: 0.0,
 
             weights: Vec::new(),
             classifiers: Vec::new(),
 
-            data,
-            target,
-
-            residuals: Vec::with_capacity(n_sample),
             ones: vec![1.0; n_sample],
 
             loss: GBMLoss::L2,
@@ -173,7 +166,7 @@ impl<'a, F> GBM<'a, F> {
     /// that has error at most `tolerance`.
     /// Default max loop is `100`.
     pub fn max_loop(&self) -> usize {
-        let n_sample = self.data.shape().0 as f64;
+        let n_sample = self.sample.shape().0 as f64;
 
         (n_sample.ln() / self.tolerance.powi(2)) as usize
     }
@@ -204,16 +197,14 @@ impl<F> Booster<F> for GBM<'_, F>
         where W: WeakLearner<Hypothesis = F>
     {
         // Initialize parameters
-        let n_sample = self.data.shape().0;
+        let n_sample = self.sample.shape().0;
 
         self.weights = Vec::with_capacity(self.max_iter);
         self.classifiers = Vec::with_capacity(self.max_iter);
 
-        self.residuals = self.target.f64()
-            .unwrap()
-            .into_iter()
-            .map(Option::unwrap)
-            .collect::<Vec<f64>>();
+        if self.original_target.is_empty() {
+            self.original_target = self.sample.target().to_vec();
+        }
 
         self.ones = vec![1.0; n_sample];
 
@@ -235,13 +226,13 @@ impl<F> Booster<F> for GBM<'_, F>
 
 
         // Get a new hypothesis
-        let target = Series::new(&"target", &self.residuals[..]);
-        let h = weak_learner.produce(self.data, &target, &self.ones[..]);
+        let h = weak_learner.produce(self.sample, &self.ones[..]);
 
-        let predictions = h.predict_all(self.data);
-        let coef = self.loss.best_coefficient(
-            &self.residuals[..], &predictions[..]
-        );
+        let predictions = h.predict_all(self.sample);
+        let coef = {
+            let target = self.sample.target();
+            self.loss.best_coefficient(&target[..], &predictions[..])
+        };
 
         // If the best coefficient is zero,
         // the newly-attained hypothesis `h` do nothing.
@@ -252,7 +243,8 @@ impl<F> Booster<F> for GBM<'_, F>
         }
 
         // Update the residual vector
-        self.residuals.iter_mut()
+        self.sample.target_mut()
+            .iter_mut()
             .zip(predictions)
             .for_each(|(r, p)| {
                 *r -= coef * p;
@@ -272,6 +264,12 @@ impl<F> Booster<F> for GBM<'_, F>
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
+        // Back the original label to `Sample`.
+        self.sample.target_mut()
+            .iter_mut()
+            .zip(self.original_target.iter().copied())
+            .for_each(|(y, orig)| { *y = orig; });
+
         let f = self.weights.iter()
             .copied()
             .zip(self.classifiers.iter().cloned())

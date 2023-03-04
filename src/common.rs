@@ -2,3 +2,5 @@
 
 /// Defines loss function trait and its instances.
 pub mod loss_functions;
+
+pub(crate) mod checker;

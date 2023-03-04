@@ -134,31 +134,31 @@ impl cmp::PartialOrd<usize> for Depth {
 
 #[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
-pub(crate) struct Feature(pub(crate) f64);
+pub(crate) struct FeatureValue(pub(crate) f64);
 
 
-impl From<f64> for Feature {
+impl From<f64> for FeatureValue {
     fn from(feature: f64) -> Self {
         Self(feature)
     }
 }
 
 
-impl ops::Add<Self> for Feature {
+impl ops::Add<Self> for FeatureValue {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
         Self(self.0 + rhs.0)
     }
 }
 
-impl cmp::PartialEq<f64> for Feature {
+impl cmp::PartialEq<f64> for FeatureValue {
     fn eq(&self, other: &f64) -> bool {
         self.0.eq(other)
     }
 }
 
 
-impl cmp::PartialOrd<Self> for Feature {
+impl cmp::PartialOrd<Self> for FeatureValue {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.0.partial_cmp(&other.0)
