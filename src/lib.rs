@@ -126,7 +126,7 @@ pub mod booster;
 pub mod weak_learner;
 pub mod prelude;
 
-// pub mod research;
+pub mod research;
 
 
 // Export the struct that represents batch sample
@@ -181,6 +181,7 @@ pub use booster::{
 
 // Export the boosting algorithms for regression
 pub use booster::{
+    // SquareLevR,
     GBM,
 };
 
@@ -221,3 +222,7 @@ pub use common::{
     },
 };
 
+
+pub use research::{
+    Logger,
+};
