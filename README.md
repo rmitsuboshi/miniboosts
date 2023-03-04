@@ -181,7 +181,7 @@ fn main() {
     let nu = 0.01 * n_sample;
 
 
-    // Read the training data
+    // Read the test data
     let path = "/path/to/test/data.csv";
     let test = Sample::from_csv(path, true)
         .unwrap()
@@ -189,7 +189,7 @@ fn main() {
 
 
     let booster = LPBoost::init(&train);
-    let weak_learner = DTree::init(&test)
+    let weak_learner = DTree::init(&train)
         .max_depth(2)
         .criterion(Criterion::Entropy);
 
