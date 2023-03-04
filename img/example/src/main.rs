@@ -1,9 +1,27 @@
-use polars::prelude::*;
 use miniboosts::prelude::*;
 use miniboosts::research::{
-    boost_logger::with_log,
-    loss_functions::zero_one_loss,
+    Logger,
 };
+use miniboosts::common::objective_functions::{
+    SoftMarginObjective,
+};
+
+
+fn zero_one_loss<H>(sample: &Sample, f: &CombinedHypothesis<H>)
+    -> f64
+    where H: Classifier
+{
+    let n_sample = sample.shape().0 as f64;
+
+    let target = sample.target();
+
+    f.predict_all(sample)
+        .into_iter()
+        .zip(target.into_iter())
+        .map(|(hx, &y)| if hx != y as i64 { 1.0 } else { 0.0 })
+        .sum::<f64>()
+        / n_sample
+}
 
 
 fn main() {
@@ -12,61 +30,61 @@ fn main() {
     // Read the train file
     let path = args.next()
         .expect("[USAGE] ./example [csv file (train)] [csv file (test)]");
-    let mut train_x = CsvReader::from_path(path)
+
+    let train = Sample::from_csv(path, true)
         .unwrap()
-        .has_header(true)
-        .finish()
-        .unwrap();
-    let train_y = train_x.drop_in_place("class").unwrap();
+        .set_target("class");
 
+    let n_sample = train.shape().0 as f64;
+    let nu = 0.01 * n_sample;
 
-    // Read the test file
     let path = args.next()
         .expect("[USAGE] ./example [csv file (train)] [csv file (test)]");
-    let mut test_x = CsvReader::from_path(path)
+    let test = Sample::from_csv(path, true)
         .unwrap()
-        .has_header(true)
-        .finish()
-        .unwrap();
-    let test_y = test_x.drop_in_place("class").unwrap();
-
-
-
-    let n_sample = train_x.shape().0 as f64;
+        .set_target("class");
 
 
     // // Run AdaBoost
-    // let booster = AdaBoost::init(&train_x, &train_y)
+    // let objective = SoftMarginObjective::new(1.0);
+    // println!("Running AdaBoost");
+    // let booster = AdaBoost::init(&train)
     //     .tolerance(0.01);
-    // let tree = DTree::init(&train_x, &train_y)
+    // let tree = DTree::init(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "adaboost.csv"
-    // ).unwrap();
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("adaboost.csv");
 
 
     // // Run AdaBoostV
-    // let booster = AdaBoostV::init(&train_x, &train_y)
+    // let objective = SoftMarginObjective::new(1.0);
+    // println!("Running AdaBoostV");
+    // let booster = AdaBoostV::init(&train)
     //     .tolerance(0.01);
-    // let tree = DTree::init(&train_x, &train_y)
+    // let tree = DTree::init(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "adaboostv.csv"
-    // ).unwrap();
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("adaboostv.csv");
 
 
     // // Run TotalBoost
+    // let objective = SoftMarginObjective::new(1.0);
     // println!("Running TotalBoost");
-    // let booster = TotalBoost::init(&train_x, &train_y)
+    // let booster = TotalBoost::init(&train)
     //     .tolerance(0.01);
-    // let tree = DTree::init(&train_x, &train_y)
+    // let tree = DTree::init(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "totalboost.csv"
-    // ).unwrap();
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("totalboost.csv");
 
 
     // // Run SmoothBoost
@@ -75,79 +93,91 @@ fn main() {
     // // for any distribution, the weak learner returns a hypothesis
     // // such that the edge is at least 0.006.
     // // This value `0.006` is derived from the LPBoost.
+    // let objective = SoftMarginObjective::new(nu);
     // println!("Running SmoothBoost");
-    // let booster = SmoothBoost::init(&train_x, &train_y)
+    // let booster = SmoothBoost::init(&train)
     //     .tolerance(0.01)
     //     .gamma(0.006);
-    // let tree = DTree::init(&train_x, &train_y)
+    // let tree = DTree::init(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Edge);
-    // let _ = with_log(
-    //     booster, tree, zero_one_loss, &test_x, &test_y, "smoothboost.csv"
-    // ).unwrap();
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("smoothboost.csv");
 
 
-    // Run SoftBoost
-    println!("Running SoftBoost");
-    let booster = SoftBoost::init(&train_x, &train_y)
-        .tolerance(0.01)
-        .nu(0.01 * n_sample);
-    let tree = DTree::init(&train_x, &train_y)
-        .max_depth(2)
-        .criterion(Criterion::Edge);
-    let _ = with_log(
-        booster, tree, zero_one_loss, &test_x, &test_y, "softboost.csv"
-    ).unwrap();
+    // // Run SoftBoost
+    // let objective = SoftMarginObjective::new(nu);
+    // println!("Running SoftBoost");
+    // let booster = SoftBoost::init(&train)
+    //     .tolerance(0.01)
+    //     .nu(nu);
+    // let tree = DTree::init(&train)
+    //     .max_depth(2)
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("softboost.csv");
 
 
-    // Run LPBoost
-    println!("Running LPBoost");
-    let booster = LPBoost::init(&train_x, &train_y)
-        .tolerance(0.01)
-        .nu(0.01 * n_sample);
-    let tree = DTree::init(&train_x, &train_y)
-        .max_depth(2)
-        .criterion(Criterion::Edge);
-    let _ = with_log(
-        booster, tree, zero_one_loss, &test_x, &test_y, "lpboost.csv"
-    ).unwrap();
+    // // Run LPBoost
+    // let objective = SoftMarginObjective::new(nu);
+    // println!("Running LPBoost");
+    // let booster = LPBoost::init(&train)
+    //     .tolerance(0.01)
+    //     .nu(nu);
+    // let tree = DTree::init(&train)
+    //     .max_depth(2)
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("lpboost.csv");
 
 
-    // Run ERLPBoost
-    println!("Running ERLPBoost");
-    let booster = ERLPBoost::init(&train_x, &train_y)
-        .tolerance(0.01)
-        .nu(0.01 * n_sample);
-    let tree = DTree::init(&train_x, &train_y)
-        .max_depth(2)
-        .criterion(Criterion::Edge);
-    let _ = with_log(
-        booster, tree, zero_one_loss, &test_x, &test_y, "erlpboost.csv"
-    ).unwrap();
+    // // Run ERLPBoost
+    // let objective = SoftMarginObjective::new(nu);
+    // println!("Running ERLPBoost");
+    // let booster = ERLPBoost::init(&train)
+    //     .tolerance(0.01)
+    //     .nu(nu);
+    // let tree = DTree::init(&train)
+    //     .max_depth(2)
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("erlpboost.csv");
 
 
     // Run Corrective ERLPBoost
+    let objective = SoftMarginObjective::new(nu);
     println!("Running CERLPBoost");
-    let booster = CERLPBoost::init(&train_x, &train_y)
+    let booster = CERLPBoost::init(&train)
         .tolerance(0.01)
-        .nu(0.01 * n_sample);
-    let tree = DTree::init(&train_x, &train_y)
+        .nu(nu);
+    let tree = DTree::init(&train)
         .max_depth(2)
-        .criterion(Criterion::Edge);
-    let _ = with_log(
-        booster, tree, zero_one_loss, &test_x, &test_y, "cerlpboost.csv"
-    ).unwrap();
+        .criterion(Criterion::Entropy);
+    let mut logger = Logger::new(
+        booster, tree, objective, zero_one_loss, &train, &test
+    );
+    let _ = logger.run("cerlpboost.csv");
 
 
-    // Run MLPBoost
-    println!("Running MLPBoost");
-    let booster = MLPBoost::init(&train_x, &train_y)
-        .tolerance(0.01)
-        .nu(0.01 * n_sample);
-    let tree = DTree::init(&train_x, &train_y)
-        .max_depth(2)
-        .criterion(Criterion::Edge);
-    let _ = with_log(
-        booster, tree, zero_one_loss, &test_x, &test_y, "mlpboost.csv"
-    ).unwrap();
+    // // Run MLPBoost
+    // let objective = SoftMarginObjective::new(nu);
+    // println!("Running MLPBoost");
+    // let booster = MLPBoost::init(&train)
+    //     .tolerance(0.01)
+    //     .nu(nu);
+    // let tree = DTree::init(&train)
+    //     .max_depth(2)
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("mlpboost.csv");
 }

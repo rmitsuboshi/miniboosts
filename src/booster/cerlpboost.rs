@@ -445,10 +445,15 @@ impl<H> Research<H> for CERLPBoost<'_, H>
     where H: Classifier + Clone,
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+        let total_weight = self.classifiers.iter()
+            .map(|(_, w)| w.abs())
+            .sum::<f64>();
 
         let f = self.classifiers.clone()
             .into_iter()
-            .filter_map(|(h, w)| if w != 0.0 { Some((w, h)) } else { None })
+            .filter_map(|(h, w)|
+                if w != 0.0 { Some((w / total_weight, h)) } else { None }
+            )
             .collect::<Vec<_>>();
 
         CombinedHypothesis::from(f)
