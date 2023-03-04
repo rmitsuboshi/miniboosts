@@ -13,8 +13,8 @@ pub(crate) mod common;
 pub mod decision_tree;
 
 
-// /// Defines Regression Tree.
-// pub mod regression_tree;
+/// Defines Regression Tree.
+pub mod regression_tree;
 
 
 // /// Defines Naive Bayes.
@@ -34,11 +34,11 @@ pub use self::decision_tree::{
 // };
 
 
-// pub use self::regression_tree::{
-//     LossType,
-//     RTree,
-//     RTreeRegressor,
-// };
+pub use self::regression_tree::{
+    LossType,
+    RTree,
+    RTreeRegressor,
+};
 
 
 // pub use self::union::WLUnion;

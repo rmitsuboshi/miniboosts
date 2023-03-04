@@ -307,8 +307,8 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
         let h: &F = self.classifiers.last().unwrap();
 
 
-        let margins = self.sample.target()
-            .into_iter()
+        let target = self.sample.target();
+        let margins = target.into_iter()
             .enumerate()
             .map(|(i, y)| y * h.confidence(self.sample, i));
 

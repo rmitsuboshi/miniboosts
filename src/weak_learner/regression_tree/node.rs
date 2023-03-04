@@ -1,6 +1,5 @@
 //! Defines the inner representation 
 //! of the Decision Tree class.
-use polars::prelude::*;
 use crate::Regressor;
 
 
@@ -8,6 +7,9 @@ use crate::weak_learner::common::{
     type_and_struct::*,
     split_rule::*,
 };
+use crate::Sample;
+
+
 use super::train_node::*;
 
 
@@ -122,7 +124,7 @@ impl From<TrainNode> for Node {
 
 impl Regressor for LeafNode {
     #[inline]
-    fn predict(&self, _data: &DataFrame, _row: usize) -> f64 {
+    fn predict(&self, _sample: &Sample, _row: usize) -> f64 {
         self.prediction.0
     }
 }
@@ -130,10 +132,10 @@ impl Regressor for LeafNode {
 
 impl Regressor for BranchNode {
     #[inline]
-    fn predict(&self, data: &DataFrame, row: usize) -> f64 {
-        match self.rule.split(data, row) {
-            LR::Left => self.left.predict(data, row),
-            LR::Right => self.right.predict(data, row)
+    fn predict(&self, sample: &Sample, row: usize) -> f64 {
+        match self.rule.split(sample, row) {
+            LR::Left => self.left.predict(sample, row),
+            LR::Right => self.right.predict(sample, row)
         }
     }
 }
@@ -141,10 +143,10 @@ impl Regressor for BranchNode {
 
 impl Regressor for Node {
     #[inline]
-    fn predict(&self, data: &DataFrame, row: usize) -> f64 {
+    fn predict(&self, sample: &Sample, row: usize) -> f64 {
         match self {
-            Node::Branch(ref node) => node.predict(data, row),
-            Node::Leaf(ref node) => node.predict(data, row)
+            Node::Branch(ref node) => node.predict(sample, row),
+            Node::Leaf(ref node) => node.predict(sample, row)
         }
     }
 }

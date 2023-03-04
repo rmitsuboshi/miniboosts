@@ -1,11 +1,9 @@
-use polars::prelude::*;
-
 use serde::{
     Serialize,
     Deserialize,
 };
 
-use crate::Regressor;
+use crate::{Sample, Regressor};
 use super::node::*;
 
 use std::path::Path;
@@ -30,8 +28,8 @@ impl From<Node> for RTreeRegressor {
 
 
 impl Regressor for RTreeRegressor {
-    fn predict(&self, data: &DataFrame, row: usize) -> f64 {
-        self.root.predict(data, row)
+    fn predict(&self, sample: &Sample, row: usize) -> f64 {
+        self.root.predict(sample, row)
     }
 }
 

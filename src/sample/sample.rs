@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::collections::HashMap;
 use std::ops::Index;
+use std::cell::{Ref, RefMut, RefCell};
 
 use polars::prelude::*;
 use rayon::prelude::*;
@@ -12,11 +13,11 @@ use super::feature::*;
 /// Struct `Sample` holds a batch sample with dense/sparse format.
 #[derive(Debug)]
 pub struct Sample {
-    name_to_index: HashMap<String, usize>,
-    features: Vec<Feature>,
-    target: Vec<f64>,
-    n_sample: usize,
-    n_feature: usize,
+    pub(super) name_to_index: HashMap<String, usize>,
+    pub(super) features: Vec<Feature>,
+    pub(super) target: RefCell<Vec<f64>>,
+    pub(super) n_sample: usize,
+    pub(super) n_feature: usize,
 }
 
 
@@ -34,6 +35,7 @@ impl Sample {
             .into_iter()
             .collect::<Option<Vec<_>>>()
             .unwrap();
+        let target = RefCell::new(target);
 
         let features = data.get_columns()
             .into_par_iter()
@@ -116,6 +118,7 @@ impl Sample {
 
         let n_feature = features.len();
         let target = Vec::with_capacity(0);
+        let target = RefCell::new(target);
 
         let name_to_index = features.iter()
             .enumerate()
@@ -131,8 +134,18 @@ impl Sample {
 
 
     /// Returns a slice of type `f64`.
-    pub fn target(&self) -> &[f64] {
-        &self.target[..]
+    pub fn target(&self) -> Ref<'_, [f64]> {
+    // pub fn target(&self) -> &[f64] {
+        // &self.target[..]
+        // &self.target.borrow()[..]
+        Ref::map(self.target.borrow(), |x| &x[..])
+    }
+
+
+    /// Returns a mutable slice of type `f64`.
+    /// This method is required to modify the target values.
+    pub fn target_mut(&self) -> RefMut<'_, [f64]> {
+        RefMut::map(self.target.borrow_mut(), |x| &mut x[..])
     }
 
 
@@ -151,7 +164,8 @@ impl Sample {
             .expect("The target class does not exist");
 
 
-        self.target = self.features.remove(pos).into_target();
+        let target = self.features.remove(pos).into_target();
+        self.target = RefCell::new(target);
         self.n_feature -= 1;
 
 
@@ -205,6 +219,7 @@ impl Sample {
             n_sample += 1;
         }
 
+        let target = RefCell::new(target);
         let n_feature = features.len();
 
 

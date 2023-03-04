@@ -1,12 +1,11 @@
 //! Defines some criterions for regression tree.
-use polars::prelude::*;
 use rayon::prelude::*;
 use serde::{
     Serialize,
     Deserialize
 };
 
-
+use crate::{Sample, Feature};
 use crate::weak_learner::common::type_and_struct::*;
 
 /// The type of loss (error) function.
@@ -14,8 +13,18 @@ use crate::weak_learner::common::type_and_struct::*;
 pub enum LossType {
     /// Least Absolute Error
     L1,
+
+
     /// Least Squared Error
     L2,
+
+
+    // /// Huber loss with a parameter.
+    // Huber(f64),
+
+
+    // /// Quantile loss
+    // Quantile(f64),
 }
 
 
@@ -23,20 +32,21 @@ impl LossType {
     /// Returns the best splitting rule based on the loss function.
     pub(super) fn best_split<'a>(
         &self,
-        data: &'a DataFrame,
-        target: &Series,
+        sample: &'a Sample,
         dist: &[f64],
         idx: &[usize],
     ) -> (&'a str, Threshold)
     {
-        data.get_columns()
+        let target = sample.target();
+        let target = &target[..];
+        sample.features()
             .into_par_iter()
-            .map(|column| {
+            .map(|feature| {
                 let (loss_value, threshold) = self.best_split_at(
-                    column, target, dist, &idx[..]
+                    feature, target, dist, &idx[..]
                 );
 
-                (loss_value, column.name(), threshold)
+                (loss_value, feature.name(), threshold)
             })
             .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
             .map(|(_, name, threshold)| (name, threshold))
@@ -51,8 +61,8 @@ impl LossType {
 
     fn best_split_at(
         &self,
-        column: &Series,
-        target: &Series,
+        column: &Feature,
+        target: &[f64],
         dist: &[f64],
         idx: &[usize],
     ) -> (LossValue, Threshold)
@@ -66,19 +76,15 @@ impl LossType {
 
     pub(super) fn prediction_and_loss(
         &self,
-        target: &Series,
+        target: &[f64],
         indices: &[usize],
         dist: &[f64],
     ) -> (Prediction<f64>, LossValue)
     {
-        let target = target.f64()
-            .expect("The target class is not a dtype i64");
-
-
         let tuples = indices.into_par_iter()
             .copied()
             .map(|i| {
-                let y = target.get(i).unwrap();
+                let y = target[i];
                 (dist[i], y)
             })
             .collect::<Vec<(f64, f64)>>();
@@ -104,30 +110,7 @@ impl LossType {
                 // So I adopt the dummy feature value `0.0`.
                 let triplets = tuples.into_iter()
                     .map(|(d, y)| (0.0.into(), d.into(), y.into()))
-                    .collect::<Vec<(Feature, Mass, Target)>>();
-                // // Sort the values of `tuples`
-                // // in the ascending order of `y`.
-                // tuples.sort_by(|(_, y1), (_, y2)|
-                //     y1.partial_cmp(&y2).unwrap()
-                // );
-
-                // let mut d_sum = 0.0;
-
-                // for (d, y) in tuples.iter() {
-                //     d_sum += d;
-                //     if d_sum >= 0.5 * sum_dist {
-                //         prediction = *y;
-                //         break;
-                //     }
-                // }
-
-
-                // assert_ne!(prediction, 1e9);
-
-                // loss_value = tuples.into_iter()
-                //     .map(|(d, y)| d * (y - prediction).abs())
-                //     .sum::<f64>()
-                //     / sum_dist;
+                    .collect::<Vec<(FeatureValue, Mass, Target)>>();
                 (prediction, loss_value) = inner_prediction_and_loss(
                     &triplets[..],
                 );
@@ -158,27 +141,19 @@ impl LossType {
 
 /// Returns the pair of the best LAE and the best threshold.
 fn best_split_l1(
-    column: &Series,
-    target: &Series,
+    column: &Feature,
+    target: &[f64],
     dist: &[f64],
     idx: &[usize]
 ) -> (LossValue, Threshold)
 {
-    let target = target.f64()
-        .expect("The target class is not a dtype i64");
-
-
-    let column = column.f64()
-        .expect("The column is not a dtype f64");
-
-
     // Sort the data in the increasing order of x.
     let mut triplets = idx.into_par_iter()
         .copied()
         .map(|i| {
-            let x = column.get(i).unwrap();
-            let y = target.get(i).unwrap();
-            (Feature::from(x), Mass::from(dist[i]), Target::from(y))
+            let x = column[i];
+            let y = target[i];
+            (FeatureValue::from(x), Mass::from(dist[i]), Target::from(y))
         })
         .collect::<Vec<_>>();
     triplets.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
@@ -207,26 +182,18 @@ fn best_split_l1(
 
 /// Returns the pair of the best variance and the best threshold.
 fn best_split_l2(
-    column: &Series,
-    target: &Series,
+    column: &Feature,
+    target: &[f64],
     dist: &[f64],
     idx: &[usize]
 ) -> (LossValue, Threshold)
 {
-    let target = target.f64()
-        .expect("The target class is not a dtype i64");
-
-
-    let column = column.f64()
-        .expect("The column is not a dtype f64");
-
-
     // Sort the data in the increasing order of x.
     let mut triplets = idx.into_par_iter()
         .copied()
         .map(|i| {
-            let x = column.get(i).unwrap();
-            let y = target.get(i).unwrap();
+            let x = column[i];
+            let y = target[i];
             (x, dist[i], y)
         })
         .collect::<Vec<(f64, f64, f64)>>();
@@ -409,8 +376,8 @@ fn calc_variance(triplets: &[(f64, f64, f64)], y_sum: f64, sum_dist: f64)
 /// This struct stores the temporary information to find a best split.
 struct BestSplitFinderL1 {
     /// The list of target values for the left/right nodes.
-    left: Vec<(Feature, Mass, Target)>,
-    right: Vec<(Feature, Mass, Target)>,
+    left: Vec<(FeatureValue, Mass, Target)>,
+    right: Vec<(FeatureValue, Mass, Target)>,
 }
 
 
@@ -419,7 +386,9 @@ impl BestSplitFinderL1 {
     /// all instances in `triplets`.
     /// Note that `triplets` is sorted in the ascending order
     /// with respect to the first element.
-    pub(self) fn new(triplets: Vec<(Feature, Mass, Target)>) -> Self {
+    pub(self) fn new(triplets: Vec<(FeatureValue, Mass, Target)>)
+        -> Self
+    {
         let m = triplets.len();
 
         let left = Vec::with_capacity(m);
@@ -498,7 +467,7 @@ impl BestSplitFinderL1 {
 }
 
 
-fn inner_prediction_and_loss(triplets: &[(Feature, Mass, Target)])
+fn inner_prediction_and_loss(triplets: &[(FeatureValue, Mass, Target)])
     -> (Prediction<f64>, LossValue)
 {
     let m_total = triplets.iter()
