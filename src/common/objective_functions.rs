@@ -44,7 +44,7 @@ impl<H> ObjectiveFunction<H> for SoftMarginObjective
     fn eval(
         &self,
         sample: &Sample,
-        hypothesis: &CombinedHypothesis<H>
+        hypothesis: &CombinedHypothesis<H>,
     ) -> f64
     {
         checker::check_sample(sample);

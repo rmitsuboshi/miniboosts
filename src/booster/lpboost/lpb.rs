@@ -269,11 +269,8 @@ impl<F> Booster<F> for LPBoost<'_, F>
             .sum::<f64>();
 
         self.gamma_hat = ghat.min(self.gamma_hat);
-        println!("minimal edge: {}", self.gamma_hat);
-
 
         let gamma_star = self.update_distribution_mut(&h);
-        println!("gstar: {}", gamma_star);
 
 
         if gamma_star >= self.gamma_hat - self.tolerance {

@@ -13,13 +13,9 @@ use crate::{
     State,
     Classifier,
     CombinedHypothesis,
+
+    research::Research,
 };
-
-
-// use crate::research::{
-//     Logger,
-//     soft_margin_objective,
-// };
 
 
 /// `SmoothBoost`.
@@ -353,56 +349,16 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 }
 
 
-// impl<F> Logger for SmoothBoost<'_, F>
-//     where F: Classifier
-// {
-//     fn objective_value(&self)
-//         -> f64
-//     {
-//         let unit = if self.current > 0 {
-//             1.0 / self.current as f64
-//         } else {
-//             0.0
-//         };
-//         let weights = vec![unit; self.current];
-// 
-// 
-//         let n_sample = self.data.shape().0 as f64;
-//         let nu = self.kappa * n_sample;
-// 
-//         soft_margin_objective(
-//             self.data, self.target, &weights[..], &self.classifiers[..], nu
-//         )
-//     }
-// 
-// 
-//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-//         let unit = if self.current > 0 {
-//             1.0 / self.current as f64
-//         } else {
-//             0.0
-//         };
-//         let weights = vec![unit; self.current];
-// 
-//         weights.iter()
-//             .zip(&self.classifiers[..])
-//             .map(|(w, h)| w * h.confidence(data, i))
-//             .sum::<f64>()
-//     }
-// 
-// 
-//     fn logging<L>(
-//         &self,
-//         loss_function: &L,
-//         test_data: &DataFrame,
-//         test_target: &Series,
-//     ) -> (f64, f64, f64)
-//         where L: Fn(f64, f64) -> f64
-//     {
-//         let objval = self.objective_value();
-//         let train = self.loss(loss_function, self.data, self.target);
-//         let test = self.loss(loss_function, test_data, test_target);
-// 
-//         (objval, train, test)
-//     }
-// }
+impl<H> Research<H> for SmoothBoost<'_, H>
+    where H: Classifier + Clone,
+{
+    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+        let weight = 1.0 / self.terminated as f64;
+        let f = self.classifiers.clone()
+            .into_iter()
+            .map(|h| (weight, h))
+            .collect::<Vec<_>>();
+
+        CombinedHypothesis::from(f)
+    }
+}
