@@ -87,7 +87,7 @@ fn main() {
 
     // Read a CSV file
     // The column named `class` is corresponds to the labels (targets).
-    let sample = Sample::from_csv(file)
+    let sample = Sample::from_csv(file, true)
         .unwrap()
         .set_target("class");
 
@@ -130,9 +130,81 @@ initialize booster like this:
 ```rust
 let n_sample = df.shape().0;
 let nu = n_sample as f64 * 0.2;
-let lpboost = LPBoost::init(&data, &target)
+let lpboost = LPBoost::init(&sample)
     .tolerance(tol)
     .nu(nu); // Setting the capping parameter.
 ```
 
 Note that the capping parameter must satisfies `1 <= nu && nu <= n_sample`.
+
+
+## Research feature
+When you invent a new boosting algorithm and write a paper,
+you need to compare it to previous works to show the effectiveness of your one.
+One way to compare the algorithms is
+to plot the curve for objective value or train/test loss.
+This crate can output a CSV file for such values in each step.
+
+Here is an example:
+```rust
+use miniboosts::prelude::*;
+use miniboosts::research::Logger;
+use miniboosts::common::objective_functions::SoftMarginObjective;
+
+
+// Define a loss function
+fn zero_one_loss<H>(sample: &Sample, f: &CombinedHypothesis<H>) -> f64
+    where H: Classifier
+{
+    let n_sample = sample.shape().0 as f64;
+
+    let target = sample.target();
+
+    f.predict_all(sample)
+        .into_iter()
+        .zip(target.into_iter())
+        .map(|(fx, &y)| if fx != y as i64 { 1.0 } else { 0.0 })
+        .sum::<f64>()
+        / n_sample
+}
+
+
+fn main() {
+    // Read the training data
+    let path = "/path/to/train/data.csv";
+    let train = Sample::from_csv(path, true)
+        .unwrap()
+        .set_target("class");
+
+    // Set some parameters used later.
+    let n_sample = train.shape().0 as f64;
+    let nu = 0.01 * n_sample;
+
+
+    // Read the training data
+    let path = "/path/to/test/data.csv";
+    let test = Sample::from_csv(path, true)
+        .unwrap()
+        .set_target("class");
+
+
+    let booster = LPBoost::init(&train);
+    let weak_learner = DTree::init(&test)
+        .max_depth(2)
+        .criterion(Criterion::Entropy);
+
+
+    let mut logger = Logger::new(
+        booster, tree, objective, zero_one_loss, &train, &test
+    );
+
+    // Each line of `lpboost.csv` contains the following four information:
+    // Objective value, Train loss, Test loss, Time per iteration
+    // The returned value `f` is the combined hypothesis.
+    let f = logger.run("lpboost.csv");
+}
+```
+
+Further, one can log your algorithm by implementing `Research` trait.
+
+Run `cargo doc --open` to see more information.
