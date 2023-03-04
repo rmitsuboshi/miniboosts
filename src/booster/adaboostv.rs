@@ -13,10 +13,9 @@ use crate::{
     State,
     Classifier,
     CombinedHypothesis,
+
+    research::Research,
 };
-
-
-// use crate::research::Logger;
 
 
 
@@ -321,47 +320,17 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
 }
 
 
+impl<H> Research<H> for AdaBoostV<'_, H>
+    where H: Classifier + Clone,
+{
+    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+        let f = self.weights.iter()
+            .copied()
+            .zip(self.classifiers.iter().cloned())
+            .filter(|(w, _)| *w != 0.0)
+            .collect::<Vec<_>>();
 
-// impl<F> Logger for AdaBoostV<'_, F>
-//     where F: Classifier
-// {
-//     /// AdaBoostV optimizes the hard-margin on training examples.
-//     fn objective_value(&self)
-//         -> f64
-//     {
-//         let n_sample = self.data.shape().0 as f64;
-// 
-//         self.target.i64()
-//             .expect("The target class is not a dtype i64")
-//             .into_iter()
-//             .map(|y| y.unwrap() as f64)
-//             .enumerate()
-//             .map(|(i, y)| (- y * self.prediction(self.data, i)).exp())
-//             .sum::<f64>()
-//             / n_sample
-//     }
-// 
-// 
-//     fn prediction(&self, data: &DataFrame, i: usize) -> f64 {
-//         self.weights.iter()
-//             .zip(&self.classifiers)
-//             .map(|(w, h)| w * h.confidence(data, i))
-//             .sum::<f64>()
-//     }
-// 
-// 
-//     fn logging<L>(
-//         &self,
-//         loss_function: &L,
-//         test_data: &DataFrame,
-//         test_target: &Series,
-//     ) -> (f64, f64, f64)
-//         where L: Fn(f64, f64) -> f64
-//     {
-//         let objval = self.objective_value();
-//         let train = self.loss(loss_function, self.data, self.target);
-//         let test = self.loss(loss_function, test_data, test_target);
-// 
-//         (objval, train, test)
-//     }
-// }
+        CombinedHypothesis::from(f)
+    }
+}
+

@@ -9,9 +9,9 @@ use crate::{
     Classifier,
     CombinedHypothesis,
     Sample,
-};
 
-// use crate::research::Logger;
+    research::Research,
+};
 
 
 /// Defines `AdaBoost`.
@@ -309,43 +309,16 @@ impl<F> Booster<F> for AdaBoost<'_, F>
 }
 
 
-// impl<F> Logger for AdaBoost<'_, F>
-//     where F: Classifier
-// {
-//     /// AdaBoost optimizes the exp loss, so that this method returns
-//     /// the sum of `exp( -y * f(x) )`, 
-//     /// where `f` is the current confidence-rated combined hypothesis.
-//     fn objective_value(&self) -> f64 {
-//         let n_sample = self.sample.shape().0 as f64;
-// 
-//         self.sample.target()
-//             .into_iter()
-//             .enumerate()
-//             .map(|(i, y)| (- y * self.prediction(self.sample, i)).exp())
-//             .sum::<f64>()
-//             / n_sample
-//     }
-// 
-// 
-//     fn prediction(&self, sample: &DataFrame, i: usize) -> f64 {
-//         self.weights.iter()
-//             .zip(&self.classifiers)
-//             .map(|(w, h)| w * h.confidence(sample, i))
-//             .sum::<f64>()
-//     }
-// 
-// 
-//     fn logging<L>(
-//         &self,
-//         loss_function: &L,
-//         test: &Sample,
-//     ) -> (f64, f64, f64)
-//         where L: Fn(f64, f64) -> f64
-//     {
-//         let objval = self.objective_value();
-//         let train = self.loss(loss_function, self.sample);
-//         let test = self.loss(loss_function, test);
-// 
-//         (objval, train, test)
-//     }
-// }
+impl<H> Research<H> for AdaBoost<'_, H>
+    where H: Classifier + Clone,
+{
+    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+        let f = self.weights.iter()
+            .copied()
+            .zip(self.classifiers.iter().cloned())
+            .filter(|(w, _)| *w != 0.0)
+            .collect::<Vec<_>>();
+
+        CombinedHypothesis::from(f)
+    }
+}
