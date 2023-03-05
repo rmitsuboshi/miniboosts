@@ -24,34 +24,21 @@ use crate::{
 /// See also:
 /// - [`Regressor`]
 /// - [`CombinedHypothesis<F>`]
-/// - [`DataFrame`]
-/// - [`Series`]
-/// - [`CsvReader`]
 /// 
 /// [`RTree`]: crate::weak_learner::RTree
 /// [`RTreeRegressor`]: crate::weak_learner::RTreeRegressor
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`RTree::max_depth`]: crate::weak_learner::RTree::max_depth
-/// [`RTree::criterion`]: crate::weak_learner::RTree::criterion
-/// [`DataFrame`]: polars::prelude::DataFrame
-/// [`Series`]: polars::prelude::Series
-/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
-/// [`CsvReader`]: polars::prelude::CsvReader
 /// 
 /// 
 /// ```no_run
-/// use polars::prelude::*;
 /// use miniboosts::prelude::*;
 /// 
-/// // Read the training data from the CSV file.
-/// let mut data = CsvReader::from_path(path_to_csv_file)
+/// // Read the training sample from the CSV file.
+/// // We use the column named `class` as the label.
+/// let has_header = true;
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
-///     .has_header(true)
-///     .finish()
-///     .unwrap();
-/// 
-/// // Split the column corresponding to labels.
-/// let target = data.drop_in_place(class_column_name).unwrap();
+///     .set_target("class");
 /// 
 /// // Initialize `GBM` and set the tolerance parameter as `0.01`.
 /// // This means `booster` returns a hypothesis whose training error is
@@ -59,11 +46,11 @@ use crate::{
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = data.shape().0` is 
 /// // the number of training examples in `data`.
-/// let booster = GBM::init(&data, &target)
+/// let booster = GBM::init(&sample)
 ///     .loss(GBMLoss::L1);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = RTree::init(&data, &target)
+/// let weak_learner = RTree::init(&sample)
 ///     .max_depth(1)
 ///     .loss_type(LossType::L1);
 /// 
@@ -76,15 +63,11 @@ use crate::{
 /// // Get the number of training examples.
 /// let n_sample = data.shape().0 as f64;
 /// 
-/// // Calculate the training loss.
-/// let training_loss = target.f64()
-///     .unwrap()
-///     .into_iter()
+/// // Calculate the L1-training loss.
+/// let target = sample.target();
+/// let training_loss = target.into_iter()
 ///     .zip(predictions)
-///     .map(|(true_label, prediction) {
-///         let true_label = true_label.unwrap();
-///         (true_label - prediction).abs()
-///     })
+///     .map(|(y, fx) (y - fx).abs())
 ///     .sum::<f64>()
 ///     / n_sample;
 /// 

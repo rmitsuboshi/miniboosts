@@ -34,72 +34,55 @@ use crate::{
 /// - [`DTree`]
 /// - [`DTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
-/// - [`DTree::max_depth`]
-/// - [`DTree::criterion`]
-/// - [`DataFrame`]
-/// - [`Series`]
-/// - [`DataFrame::shape`]
-/// - [`CsvReader`]
 /// 
 /// [`SoftBoost`]: SoftBoost
 /// [`DTree`]: crate::weak_learner::DTree
 /// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
-/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
-/// [`DataFrame`]: polars::prelude::DataFrame
-/// [`Series`]: polars::prelude::Series
-/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
-/// [`CsvReader`]: polars::prelude::CsvReader
 /// 
 /// 
 /// ```no_run
-/// use polars::prelude::*;
 /// use miniboosts::prelude::*;
 /// 
-/// // Read the training data from the CSV file.
-/// let mut data = CsvReader::from_path(path_to_csv_file)
+/// // Read the training sample from the CSV file.
+/// // We use the column named `class` as the label.
+/// let has_header = true;
+/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
-///     .has_header(true)
-///     .finish()
-///     .unwrap();
+///     .set_target("class");
 /// 
-/// // Split the column corresponding to labels.
-/// let target = data.drop_in_place(class_column_name).unwrap();
 /// 
 /// // Get the number of training examples.
-/// let n_sample = data.shape().0 as f64;
+/// let n_sample = sample.shape().0 as f64;
 /// 
-/// // Initialize `TotalBoost` and set the tolerance parameter as `0.01`.
-/// // This means `booster` returns a hypothesis 
-/// // whose hard margin objective value is differs at most `0.01`
-/// // from the optimal one, if the training examples are linearly separable.
-/// let booster = TotalBoost::init(&data, &target)
+/// // Initialize `LPBoost` and set the tolerance parameter as `0.01`.
+/// // This means `booster` returns a hypothesis whose training error is
+/// // less than `0.01` if the traing examples are linearly separable.
+/// // Note that the default tolerance parameter is set as `1 / n_sample`,
+/// // where `n_sample = sample.shape().0` is 
+/// // the number of training examples in `sample`.
+/// let booster = LPBoost::init(&sample)
 ///     .tolerance(0.01);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&data, &target)
+/// let weak_learner = DecisionTree::init(&sample)
 ///     .max_depth(2)
 ///     .criterion(Criterion::Edge);
 /// 
-/// // Run `TotalBoost` and obtain the resulting hypothesis `f`.
+/// // Run `LPBoost` and obtain the resulting hypothesis `f`.
 /// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&data);
+/// let predictions: Vec<i64> = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
-/// let training_loss = target.i64()
-///     .unwrap()
-///     .into_iter()
+/// let target = sample.target();
+/// let training_loss = target.into_iter()
 ///     .zip(predictions)
-///     .map(|(true_label, prediction) {
-///         let true_label = true_label.unwrap();
-///         if true_label == prediction { 0.0 } else { 1.0 }
-///     })
+///     .map(|(&y, fx) if y as i64 == fx { 0.0 } else { 1.0 })
 ///     .sum::<f64>()
 ///     / n_sample;
-///
+/// 
 ///
 /// println!("Training Loss is: {training_loss}");
 /// ```

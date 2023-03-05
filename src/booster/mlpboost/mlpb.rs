@@ -43,12 +43,6 @@ use std::cell::RefCell;
 /// - [`DTree`]
 /// - [`DTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
-/// - [`DTree::max_depth`]
-/// - [`DTree::criterion`]
-/// - [`DataFrame`]
-/// - [`Series`]
-/// - [`DataFrame::shape`]
-/// - [`CsvReader`]
 /// 
 /// [`MLPBoost::nu`]: MLPBoost::nu
 /// [`MLPBoost::primary`]: MLPBoost::primary
@@ -58,47 +52,38 @@ use std::cell::RefCell;
 /// [`DTree`]: crate::weak_learner::DTree
 /// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
-/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
-/// [`DataFrame`]: polars::prelude::DataFrame
-/// [`Series`]: polars::prelude::Series
-/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
-/// [`CsvReader`]: polars::prelude::CsvReader
 /// 
 /// 
 /// ```no_run
-/// use polars::prelude::*;
 /// use miniboosts::prelude::*;
 /// 
-/// // Read the training data from the CSV file.
-/// let mut data = CsvReader::from_path(path_to_csv_file)
+/// // Read the training sample from the CSV file.
+/// // We use the column named `class` as the label.
+/// let has_header = true;
+/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
-///     .has_header(true)
-///     .finish()
-///     .unwrap();
+///     .set_target("class");
 /// 
-/// // Split the column corresponding to labels.
-/// let target = data.drop_in_place(class_column_name).unwrap();
 /// 
 /// // Get the number of training examples.
-/// let n_sample = data.shape().0 as f64;
+/// let n_sample = sample.shape().0 as f64;
+/// 
+/// // Set the upper-bound parameter of outliers in `sample`.
+/// // Here we assume that the outliers are at most 1% of `sample`.
+/// let nu = 0.1 * n_sample;
 /// 
 /// // Initialize `MLPBoost` and set the tolerance parameter as `0.01`.
-/// // This means `booster` returns a hypothesis 
-/// // whose soft margin objective value is differs at most `0.01`
-/// // from the optimal one.
-/// // Further, at the end of this chain,
-/// // MLPBoost calls `MLPBoost::nu` to set the capping parameter 
-/// // as `0.1 * n_sample`, which means that, 
-/// // at most, `0.1 * n_sample` examples are regarded as outliers.
-/// let booster = MLPBoost::init(&data, &target)
+/// // This means `booster` returns a hypothesis whose training error is
+/// // less than `0.01` if the traing examples are linearly separable.
+/// // Note that the default tolerance parameter is set as `1 / n_sample`,
+/// // where `n_sample = sample.shape().0` is 
+/// // the number of training examples in `sample`.
+/// let booster = MLPBoost::init(&sample)
 ///     .tolerance(0.01)
-///     .primary(Primary::ShortStep)
-///     .stop_condition(StopCondition::ObjVal)
 ///     .nu(0.1 * n_sample);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&data, &target)
+/// let weak_learner = DecisionTree::init(&sample)
 ///     .max_depth(2)
 ///     .criterion(Criterion::Edge);
 /// 
@@ -106,17 +91,13 @@ use std::cell::RefCell;
 /// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&data);
+/// let predictions: Vec<i64> = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
-/// let training_loss = target.i64()
-///     .unwrap()
-///     .into_iter()
+/// let target = sample.target();
+/// let training_loss = target.into_iter()
 ///     .zip(predictions)
-///     .map(|(true_label, prediction) {
-///         let true_label = true_label.unwrap();
-///         if true_label == prediction { 0.0 } else { 1.0 }
-///     })
+///     .map(|(&y, fx) if y as i64 == fx { 0.0 } else { 1.0 })
 ///     .sum::<f64>()
 ///     / n_sample;
 /// 
