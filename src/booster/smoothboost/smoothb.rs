@@ -35,54 +35,38 @@ use crate::{
 /// - [`DTree`]
 /// - [`DTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
-/// - [`DTree::max_depth`]
-/// - [`DTree::criterion`]
-/// - [`DataFrame`]
-/// - [`Series`]
-/// - [`DataFrame::shape`]
-/// - [`CsvReader`]
 /// 
 /// [`SmoothBoost::tolerance`]: SmoothBoost::tolerance
 /// [`SmoothBoost::gamma`]: SmoothBoost::gamma
 /// [`DTree`]: crate::weak_learner::DTree
 /// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
-/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
-/// [`DataFrame`]: polars::prelude::DataFrame
-/// [`Series`]: polars::prelude::Series
-/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
-/// [`CsvReader`]: polars::prelude::CsvReader
 /// 
 /// 
 /// ```no_run
-/// use polars::prelude::*;
 /// use miniboosts::prelude::*;
 /// 
-/// // Read the training data from the CSV file.
-/// let mut data = CsvReader::from_path(path_to_csv_file)
+/// // Read the training sample from the CSV file.
+/// // We use the column named `class` as the label.
+/// let has_header = true;
+/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
-///     .has_header(true)
-///     .finish()
-///     .unwrap();
-/// 
-/// // Split the column corresponding to labels.
-/// let target = data.drop_in_place(class_column_name).unwrap();
+///     .set_target("class");
 /// 
 /// // Get the number of training examples.
-/// let n_sample = data.shape().0 as f64;
+/// let n_sample = sample.shape().0 as f64;
 /// 
 /// // Initialize `SmoothBoost` and 
 /// // set the weak learner guarantee `gamma` as `0.05`.
 /// // For this case, weak learner returns a hypothesis
 /// // that returns a hypothesis with weighted loss 
 /// // at most `0.45 = 0.5 - 0.05`.
-/// let booster = SmoothBoost::init(&data, &target)
+/// let booster = SmoothBoost::init(&sample)
 ///     .tolerance(0.01)
 ///     .gamma(0.05);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&data, &target)
+/// let weak_learner = DecisionTree::init(&sample)
 ///     .max_depth(2)
 ///     .criterion(Criterion::Edge);
 /// 
@@ -90,17 +74,13 @@ use crate::{
 /// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&data);
+/// let predictions: Vec<i64> = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
-/// let training_loss = target.i64()
-///     .unwrap()
-///     .into_iter()
+/// let target = sample.target();
+/// let training_loss = target.into_iter()
 ///     .zip(predictions)
-///     .map(|(true_label, prediction) {
-///         let true_label = true_label.unwrap();
-///         if true_label == prediction { 0.0 } else { 1.0 }
-///     })
+///     .map(|(&y, fx) if y as i64 == fx { 0.0 } else { 1.0 })
 ///     .sum::<f64>()
 ///     / n_sample;
 ///

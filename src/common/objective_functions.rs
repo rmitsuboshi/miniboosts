@@ -16,19 +16,19 @@ pub trait ObjectiveFunction<H> {
 
 /// Soft margin objective is the objective function 
 /// for the following boosting algorithms:
-/// - [LPBoost]
-/// - [ERLPBoost]
-/// - [CERLPBoost]
-/// - [SoftBoost]
-/// - [SmoothBoost]
-/// - [MLPBoost]
+/// - [`LPBoost`]
+/// - [`ERLPBoost`]
+/// - [`CERLPBoost`]
+/// - [`SoftBoost`]
+/// - [`SmoothBoost`]
+/// - [`MLPBoost`]
 /// 
-/// [LPBoost]: crate::booster::LPBoost
-/// [ERLPBoost]: crate::booster::ERLPBoost
-/// [CERLPBoost]: crate::booster::CERLPBoost
-/// [SoftBoost]: crate::booster::SoftPBoost
-/// [SmoothBoost]: crate::booster::SmoothBoost
-/// [MPBoost]: crate::booster::MPBoost
+/// [`LPBoost`]: crate::booster::LPBoost
+/// [`ERLPBoost`]: crate::booster::ERLPBoost
+/// [`CERLPBoost`]: crate::booster::CERLPBoost
+/// [`SoftBoost`]: crate::booster::SoftBoost
+/// [`SmoothBoost`]: crate::booster::SmoothBoost
+/// [`MLPBoost`]: crate::booster::MLPBoost
 pub struct SoftMarginObjective(f64);
 
 impl SoftMarginObjective {
@@ -88,7 +88,7 @@ impl<H> ObjectiveFunction<H> for SoftMarginObjective
 /// - [TotalBoost]
 /// 
 /// [AdaBoostV]: crate::booster::AdaBoostV
-/// [TotalBoost]: crate::booster::TotalPBoost
+/// [TotalBoost]: crate::booster::TotalBoost
 pub struct HardMarginObjective(SoftMarginObjective);
 
 impl HardMarginObjective {
