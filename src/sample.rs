@@ -9,3 +9,8 @@ pub mod sample;
 
 pub use sample::Sample;
 pub use feature::Feature;
+
+pub(crate) use feature::{
+    DenseFeature,
+    SparseFeature,
+};

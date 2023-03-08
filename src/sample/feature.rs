@@ -147,6 +147,12 @@ impl SparseFeature {
     pub fn len(&self) -> usize {
         self.sample.len()
     }
+
+
+    /// Returns `true` if this feature has zero values.
+    pub fn has_zero(&self) -> bool {
+        self.sample.len() < self.n_sample
+    }
 }
 
 
