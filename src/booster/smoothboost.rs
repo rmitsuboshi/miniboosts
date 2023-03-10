@@ -1,4 +1,4 @@
 //! SmoothBoost module.
-pub mod smoothb;
+pub mod smoothboost;
 
-pub use smoothb::SmoothBoost;
+pub use smoothboost::SmoothBoost;
