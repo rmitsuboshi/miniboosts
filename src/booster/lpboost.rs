@@ -1,6 +1,6 @@
 //! LPBoost module.
 
-pub mod lpb;
+pub mod lpboost;
 mod lp_model;
 
-pub use lpb::LPBoost;
+pub use lpboost::LPBoost;

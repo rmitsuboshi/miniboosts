@@ -31,3 +31,38 @@ If you want to implement your own boosting algorithm,
 you must implement `Booster` trait.
 
 See the doc string for further information.
+
+
+### Directory structure
+
+```txt
+./
+├─ core.rs         Defines Booster trait
+│
+├─ adaboost
+│  └ adaboost.rs    Defines AdaBoost
+├─ adaboostv
+│  └ adaboostv.rs   Defines AdaBoost*
+├─ cerlpboost
+│  └ cerlpboost.rs  Defines Corrective ERLPBoost
+├─ erlpboost
+│  ├ qp_model.rs    Implements the sub-problem (QP) for ERLPBoost
+│  └ erlpboost.rs   Defines ERLPBoost
+├─ gradient_boost
+│  └ gbm.rs         Defines Gradient Boosting Machine
+├─ lpboost
+│  ├ lp_model.rs    Implements the sub-problem (LP) for LPBoost
+│  └ lpboost.rs     Defines LPBoost
+├─ mlpboost
+│  ├ dist.rs        Implements a function that returns a distribution on examples
+│  ├ options.rs     Implements some optional behavors for MLPBoost
+│  ├ utils.rs       Implements some utility function
+│  ├ lp_model.rs    Implements the sub-problem (LP) for MLPBoost
+│  └ mlpboost.rs    Defines MLPBoost
+├─ smoothboost
+│  └ smoothboost.rs Defines SmoothBoost
+├─ softboost
+│  └ softboost.rs   Defines SoftBoost
+└─ totalboost
+   └ totalboost.rs  Defines TotalBoost
+```
