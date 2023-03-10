@@ -64,6 +64,15 @@ impl Feature {
             Self::Sparse(feat) => feat.into_target(),
         }
     }
+
+
+    /// Returns the number of items in this feature.
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Dense(feat) => feat.len(),
+            Self::Sparse(feat) => feat.len(),
+        }
+    }
 }
 
 
@@ -104,6 +113,12 @@ impl DenseFeature {
     /// Append an example to this feature.
     pub fn append(&mut self, x: f64) {
         self.sample.push(x);
+    }
+
+
+    /// Returns the number of items in `self.sample`.
+    pub fn len(&self) -> usize {
+        self.sample.len()
     }
 }
 
@@ -151,7 +166,13 @@ impl SparseFeature {
 
     /// Returns `true` if this feature has zero values.
     pub fn has_zero(&self) -> bool {
-        self.sample.len() < self.n_sample
+        self.len() < self.n_sample
+    }
+
+
+    /// Returns the number of indices that have zero-value.
+    pub fn zero_counts(&self) -> usize {
+        self.n_sample - self.len()
     }
 }
 

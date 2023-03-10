@@ -182,8 +182,8 @@ fn split_entropy(
         .sum::<f64>();
 
 
-    let mut left = TempNodeInfo::empty();
-    let mut right = TempNodeInfo::new(&triplets[..]);
+    let mut left = BestSplitFinder::empty();
+    let mut right = BestSplitFinder::new(&triplets[..]);
 
 
     let mut iter = triplets.into_iter().peekable();
@@ -307,14 +307,14 @@ fn split_edge(
 
 
 /// Some information that are useful in `produce(..)`.
-struct TempNodeInfo {
+struct BestSplitFinder {
     map: HashMap<i64, f64>,
     total: f64,
 }
 
 
-impl TempNodeInfo {
-    /// Build an empty instance of `TempNodeInfo`.
+impl BestSplitFinder {
+    /// Build an empty instance of `BestSplitFinder`.
     #[inline(always)]
     pub(self) fn empty() -> Self {
         Self {
@@ -324,7 +324,7 @@ impl TempNodeInfo {
     }
 
 
-    /// Build an instance of `TempNodeInfo`.
+    /// Build an instance of `BestSplitFinder`.
     #[inline(always)]
     pub(self) fn new(triplets: &[(f64, f64, i64)]) -> Self {
         let mut total = 0.0_f64;
