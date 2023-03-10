@@ -31,24 +31,21 @@ use std::collections::HashMap;
 /// 
 /// # Example
 /// ```no_run
-/// use polars::prelude::*;
 /// use miniboosts::prelude::*;
 /// 
 /// // Read the training data from the CSV file.
-/// let mut data = CsvReader::from_path(path_to_csv_file)
+/// let file = "/path/to/data/file.csv";
+/// let has_header = true;
+/// let mut sample = Sample::from_csv(file, has_header)
 ///     .unwrap()
-///     .has_header(true)
-///     .finish()
-///     .unwrap();
+///     .set_target("class");
 /// 
-/// // Split the column corresponding to labels.
-/// let target = data.drop_in_place(class_column_name).unwrap();
 /// 
 /// // Get an instance of decision tree weak learner.
 /// // In this example,
 /// // the output hypothesis is at most depth 2.
 /// // Further, this example uses `Criterion::Edge` for splitting rule.
-/// let weak_learner = DTree::init(&data, &target)
+/// let weak_learner = DTree::init(&sample)
 ///     .max_depth(2)
 ///     .criterion(Criterion::Edge);
 /// ```
