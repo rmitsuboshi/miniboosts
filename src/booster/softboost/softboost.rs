@@ -10,6 +10,7 @@ use crate::{
     State,
     Classifier,
     CombinedHypothesis,
+    common::utils,
     research::Research,
 };
 
@@ -120,7 +121,7 @@ pub struct SoftBoost<'a, F> {
     env: Env,
 
 
-    classifiers: Vec<F>,
+    hypotheses: Vec<F>,
 
 
     max_iter: usize,
@@ -167,7 +168,7 @@ impl<'a, F> SoftBoost<'a, F>
             nu: 1.0,
             env,
 
-            classifiers: Vec::new(),
+            hypotheses: Vec::new(),
             weights: Vec::new(),
 
             max_iter: usize::MAX,
@@ -219,7 +220,7 @@ impl<'a, F> SoftBoost<'a, F>
 impl<F> SoftBoost<'_, F>
     where F: Classifier,
 {
-    /// Set the weight on the classifiers.
+    /// Set the weight on the hypotheses.
     /// This function is called at the end of the boosting.
     fn set_weights(&self)
         -> std::result::Result<Vec<f64>, grb::Error>
@@ -227,7 +228,7 @@ impl<F> SoftBoost<'_, F>
         let mut model = Model::with_env("", &self.env)?;
 
         let n_sample = self.sample.shape().0;
-        let n_hypotheses = self.classifiers.len();
+        let n_hypotheses = self.hypotheses.len();
 
         // Initialize GRBVars
         let wt_vec = (0..n_hypotheses).map(|i| {
@@ -249,7 +250,7 @@ impl<F> SoftBoost<'_, F>
 
         for (i, (&y, &xi)) in iter {
             let expr = wt_vec.iter()
-                .zip(&self.classifiers[..])
+                .zip(&self.hypotheses[..])
                 .map(|(&w, h)| w * h.confidence(self.sample, i))
                 .grb_sum();
             let name = format!("sample[{i}]");
@@ -314,7 +315,7 @@ impl<F> SoftBoost<'_, F>
 
 
             // Set constraints
-            self.classifiers.iter()
+            self.hypotheses.iter()
                 .enumerate()
                 .for_each(|(j, h)| {
                     let expr = vars.iter()
@@ -423,7 +424,7 @@ impl<F> Booster<F> for SoftBoost<'_, F>
 
         self.max_iter = self.max_loop();
         self.terminated = self.max_iter;
-        self.classifiers = Vec::new();
+        self.hypotheses = Vec::new();
 
         self.gamma_hat = 1.0;
     }
@@ -443,15 +444,7 @@ impl<F> Booster<F> for SoftBoost<'_, F>
         // Receive a hypothesis from the base learner
         let h = weak_learner.produce(self.sample, &self.dist);
 
-        // update `self.gamma_hat`
-        let edge = self.sample.target()
-            .into_iter()
-            .zip(self.dist.iter().copied())
-            .enumerate()
-            .map(|(i, (y, d))|
-                d * y * h.confidence(self.sample, i)
-            )
-            .sum::<f64>();
+        let edge = utils::edge_of_hypothesis(self.sample, &self.dist, &h);
 
 
         if self.gamma_hat > edge {
@@ -460,8 +453,8 @@ impl<F> Booster<F> for SoftBoost<'_, F>
 
 
         // At this point, the stopping criterion is not satisfied.
-        // Append a new hypothesis to `self.classifiers`.
-        self.classifiers.push(h);
+        // Append a new hypothesis to `self.hypotheses`.
+        self.hypotheses.push(h);
 
         // Update the parameters
         if self.update_params_mut().is_none() {
@@ -482,13 +475,7 @@ impl<F> Booster<F> for SoftBoost<'_, F>
         // Set the weights on the hypotheses
         // by solving a linear program
         self.weights = self.set_weights().unwrap();
-        let clfs = self.weights.iter()
-            .copied()
-            .zip(self.classifiers.clone())
-            .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<(f64, F)>>();
-
-        CombinedHypothesis::from(clfs)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -499,14 +486,7 @@ impl<H> Research<H> for SoftBoost<'_, H>
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
         let weights = self.set_weights().unwrap();
-
-        let f = weights.iter()
-            .copied()
-            .zip(self.classifiers.iter().cloned())
-            .filter(|(w, _)| *w > 0.0)
-            .collect::<Vec<(f64, H)>>();
-
-        CombinedHypothesis::from(f)
+        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
 

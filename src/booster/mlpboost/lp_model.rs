@@ -38,17 +38,13 @@ impl LPModel {
         // Set objective function
         model.set_objective(gamma, Minimize).unwrap();
 
-
         // Update the model
         model.update().unwrap();
 
+        // `constrs` keesp all the constraints for the past hypotheses.
+        let constrs = Vec::new();
 
-        Self {
-            model,
-            gamma,
-            dist,
-            constrs: Vec::new(),
-        }
+        Self { model, gamma, dist, constrs, }
     }
 
 
@@ -76,27 +72,19 @@ impl LPModel {
 
 
             let name = format!("{t}-th hypothesis", t = self.constrs.len());
-
-
             self.constrs.push(
                 self.model.add_constr(&name, c!(edge <= self.gamma))
                     .unwrap()
             );
-
-
             self.model.update().unwrap();
 
-
             self.model.optimize().unwrap();
-
 
             let status = self.model.status().unwrap();
             if status != Status::Optimal {
                 panic!("Status is {status:?}. Something wrong.");
             }
         }
-
-
         self.constrs.iter()
             .map(|c| self.model.get_obj_attr(attr::Pi, c).unwrap().abs())
             .collect::<Vec<_>>()

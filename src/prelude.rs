@@ -29,12 +29,6 @@ pub use crate::booster::{
     // SquareLevR,
 };
 
-pub use crate::booster::mlpboost::{
-    Primary,
-    Secondary,
-    StopCondition,
-};
-
 
 pub use crate::weak_learner::{
     // Base Learner trait
@@ -68,4 +62,8 @@ pub use crate::hypothesis::{
 
 pub use crate::Sample;
 
-pub use crate::common::loss_functions::GBMLoss;
+pub use crate::common::{
+    loss_functions::GBMLoss,
+    frank_wolfe::FWType,
+};
+

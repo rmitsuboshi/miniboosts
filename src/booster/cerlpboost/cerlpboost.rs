@@ -6,7 +6,7 @@
 //! since it is referred as `the Corrective version of CERLPBoost`
 //! in "Entropy Regularized LPBoost" by Warmuth et al.
 //!
-use rayon::prelude::*;
+use std::mem;
 
 use crate::{
     Sample,
@@ -16,6 +16,9 @@ use crate::{
     State,
     Classifier,
     CombinedHypothesis,
+    common::utils,
+    common::checker,
+    common::frank_wolfe::{FrankWolfe, FWType},
     research::Research,
 };
 
@@ -97,13 +100,12 @@ pub struct CERLPBoost<'a, F> {
     // A regularization parameter defined in the paper
     eta: f64,
 
-    tolerance: f64,
+    half_tolerance: f64,
     nu: f64,
 
-    // Optimal value (Dual problem)
-    dual_optval: f64,
-
-    classifiers: Vec<(F, f64)>,
+    frank_wolfe: FrankWolfe,
+    weights: Vec<f64>,
+    hypotheses: Vec<F>,
 
     max_iter: usize,
     terminated: usize,
@@ -118,23 +120,26 @@ impl<'a, F> CERLPBoost<'a, F> {
         let uni = 1.0 / n_sample as f64;
 
         // Set tolerance, sub_tolerance
-        let tolerance = uni;
+        let half_tolerance = uni;
 
         // Set regularization parameter
         let nu = 1.0;
-        let eta = 2.0 * (n_sample as f64 / nu).ln() / tolerance;
+        let eta = (n_sample as f64 / nu).ln() / half_tolerance;
+
+        let frank_wolfe = FrankWolfe::new(eta, nu, FWType::ShortStep);
 
         Self {
             sample,
 
             dist: vec![uni; n_sample],
-            tolerance,
+            half_tolerance,
             eta,
             nu: 1.0,
-            dual_optval: 1.0,
 
-            classifiers: Vec::new(),
+            frank_wolfe,
 
+            weights: Vec::new(),
+            hypotheses: Vec::new(),
             max_iter: usize::MAX,
             terminated: usize::MAX,
         }
@@ -143,9 +148,10 @@ impl<'a, F> CERLPBoost<'a, F> {
 
     /// This method updates the capping parameter.
     pub fn nu(mut self, nu: f64) -> Self {
-        let n_sample = self.dist.len() as f64;
-        assert!((1.0..=n_sample).contains(&nu));
+        let n_sample = self.dist.len();
+        checker::check_nu(nu, n_sample);
         self.nu = nu;
+        self.frank_wolfe.nu(self.nu);
 
         self.regularization_param();
 
@@ -153,39 +159,11 @@ impl<'a, F> CERLPBoost<'a, F> {
     }
 
 
-    /// Update tolerance parameter `tolerance`.
+    /// Update tolerance parameter `half_tolerance`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
-        self.tolerance = tolerance / 2.0;
+        self.half_tolerance = tolerance / 2.0;
         self
-    }
-
-
-    /// Compute the dual objective value
-    #[inline(always)]
-    fn dual_objval_mut(&mut self)
-        where F: Classifier + PartialEq,
-    {
-        self.dual_optval = self.classifiers.iter()
-            .map(|(h, _)| {
-                self.sample.target()
-                    .into_iter()
-                    .zip(self.dist.iter().copied())
-                    .enumerate()
-                    .map(|(i, (y, d))|
-                        d * y * h.confidence(self.sample, i)
-                    )
-                    .sum::<f64>()
-            })
-            .reduce(f64::max)
-            .unwrap();
-    }
-
-
-    /// Returns an optimal value of the dual problem.
-    /// This value is an `self.tolerance`-accurate value of the primal one.
-    pub fn opt_val(&self) -> f64 {
-        self.dual_optval
     }
 
 
@@ -196,7 +174,9 @@ impl<'a, F> CERLPBoost<'a, F> {
     fn regularization_param(&mut self) {
         let m = self.dist.len() as f64;
         let ln_part = (m / self.nu).ln();
-        self.eta = ln_part / self.tolerance;
+        self.eta = ln_part / self.half_tolerance;
+
+        self.frank_wolfe.eta(self.eta);
     }
 
 
@@ -207,7 +187,7 @@ impl<'a, F> CERLPBoost<'a, F> {
         let m = self.dist.len() as f64;
 
         let ln_m = (m / self.nu).ln();
-        let max_iter = 8.0 * ln_m / self.tolerance.powi(2);
+        let max_iter = 8.0 * ln_m / self.half_tolerance.powi(2);
 
         max_iter.ceil() as usize
     }
@@ -218,103 +198,56 @@ impl<F> CERLPBoost<'_, F>
     where F: Classifier + PartialEq,
 {
     /// Updates weight on hypotheses and `self.dist` in this order.
-    fn update_distribution_mut(&mut self)
-    {
-        self.dist
-            .iter_mut()
-            .zip(self.sample.target().into_iter())
-            .enumerate()
-            .for_each(|(i, (d, y))| {
-                let p = prediction(i, self.sample, &self.classifiers[..]);
-                *d = - self.eta * y * p
-            });
-
-        let n_sample = self.sample.shape().0;
-        // Sort the indices over `self.dist` in non-increasing order.
-        let mut indices = (0..n_sample).collect::<Vec<_>>();
-        indices.sort_by(|&i, &j|
-            self.dist[j].partial_cmp(&self.dist[i]).unwrap()
+    fn update_distribution_mut(&mut self) {
+        self.dist = utils::exp_distribution(
+            self.eta, self.nu, self.sample,
+            &self.weights[..], &self.hypotheses[..],
         );
-
-        let logsums = indices.iter()
-            .rev()
-            .fold(Vec::with_capacity(n_sample), |mut vec, &i| {
-                // TODO use `get_unchecked`
-                let temp = match vec.last() {
-                    None => self.dist[i],
-                    Some(&val) => {
-                        let mut a = val;
-                        let mut b = self.dist[i];
-                        if a < b {
-                            std::mem::swap(&mut a, &mut b)
-                        };
-
-                        a + (1.0 + (b - a).exp()).ln()
-                    }
-                };
-                vec.push(temp);
-                vec
-            })
-            .into_iter()
-            .rev();
-
-        let ub = 1.0 / self.nu;
-        let log_cap = self.nu.ln();
-
-        let mut idx_with_logsum = indices.into_iter().zip(logsums).enumerate();
-
-        while let Some((i, (i_sorted, logsum))) = idx_with_logsum.next() {
-            let log_xi = (1.0 - ub * i as f64).ln() - logsum;
-            // TODO replace this line into `get_unchecked`
-            let d = self.dist[i_sorted];
-
-            // Stopping criterion of this while loop
-            if log_xi + d + log_cap <= 0.0 {
-                self.dist[i_sorted] = (log_xi + d).exp();
-                while let Some((_, (ii, _))) = idx_with_logsum.next() {
-                    self.dist[ii] = (log_xi + self.dist[ii]).exp();
-                }
-                break;
-            }
-
-            self.dist[i_sorted] = ub;
-        }
     }
 
-    /// Update the weights on hypotheses
-    fn update_clf_weight_mut(&mut self, new_clf: F, gap_vec: Vec<f64>)
-    {
-        // Numerator
-        let numer = gap_vec
-            .iter()
-            .zip(self.dist.iter())
-            .fold(0.0, |acc, (&v, &d)| acc + v * d);
+    // /// Update the weights on hypotheses
+    // fn update_clf_weight_mut(&mut self, new_h: F, gap_vec: Vec<f64>)
+    // {
+    //     // Numerator
+    //     let numer = gap_vec.iter()
+    //         .zip(self.dist.iter())
+    //         .fold(0.0, |acc, (&v, &d)| acc + v * d);
 
-        let squared_inf_norm = gap_vec
-            .into_iter()
-            .fold(f64::MIN, |acc, v| acc.max(v.abs()))
-            .powi(2);
+    //     let squared_inf_norm = gap_vec.into_iter()
+    //         .fold(f64::MIN, |acc, v| acc.max(v.abs()))
+    //         .powi(2);
 
-        // Denominator
-        let denom = self.eta * squared_inf_norm;
+    //     // Denominator
+    //     let denom = self.eta * squared_inf_norm;
 
-        // Name the weight on new hypothesis as `weight`
-        let weight = 0.0_f64.max(1.0_f64.min(numer / denom));
+    //     // Name the weight on new hypothesis as `weight`
+    //     let weight = 0.0_f64.max(1.0_f64.min(numer / denom));
 
-        let mut already_exist = false;
-        for (clf, w) in self.classifiers.iter_mut() {
-            if *clf == new_clf {
-                already_exist = true;
-                *w += weight;
-            } else {
-                *w *= 1.0 - weight;
-            }
-        }
+    //     let mut already_exist = false;
+    //     let iter = self.weights.iter_mut().zip(&self.hypotheses[..]);
+    //     for (w, h) in iter {
+    //         if *h == new_h {
+    //             already_exist = true;
+    //             *w += weight;
+    //         } else {
+    //             *w *= 1.0 - weight;
+    //         }
+    //     }
+    //     // for (clf, w) in self.classifiers.iter_mut() {
+    //     //     if *clf == new_clf {
+    //     //         already_exist = true;
+    //     //         *w += weight;
+    //     //     } else {
+    //     //         *w *= 1.0 - weight;
+    //     //     }
+    //     // }
 
-        if !already_exist {
-            self.classifiers.push((new_clf, weight));
-        }
-    }
+    //     if !already_exist {
+    //         // self.classifiers.push((new_clf, weight));
+    //         self.weights.push(weight);
+    //         self.hypotheses.push(new_h);
+    //     }
+    // }
 }
 
 impl<F> Booster<F> for CERLPBoost<'_, F>
@@ -332,12 +265,13 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
         self.dist = vec![uni; n_sample];
 
 
-        assert!((0.0..1.0).contains(&self.tolerance));
         self.regularization_param();
         self.max_iter = self.max_loop();
         self.terminated = self.max_iter;
 
-        self.classifiers = Vec::new();
+        // self.classifiers = Vec::new();
+        self.weights = Vec::new();
+        self.hypotheses = Vec::new();
     }
 
 
@@ -358,36 +292,59 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
         // Receive a hypothesis from the base learner
         let h = weak_learner.produce(self.sample, &self.dist);
 
-        // println!("h: {h:?}");
+        let new_edge = utils::edge_of_hypothesis(
+            self.sample, &self.dist[..], &h
+        );
 
-        let gap_vec = self.sample.target()
-            .into_iter()
-            .enumerate()
-            .map(|(i, y)| {
-                let old_pred = prediction(
-                    i, self.sample, &self.classifiers[..]
-                );
-                let new_pred = h.confidence(self.sample, i);
+        let old_edge = utils::edge_of_weighted_hypothesis(
+            self.sample, &self.dist[..],
+            &self.weights[..], &self.hypotheses[..]
+        );
 
-                y * (new_pred - old_pred)
-            })
-            .collect::<Vec<_>>();
+        // let old_confidences = utils::margins_of_weighted_hypothesis(
+        //     self.sample, &self.weights[..], &self.hypotheses[..],
+        // );
+        // let new_confidences = utils::margins_of_hypothesis(
+        //     self.sample, &h
+        // );
+        // let target = self.sample.target();
+        // let gap_vec = new_confidences.into_iter()
+        //     .zip(old_confidences)
+        //     .zip(target.into_iter())
+        //     .map(|((n, o), y)| *y * (n - o))
+        //     .collect::<Vec<_>>();
 
-        // Compute the difference between the new hypothesis
-        // and the current combined hypothesis
-        let diff = gap_vec.par_iter()
-            .zip(&self.dist[..])
-            .map(|(v, d)| v * d)
-            .sum::<f64>();
+        // // Compute the difference between the new hypothesis
+        // // and the current combined hypothesis
+        // let diff = gap_vec.par_iter()
+        //     .zip(&self.dist[..])
+        //     .map(|(v, d)| v * d)
+        //     .sum::<f64>();
+
+        let diff = new_edge - old_edge;
 
         // Update the parameters
-        if diff <= self.tolerance {
+        if diff <= self.half_tolerance {
             self.terminated = iteration;
             return State::Terminate;
         }
 
+
+        let pos = self.hypotheses.iter()
+            .position(|f| *f == h)
+            .unwrap_or(self.hypotheses.len());
+
+        if pos == self.hypotheses.len() {
+            self.hypotheses.push(h);
+            self.weights.push(0.0);
+        }
+
+        let weights = mem::replace(&mut self.weights, vec![]);
         // Update the weight on hypotheses
-        self.update_clf_weight_mut(h, gap_vec);
+        self.weights = self.frank_wolfe.next_iterate(
+            iteration, self.sample, &self.dist[..],
+            &self.hypotheses[..], pos, weights,
+        );
 
         State::Continue
     }
@@ -399,28 +356,8 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
-        // Compute the dual optimal value for debug
-        self.dual_objval_mut();
-
-        let weighted_classifier = self.classifiers.clone()
-            .into_iter()
-            .filter_map(|(h, w)| if w != 0.0 { Some((w, h)) } else { None })
-            .collect::<Vec<_>>();
-
-        CombinedHypothesis::from(weighted_classifier)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
-}
-
-fn prediction<F>(
-    i: usize,
-    sample: &Sample,
-    classifiers: &[(F, f64)]
-) -> f64
-    where F: Classifier,
-{
-    classifiers.iter()
-        .map(|(h, w)| w * h.confidence(sample, i))
-        .sum()
 }
 
 
@@ -428,14 +365,6 @@ impl<H> Research<H> for CERLPBoost<'_, H>
     where H: Classifier + Clone,
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
-        let f = self.classifiers.clone()
-            .into_iter()
-            .filter_map(|(h, w)| if w != 0.0 { Some((w, h)) } else { None })
-            .collect::<Vec<_>>();
-
-        let mut f = CombinedHypothesis::from(f);
-        f.normalize();
-
-        f
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }

@@ -3,12 +3,7 @@
 //! by Mitsuboshi et al.
 //! 
 
-use super::{
-    lp_model::LPModel,
-    dist::dist_at,
-    options::*,
-    utils::*,
-};
+use super::lp_model::LPModel;
 
 
 use crate::{
@@ -19,11 +14,17 @@ use crate::{
     State,
     Classifier,
     CombinedHypothesis,
+    common::{
+        utils,
+        checker,
+        frank_wolfe::{FrankWolfe, FWType},
+    },
     research::Research,
 };
 
 
 use std::cell::RefCell;
+use std::mem;
 
 
 
@@ -36,19 +37,11 @@ use std::cell::RefCell;
 /// for running [`MLPBoost`](MLPBoost).  
 /// See also:
 /// - [`MLPBoost::nu`]
-/// - [`MLPBoost::primary`]
-/// - [`MLPBoost::stop_condition`]
-/// - [`StopCondition`]
-/// - [`Primary`]
 /// - [`DTree`]
 /// - [`DTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
 /// 
 /// [`MLPBoost::nu`]: MLPBoost::nu
-/// [`MLPBoost::primary`]: MLPBoost::primary
-/// [`MLPBoost::stop_condition`]: MLPBoost::stop_condition
-/// [`StopCondition`]: StopCondition
-/// [`Primary`]: Primary
 /// [`DTree`]: crate::weak_learner::DTree
 /// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
@@ -80,6 +73,7 @@ use std::cell::RefCell;
 /// // the number of training examples in `sample`.
 /// let booster = MLPBoost::init(&sample)
 ///     .tolerance(0.01)
+///     .frank_wolfe(FWType::ShortStep)
 ///     .nu(0.1 * n_sample);
 /// 
 /// // Set the weak learner with setting parameters.
@@ -126,24 +120,17 @@ pub struct MLPBoost<'a, F> {
 
 
     // Primary (FW) update
-    primary: Primary,
+    primary: FrankWolfe,
 
-    // Secondary (heuristic) update
-    secondary: Secondary,
-
-    // Stopping condition
-    condition: StopCondition,
-
-
-    // GRBModel.
-    lp_model: Option<RefCell<LPModel>>,
+    // Secondary (LPBoost) update
+    secondary: Option<RefCell<LPModel>>,
 
 
     // Weights on hypotheses
     weights: Vec<f64>,
 
     // Hypotheses
-    classifiers: Vec<F>,
+    hypotheses: Vec<F>,
 
 
     terminated: usize,
@@ -165,6 +152,8 @@ impl<'a, F> MLPBoost<'a, F> {
         let eta = 2.0 * (n_sample as f64).ln() / uni;
         let nu  = 1.0;
 
+        let primary = FrankWolfe::new(eta, nu, FWType::ShortStep);
+
         MLPBoost {
             sample,
 
@@ -172,15 +161,12 @@ impl<'a, F> MLPBoost<'a, F> {
             n_sample,
             nu,
             eta,
-            lp_model: None,
 
-
-            primary: Primary::ShortStep,
-            secondary: Secondary::LPB,
-            condition: StopCondition::ObjVal,
+            primary,
+            secondary: None,
 
             weights: Vec::new(),
-            classifiers: Vec::new(),
+            hypotheses: Vec::new(),
 
             terminated: usize::MAX,
             max_iter: usize::MAX,
@@ -195,28 +181,16 @@ impl<'a, F> MLPBoost<'a, F> {
     pub fn nu(mut self, nu: f64) -> Self {
         assert!(1.0 <= nu && nu <= self.n_sample as f64);
         self.nu = nu;
+        self.primary.nu(self.nu);
 
         self
     }
 
 
-    /// Update the Primary rule.
-    pub fn primary(mut self, rule: Primary) -> Self {
-        self.primary = rule;
-        self
-    }
-
-
-    /// Update the Secondary rule.
-    pub fn secondary(mut self, rule: Secondary) -> Self {
-        self.secondary = rule;
-        self
-    }
-
-
-    /// Update the stopping condition.
-    pub fn stop_condition(mut self, cond: StopCondition) -> Self {
-        self.condition = cond;
+    /// Update the Frank-Wolfe rule.
+    /// See [`FWType`](FWType)
+    pub fn frank_wolfe(mut self, fw_type: FWType) -> Self {
+        self.primary.fw_type(fw_type);
         self
     }
 
@@ -234,6 +208,7 @@ impl<'a, F> MLPBoost<'a, F> {
     fn eta(&mut self) {
         let ln_m = (self.n_sample as f64 / self.nu).ln();
         self.eta = ln_m / self.half_tolerance;
+        self.primary.eta(self.eta);
     }
 
 
@@ -241,11 +216,9 @@ impl<'a, F> MLPBoost<'a, F> {
     fn init_solver(&mut self) {
         let upper_bound = 1.0 / self.nu;
 
-        assert!((0.0..=1.0).contains(&upper_bound));
-
         let lp_model = RefCell::new(LPModel::init(self.n_sample, upper_bound));
 
-        self.lp_model = Some(lp_model);
+        self.secondary = Some(lp_model);
     }
 
 
@@ -280,69 +253,41 @@ impl<F> MLPBoost<'_, F>
     where F: Classifier,
 {
     fn secondary_update(&self, opt_h: Option<&F>) -> Vec<f64> {
-        match self.secondary {
-            Secondary::LPB => {
-                self.lp_model.as_ref()
-                    .unwrap()
-                    .borrow_mut()
-                    .update(self.sample, opt_h)
-            }
-        }
+        self.secondary.as_ref()
+            .unwrap()
+            .borrow_mut()
+            .update(self.sample, opt_h)
     }
 
 
     /// Returns the objective value 
     /// `- \tilde{f}^\star (-Aw)` at the current weighting `w = weights`.
     fn objval(&self, weights: &[f64]) -> f64 {
-        let dist = dist_at(
-            self.eta,
-            self.nu,
-            self.sample,
-            &self.classifiers[..],
-            weights
+
+        let dist = utils::exp_distribution(
+            self.eta, self.nu, self.sample, weights, &self.hypotheses[..],
         );
 
-
-        let margin = edge_of(
-            self.sample, &dist[..], &self.classifiers[..], weights
+        let edge = utils::edge_of_weighted_hypothesis(
+            self.sample, &dist[..], weights, &self.hypotheses[..],
         );
 
+        let entropy = utils::entropy_from_uni_distribution(&dist[..]);
 
-        let entropy = dist.iter()
-            .copied()
-            .map(|d| if d == 0.0 { 0.0 } else { d * d.ln() })
-            .sum::<f64>();
-
-        margin + (entropy + (self.n_sample as f64).ln()) / self.eta
+        edge + (entropy / self.eta)
     }
 
 
     /// Choose the better weights by some criterion.
     fn better_weight(
         &mut self,
-        dist: &[f64],
         prim: Vec<f64>,
         seco: Vec<f64>,
     )
     {
-        let prim_val;
-        let seco_val;
+        let prim_val = self.objval(&prim[..]);
+        let seco_val = self.objval(&seco[..]);
 
-        match self.condition {
-            StopCondition::Edge => {
-                prim_val = edge_of(
-                    self.sample, dist, &self.classifiers[..], &prim[..]
-                );
-                seco_val = edge_of(
-                    self.sample, dist, &self.classifiers[..], &seco[..]
-                );
-            },
-
-            StopCondition::ObjVal => {
-                prim_val = self.objval(&prim[..]);
-                seco_val = self.objval(&seco[..]);
-            },
-        }
         self.weights = if prim_val >= seco_val { prim } else { seco };
     }
 }
@@ -365,7 +310,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         self.terminated = self.max_iter;
 
 
-        self.classifiers = Vec::new();
+        self.hypotheses = Vec::new();
         self.weights = Vec::new();
 
         // Upper-bound of the optimal `edge`.
@@ -388,12 +333,9 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         // ------------------------------------------------------
 
         // Compute the distribution over training instances.
-        let dist = dist_at(
-            self.eta,
-            self.nu,
-            self.sample,
-            &self.classifiers[..],
-            &self.weights[..]
+        let dist = utils::exp_distribution(
+            self.eta, self.nu,
+            self.sample, &self.weights[..], &self.hypotheses[..],
         );
 
 
@@ -402,7 +344,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
 
 
         // Compute the edge of newly-attained hypothesis `h`.
-        let edge_h = edge_of_h(self.sample, &dist[..], &h);
+        let edge_h = utils::edge_of_hypothesis(self.sample, &dist, &h);
 
 
         // Update the estimation of `edge`.
@@ -413,11 +355,11 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         // For the first iteration,
         // just append the hypothesis and continue.
         if iteration == 1 {
-            self.classifiers.push(h);
+            self.hypotheses.push(h);
             self.weights.push(1.0_f64);
 
             // **DO NOT FORGET** to update the LP model.
-            let _ = self.secondary_update(self.classifiers.last());
+            let _ = self.secondary_update(self.hypotheses.last());
 
             return State::Continue;
         }
@@ -440,30 +382,25 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         // We first check whether `h` is obtained in past iterations
         // or not.
         let mut opt_h = None;
-        let pos = self.classifiers.iter()
+        let pos = self.hypotheses.iter()
             .position(|f| *f == h)
-            .unwrap_or(self.classifiers.len());
+            .unwrap_or(self.hypotheses.len());
 
 
         // If `h` is a newly-attained hypothesis,
-        // append it to `classifiers`.
-        if pos == self.classifiers.len() {
-            self.classifiers.push(h);
+        // append it to `hypotheses`.
+        if pos == self.hypotheses.len() {
+            self.hypotheses.push(h);
             self.weights.push(0.0);
-            opt_h = self.classifiers.last();
+            opt_h = self.hypotheses.last();
         }
 
 
-        // Primary update
-        let prim = self.primary.update(
-            self.eta,
-            self.nu,
-            self.sample,
-            &dist[..],
-            pos,
-            &self.classifiers[..],
-            self.weights.clone(),
-            iteration
+        let weights = mem::replace(&mut self.weights, vec![]);
+
+        let prim = self.primary.next_iterate(
+            iteration, self.sample, &dist[..],
+            &self.hypotheses[..], pos, weights,
         );
 
         // Secondary update
@@ -471,7 +408,9 @@ impl<F> Booster<F> for MLPBoost<'_, F>
 
 
         // Choose the better one
-        self.better_weight(&dist[..], prim, seco);
+        self.better_weight(prim, seco);
+
+        checker::check_capped_simplex_condition(&self.weights[..], 1.0);
 
         State::Continue
     }
@@ -483,14 +422,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
-        let clfs = self.weights.clone()
-            .into_iter()
-            .zip(self.classifiers.clone())
-            .filter(|(w, _)| *w > 0.0)
-            .collect::<Vec<_>>();
-
-
-        CombinedHypothesis::from(clfs)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -500,14 +432,7 @@ impl<H> Research<H> for MLPBoost<'_, H>
     where H: Classifier + Clone,
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
-
-        let f = self.weights.iter()
-            .copied()
-            .zip(self.classifiers.iter().cloned())
-            .filter(|(w, _)| *w > 0.0)
-            .collect::<Vec<(f64, H)>>();
-
-        CombinedHypothesis::from(f)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 

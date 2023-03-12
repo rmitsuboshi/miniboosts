@@ -115,7 +115,7 @@ pub struct SmoothBoost<'a, F> {
 
     max_iter: usize,
 
-    classifiers: Vec<F>,
+    hypotheses: Vec<F>,
 
 
     m: Vec<f64>,
@@ -145,7 +145,7 @@ impl<'a, F> SmoothBoost<'a, F> {
             terminated: usize::MAX,
             max_iter: usize::MAX,
 
-            classifiers: Vec::new(),
+            hypotheses: Vec::new(),
 
             m: Vec::new(),
             n: Vec::new(),
@@ -239,7 +239,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
         self.max_iter = self.max_loop();
         self.terminated = self.max_iter;
 
-        self.classifiers = Vec::new();
+        self.hypotheses = Vec::new();
 
 
         self.m = vec![1.0; self.n_sample];
@@ -277,10 +277,10 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 
 
         // Call weak learner to obtain a hypothesis.
-        self.classifiers.push(
+        self.hypotheses.push(
             weak_learner.produce(self.sample, &dist[..])
         );
-        let h: &F = self.classifiers.last().unwrap();
+        let h: &F = self.hypotheses.last().unwrap();
 
 
         let target = self.sample.target();
@@ -319,12 +319,8 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
         where W: WeakLearner<Hypothesis = F>
     {
         let weight = 1.0 / self.terminated as f64;
-        let clfs = self.classifiers.clone()
-            .into_iter()
-            .map(|h| (weight, h))
-            .collect::<Vec<(f64, F)>>();
-
-        CombinedHypothesis::from(clfs)
+        let weights = vec![weight; self.n_sample];
+        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
 
@@ -334,11 +330,7 @@ impl<H> Research<H> for SmoothBoost<'_, H>
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
         let weight = 1.0 / self.terminated as f64;
-        let f = self.classifiers.clone()
-            .into_iter()
-            .map(|h| (weight, h))
-            .collect::<Vec<_>>();
-
-        CombinedHypothesis::from(f)
+        let weights = vec![weight; self.n_sample];
+        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
     }
 }

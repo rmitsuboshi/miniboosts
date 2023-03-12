@@ -94,7 +94,7 @@ pub struct GBM<'a, F> {
     weights: Vec<f64>,
 
     // Hypohteses obtained by the weak-learner.
-    classifiers: Vec<F>,
+    hypotheses: Vec<F>,
 
 
     // Some struct that implements `LossFunction` trait
@@ -129,7 +129,7 @@ impl<'a, F> GBM<'a, F>
             tolerance: 0.0,
 
             weights: Vec::new(),
-            classifiers: Vec::new(),
+            hypotheses: Vec::new(),
 
             ones: vec![1.0; n_sample],
 
@@ -183,7 +183,7 @@ impl<F> Booster<F> for GBM<'_, F>
         let n_sample = self.sample.shape().0;
 
         self.weights = Vec::with_capacity(self.max_iter);
-        self.classifiers = Vec::with_capacity(self.max_iter);
+        self.hypotheses = Vec::with_capacity(self.max_iter);
 
         if self.original_target.is_empty() {
             self.original_target = self.sample.target().to_vec();
@@ -235,7 +235,7 @@ impl<F> Booster<F> for GBM<'_, F>
 
 
         self.weights.push(coef);
-        self.classifiers.push(h);
+        self.hypotheses.push(h);
 
         State::Continue
     }
@@ -253,12 +253,7 @@ impl<F> Booster<F> for GBM<'_, F>
             .zip(self.original_target.iter().copied())
             .for_each(|(y, orig)| { *y = orig; });
 
-        let f = self.weights.iter()
-            .copied()
-            .zip(self.classifiers.iter().cloned())
-            .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<_>>();
-        CombinedHypothesis::from(f)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
