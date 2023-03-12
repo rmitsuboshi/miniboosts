@@ -22,7 +22,6 @@ pub mod gradient_boost;
 
 // ------------------------------------------------
 // Regression
-// pub mod soft_lae;
 // pub mod leveragings;
 
 
@@ -60,7 +59,6 @@ pub use self::gradient_boost::GBM;
 
 // // ------------------------------------------------
 // // Regression
-// pub use self::soft_lae::SLBoost;
 // pub use self::leveragings::{
 //     SquareLevR,
 // };

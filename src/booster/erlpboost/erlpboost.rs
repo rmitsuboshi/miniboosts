@@ -10,6 +10,8 @@ use crate::{
     State,
     Classifier,
     CombinedHypothesis,
+    common::utils,
+    common::checker,
     research::Research,
 };
 
@@ -107,7 +109,7 @@ pub struct ERLPBoost<'a, F> {
 
     qp_model: Option<RefCell<QPModel>>,
 
-    classifiers: Vec<F>,
+    hypotheses: Vec<F>,
     weights: Vec<f64>,
 
 
@@ -161,7 +163,7 @@ impl<'a, F> ERLPBoost<'a, F> {
             half_tolerance,
             qp_model: None,
 
-            classifiers: Vec::new(),
+            hypotheses: Vec::new(),
             weights: Vec::new(),
 
 
@@ -175,11 +177,10 @@ impl<'a, F> ERLPBoost<'a, F> {
 
 
     fn init_solver(&mut self) {
+        checker::check_nu(self.nu, self.n_sample);
+
+
         let upper_bound = 1.0 / self.nu;
-
-        assert!((0.0..=1.0).contains(&upper_bound));
-
-
         let qp_model = RefCell::new(QPModel::init(
             self.eta, self.n_sample, upper_bound
         ));
@@ -252,20 +253,8 @@ impl<F> ERLPBoost<'_, F>
     #[inline]
     fn update_gamma_hat_mut(&mut self, h: &F)
     {
-        let edge = self.sample.target()
-            .into_iter()
-            .zip(self.dist.iter().copied())
-            .enumerate()
-            .map(|(i, (y, d))| d * y * h.confidence(self.sample, i))
-            .sum::<f64>();
-
-
-        let m = self.dist.len() as f64;
-        let entropy = self.dist.iter()
-            .copied()
-            .map(|d| if d == 0.0 { 0.0 } else { d * d.ln() })
-            .sum::<f64>() + m.ln();
-
+        let edge = utils::edge_of_hypothesis(self.sample, &self.dist[..], h);
+        let entropy = utils::entropy_from_uni_distribution(&self.dist[..]);
 
         let obj_val = edge + (entropy / self.eta);
 
@@ -277,27 +266,14 @@ impl<F> ERLPBoost<'_, F>
     /// `self.gamma_star` holds the current optimal value.
     fn update_gamma_star_mut(&mut self)
     {
-        let max_edge = self.classifiers.iter()
+        let max_edge = self.hypotheses.iter()
             .map(|h|
-                self.sample.target()
-                    .into_iter()
-                    .zip(self.dist.iter().copied())
-                    .enumerate()
-                    .map(|(i, (y, d))| d * y * h.confidence(self.sample, i))
-                    .sum::<f64>()
+                utils::edge_of_hypothesis(self.sample, &self.dist, h)
             )
             .reduce(f64::max)
             .unwrap();
-
-
-        let entropy = self.dist.iter()
-            .copied()
-            .map(|d| d * d.ln())
-            .sum::<f64>();
-
-
-        let ln_m = (self.n_sample as f64).ln();
-        self.gamma_star = max_edge + (entropy + ln_m) / self.eta;
+        let entropy = utils::entropy_from_uni_distribution(&self.dist);
+        self.gamma_star = max_edge + (entropy / self.eta);
     }
 
 
@@ -341,7 +317,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         self.max_iter = self.max_loop();
         self.terminated = self.max_iter;
 
-        self.classifiers = Vec::new();
+        self.hypotheses = Vec::new();
 
         self.gamma_hat = 1.0;
         self.gamma_star = -1.0;
@@ -386,7 +362,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
 
 
         // Append a new hypothesis to `clfs`.
-        self.classifiers.push(h);
+        self.hypotheses.push(h);
 
 
         // update `self.gamma_star`.
@@ -407,14 +383,8 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
             .borrow_mut()
             .weight()
             .collect::<Vec<_>>();
-        let clfs = self.weights.iter()
-            .copied()
-            .zip(self.classifiers.clone())
-            .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<(f64, F)>>();
 
-
-        CombinedHypothesis::from(clfs)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -428,13 +398,7 @@ impl<H> Research<H> for ERLPBoost<'_, H>
             .weight()
             .collect::<Vec<_>>();
 
-        let f = weights.iter()
-            .copied()
-            .zip(self.classifiers.iter().cloned())
-            .filter(|(w, _)| *w > 0.0)
-            .collect::<Vec<(f64, H)>>();
-
-        CombinedHypothesis::from(f)
+        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
 

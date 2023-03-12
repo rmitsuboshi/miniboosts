@@ -23,6 +23,8 @@ fn zero_one_loss<H>(sample: &Sample, f: &CombinedHypothesis<H>)
         / n_sample
 }
 
+const TOLERANCE: f64 = 0.01;
+
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -49,7 +51,7 @@ fn main() {
     // let objective = SoftMarginObjective::new(1.0);
     // println!("Running AdaBoost");
     // let booster = AdaBoost::init(&train)
-    //     .tolerance(0.01);
+    //     .tolerance(TOLERANCE);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
     //     .criterion(Criterion::Entropy);
@@ -63,7 +65,7 @@ fn main() {
     // let objective = SoftMarginObjective::new(1.0);
     // println!("Running AdaBoostV");
     // let booster = AdaBoostV::init(&train)
-    //     .tolerance(0.01);
+    //     .tolerance(TOLERANCE);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
     //     .criterion(Criterion::Entropy);
@@ -77,7 +79,7 @@ fn main() {
     // let objective = SoftMarginObjective::new(1.0);
     // println!("Running TotalBoost");
     // let booster = TotalBoost::init(&train)
-    //     .tolerance(0.01);
+    //     .tolerance(TOLERANCE);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
     //     .criterion(Criterion::Entropy);
@@ -96,7 +98,7 @@ fn main() {
     // let objective = SoftMarginObjective::new(nu);
     // println!("Running SmoothBoost");
     // let booster = SmoothBoost::init(&train)
-    //     .tolerance(0.01)
+    //     .tolerance(TOLERANCE)
     //     .gamma(0.006);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
@@ -111,7 +113,7 @@ fn main() {
     // let objective = SoftMarginObjective::new(nu);
     // println!("Running SoftBoost");
     // let booster = SoftBoost::init(&train)
-    //     .tolerance(0.01)
+    //     .tolerance(TOLERANCE)
     //     .nu(nu);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
@@ -126,7 +128,7 @@ fn main() {
     // let objective = SoftMarginObjective::new(nu);
     // println!("Running LPBoost");
     // let booster = LPBoost::init(&train)
-    //     .tolerance(0.01)
+    //     .tolerance(TOLERANCE)
     //     .nu(nu);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
@@ -141,7 +143,7 @@ fn main() {
     // let objective = SoftMarginObjective::new(nu);
     // println!("Running ERLPBoost");
     // let booster = ERLPBoost::init(&train)
-    //     .tolerance(0.01)
+    //     .tolerance(TOLERANCE)
     //     .nu(nu);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
@@ -152,26 +154,11 @@ fn main() {
     // let _ = logger.run("erlpboost.csv");
 
 
-    // Run Corrective ERLPBoost
-    let objective = SoftMarginObjective::new(nu);
-    println!("Running CERLPBoost");
-    let booster = CERLPBoost::init(&train)
-        .tolerance(0.01)
-        .nu(nu);
-    let tree = DTree::init(&train)
-        .max_depth(2)
-        .criterion(Criterion::Entropy);
-    let mut logger = Logger::new(
-        booster, tree, objective, zero_one_loss, &train, &test
-    );
-    let _ = logger.run("cerlpboost.csv");
-
-
-    // // Run MLPBoost
+    // // Run Corrective ERLPBoost
     // let objective = SoftMarginObjective::new(nu);
-    // println!("Running MLPBoost");
-    // let booster = MLPBoost::init(&train)
-    //     .tolerance(0.01)
+    // println!("Running CERLPBoost");
+    // let booster = CERLPBoost::init(&train)
+    //     .tolerance(TOLERANCE)
     //     .nu(nu);
     // let tree = DTree::init(&train)
     //     .max_depth(2)
@@ -179,5 +166,21 @@ fn main() {
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
-    // let _ = logger.run("mlpboost.csv");
+    // let _ = logger.run("cerlpboost.csv");
+
+
+    // Run MLPBoost
+    let objective = SoftMarginObjective::new(nu);
+    println!("Running MLPBoost");
+    let booster = MLPBoost::init(&train)
+        .tolerance(TOLERANCE)
+        // .frank_wolfe(FWType::LineSearch)
+        .nu(nu);
+    let tree = DTree::init(&train)
+        .max_depth(2)
+        .criterion(Criterion::Entropy);
+    let mut logger = Logger::new(
+        booster, tree, objective, zero_one_loss, &train, &test
+    );
+    let _ = logger.run("mlpboost.csv");
 }

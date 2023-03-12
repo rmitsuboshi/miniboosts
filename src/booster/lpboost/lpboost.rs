@@ -12,6 +12,8 @@ use crate::{
 
     Classifier,
     CombinedHypothesis,
+    common::utils,
+    common::checker,
     research::Research,
 };
 
@@ -115,7 +117,7 @@ pub struct LPBoost<'a, F> {
     lp_model: Option<RefCell<LPModel>>,
 
 
-    classifiers: Vec<F>,
+    hypotheses: Vec<F>,
     weights: Vec<f64>,
 
 
@@ -129,7 +131,6 @@ impl<'a, F> LPBoost<'a, F>
     /// Initialize the `LPBoost`.
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
-        assert!(n_sample != 0);
 
 
         let uni = 1.0 / n_sample as f64;
@@ -143,7 +144,7 @@ impl<'a, F> LPBoost<'a, F>
             nu:        1.0,
             lp_model: None,
 
-            classifiers: Vec::new(),
+            hypotheses: Vec::new(),
             weights: Vec::new(),
 
 
@@ -155,8 +156,7 @@ impl<'a, F> LPBoost<'a, F>
     /// This method updates the capping parameter.
     /// This parameter must be in `[1, n_sample]`.
     pub fn nu(mut self, nu: f64) -> Self {
-        let n_sample = self.n_sample as f64;
-        assert!((1.0..=n_sample).contains(&nu));
+        checker::check_nu(nu, self.n_sample);
         self.nu = nu;
 
         self
@@ -226,7 +226,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
         self.n_sample = n_sample;
         self.dist = vec![uni; n_sample];
         self.gamma_hat = 1.0;
-        self.classifiers = Vec::new();
+        self.hypotheses = Vec::new();
         self.terminated = usize::MAX;
     }
 
@@ -242,14 +242,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
 
         // Each element in `margins` is the product of
         // the predicted vector and the correct vector
-
-        let ghat = self.sample.target()
-            .into_iter()
-            .enumerate()
-            .map(|(i, y)| y * h.confidence(self.sample, i))
-            .zip(self.dist.iter())
-            .map(|(yh, &d)| d * yh)
-            .sum::<f64>();
+        let ghat = utils::edge_of_hypothesis(self.sample, &self.dist[..], &h);
 
         self.gamma_hat = ghat.min(self.gamma_hat);
 
@@ -257,11 +250,11 @@ impl<F> Booster<F> for LPBoost<'_, F>
 
 
         if gamma_star >= self.gamma_hat - self.tolerance {
-            self.terminated = self.classifiers.len();
+            self.terminated = self.hypotheses.len();
             return State::Terminate;
         }
 
-        self.classifiers.push(h);
+        self.hypotheses.push(h);
 
         // Update the distribution over the training examples.
         self.dist = self.lp_model.as_ref()
@@ -284,14 +277,8 @@ impl<F> Booster<F> for LPBoost<'_, F>
             .borrow()
             .weight()
             .collect::<Vec<_>>();
-        let clfs = self.weights.iter()
-            .copied()
-            .zip(self.classifiers.clone())
-            .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<(f64, F)>>();
 
-
-        CombinedHypothesis::from(clfs)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -306,12 +293,6 @@ impl<H> Research<H> for LPBoost<'_, H>
             .weight()
             .collect::<Vec<_>>();
 
-        let f = weights.iter()
-            .copied()
-            .zip(self.classifiers.iter().cloned())
-            .filter(|(w, _)| *w > 0.0)
-            .collect::<Vec<(f64, H)>>();
-
-        CombinedHypothesis::from(f)
+        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
     }
 }

@@ -10,6 +10,7 @@ use crate::{
     CombinedHypothesis,
     Sample,
 
+    common::utils,
     research::Research,
 };
 
@@ -88,11 +89,11 @@ pub struct AdaBoost<'a, F> {
     tolerance: f64,
 
 
-    // Weights on hypotheses in `classifiers`
+    // Weights on hypotheses in `hypotheses`
     weights: Vec<f64>,
 
     // Hypohteses obtained by the weak-learner.
-    classifiers: Vec<F>,
+    hypotheses: Vec<F>,
 
 
     // Max iteration until AdaBoost guarantees the optimality.
@@ -119,7 +120,7 @@ impl<'a, F> AdaBoost<'a, F> {
             tolerance: 1.0 / (n_sample as f64 + 1.0),
 
             weights: Vec::new(),
-            classifiers: Vec::new(),
+            hypotheses: Vec::new(),
 
             max_iter: usize::MAX,
 
@@ -217,7 +218,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
         self.dist = vec![uni; n_sample];
 
         self.weights = Vec::new();
-        self.classifiers = Vec::new();
+        self.hypotheses = Vec::new();
 
 
         self.max_iter = self.max_loop();
@@ -242,17 +243,10 @@ impl<F> Booster<F> for AdaBoost<'_, F>
 
         // Each element in `margins` is the product of
         // the predicted vector and the correct vector
-        let margins = self.sample.target()
-            .into_iter()
-            .enumerate()
-            .map(|(i, y)| y * h.confidence(self.sample, i))
-            .collect::<Vec<f64>>();
+        let margins = utils::margins_of_hypothesis(self.sample, &h);
 
 
-        let edge = margins.iter()
-            .zip(&self.dist[..])
-            .map(|(&yh, &d)| yh * d)
-            .sum::<f64>();
+        let edge = utils::inner_product(&margins, &self.dist);
 
 
         // If `h` predicted all the examples in `sample` correctly,
@@ -260,7 +254,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
         if edge.abs() >= 1.0 {
             self.terminated = iteration;
             self.weights = vec![edge.signum()];
-            self.classifiers = vec![h];
+            self.hypotheses = vec![h];
             return State::Terminate;
         }
 
@@ -268,7 +262,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
         // Compute the weight on the new hypothesis
         let weight = self.update_params(margins, edge);
         self.weights.push(weight);
-        self.classifiers.push(h);
+        self.hypotheses.push(h);
 
         State::Continue
     }
@@ -280,12 +274,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
-        let f = self.weights.iter()
-            .copied()
-            .zip(self.classifiers.iter().cloned())
-            .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<_>>();
-        CombinedHypothesis::from(f)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -294,12 +283,6 @@ impl<H> Research<H> for AdaBoost<'_, H>
     where H: Classifier + Clone,
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
-        let f = self.weights.iter()
-            .copied()
-            .zip(self.classifiers.iter().cloned())
-            .filter(|(w, _)| *w != 0.0)
-            .collect::<Vec<_>>();
-
-        CombinedHypothesis::from(f)
+        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }

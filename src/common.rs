@@ -6,6 +6,13 @@ pub mod loss_functions;
 /// Defines objective functions and its traits.
 pub mod objective_functions;
 
+/// Defines some useful functions such as edge calculation.
+pub mod utils;
+
+/// Defines the Frank-Wolfe algorithms.
+pub mod frank_wolfe;
+
+/// Defines some checker functions.
 pub(crate) mod checker;
 
 pub use objective_functions::ObjectiveFunction;

@@ -61,61 +61,53 @@ pub trait Regressor {
 /// A struct that the boosting algorithms in this library return.
 /// You can read/write this struct by `Serde` trait.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CombinedHypothesis<F> {
-    /// Each element is the pair of hypothesis and its weight
-    pub inner: Vec<(f64, F)>,
+pub struct CombinedHypothesis<H> {
+    /// Weights on each hypothesis in `self.hypotheses`.
+    pub weights: Vec<f64>,
+    /// Set of hypotheses.
+    pub hypotheses: Vec<H>,
 }
 
 
-impl<F> CombinedHypothesis<F> {
+impl<H: Clone> CombinedHypothesis<H> {
+    /// Construct a new `CombinedHypothesis` from given slices.
+    #[inline]
+    pub fn from_slices(weights: &[f64], hypotheses: &[H]) -> Self {
+        let weights = weights.to_vec();
+        let hypotheses = hypotheses.to_vec();
+
+        Self { weights, hypotheses, }
+    }
+}
+
+impl<H> CombinedHypothesis<H> {
     /// Append a pair `(weight, F)` to the current combined hypothesis.
     #[inline]
-    pub fn push(&mut self, weight: f64, hypothesis: F) {
-        self.inner.push((weight, hypothesis));
+    pub fn push(&mut self, weight: f64, hypothesis: H) {
+        self.weights.push(weight);
+        self.hypotheses.push(hypothesis);
     }
 
 
     /// Normalize `self.weights`, `\| w \|_1 = 1`.
     #[inline]
     pub fn normalize(&mut self) {
-        let norm = self.inner.iter()
-            .map(|(w, _)| w.abs())
+        let norm = self.weights.iter()
+            .map(|w| w.abs())
             .sum::<f64>();
 
         if norm <= 0.0 { return; }
 
-        self.inner.iter_mut()
-            .for_each(|(w, _)| {
-                *w /= norm;
-            });
+        self.weights.iter_mut()
+            .for_each(|w| { *w /= norm; });
     }
 
 
     /// Decompose the combined hypothesis
     /// into the two vectors `Vec<f64>` and `Vec<F>`
     #[inline]
-    pub fn decompose(self) -> (Vec<f64>, Vec<F>) {
-        let n_hypotheses = self.inner.len();
-        let mut weights = Vec::with_capacity(n_hypotheses);
-        let mut hypotheses = Vec::with_capacity(n_hypotheses);
-
-        self.inner.into_iter()
-            .for_each(|(w, h)| {
-                weights.push(w);
-                hypotheses.push(h);
-            });
-
-        (weights, hypotheses)
-    }
-}
-
-
-impl<F> From<Vec<(f64, F)>> for CombinedHypothesis<F>
-{
-    fn from(inner: Vec<(f64, F)>) -> Self {
-        CombinedHypothesis {
-            inner,
-        }
+    pub fn decompose(self) -> (Vec<f64>, Vec<H>) {
+        (self.weights, self.hypotheses)
     }
 }
 
@@ -124,7 +116,8 @@ impl<F> Classifier for CombinedHypothesis<F>
     where F: Classifier,
 {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
-        self.inner.iter()
+        self.weights.iter()
+            .zip(&self.hypotheses[..])
             .map(|(w, h)| *w * h.confidence(sample, row))
             .sum::<f64>()
     }
@@ -135,7 +128,8 @@ impl<F> Regressor for CombinedHypothesis<F>
     where F: Regressor,
 {
     fn predict(&self, sample: &Sample, row: usize) -> f64 {
-        self.inner.iter()
+        self.weights.iter()
+            .zip(&self.hypotheses[..])
             .map(|(w, h)| *w * h.predict(sample, row))
             .sum::<f64>()
     }
