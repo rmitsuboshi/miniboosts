@@ -162,26 +162,29 @@ pub use booster::{
 // Export the boosting algorithms that maximizes the hard margin.
 pub use booster::{
     AdaBoostV,
-    TotalBoost,
     // SparsiBoost,
 };
 
 
 // Export the boosting algorithms that maximizes the soft margin.
 pub use booster::{
+    SmoothBoost,
+    CERLPBoost,
+};
+
+
+#[cfg(feature="extended")]
+pub use booster::{
+    TotalBoost,
     LPBoost,
     ERLPBoost,
     SoftBoost,
-    SmoothBoost,
-    CERLPBoost,
-
     MLPBoost,
 };
 
 
 // Export the boosting algorithms for regression
 pub use booster::{
-    // SquareLevR,
     GBM,
 };
 
