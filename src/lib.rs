@@ -197,10 +197,6 @@ pub use weak_learner::WeakLearner;
 pub use weak_learner::{
     DTree,
     Criterion,
-
-    // WLUnion,
-
-    // GaussianNB,
 };
 
 
@@ -208,7 +204,6 @@ pub use weak_learner::{
 // The `CombinedClassifier` is the output of the `Boosting::run(..)`.
 pub use weak_learner::{
     DTreeClassifier,
-    // NBayesClassifier,
 };
 
 pub use weak_learner::{

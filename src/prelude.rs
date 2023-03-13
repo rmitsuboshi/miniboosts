@@ -46,12 +46,8 @@ pub use crate::weak_learner::{
     Criterion,
 
 
-    // // Naive Bayes
-    // GaussianNB,
-    // NBayesClassifier,
-
-
     // Regression -------------------------------
+    // Regression tree
     RTree,
     RTreeRegressor,
     LossType,
