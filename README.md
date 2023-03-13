@@ -5,46 +5,45 @@
 ![Training loss comparison](img/training-loss.png)
 ![Soft margin objective comparison](img/soft-margin.png)
 
-This library uses [Gurobi optimizer](https://www.gurobi.com), 
+Some boosting algorithms use [Gurobi optimizer](https://www.gurobi.com), 
 so you must acquire a license to use this library. 
+If you have the license, you can use these boosting algorithms (boosters) 
+by specifying `features = ["extended"]` in `Cargo.toml`.
 
-**Note** that you need to put `gurobi.lic` in your home directory; 
-otherwise, the compile fails. 
-See [this repository](https://github.com/ykrist/rust-grb) for details.
+**Note!**
+If you are trying to use the `extended` feature without a Gurobi license,
+the compilation fails.
 
 
 ## Features
 Currently, I implemented the following Boosters and Weak Learners.
-You can combine them arbitrarily.
+
+If you invent a new boosting algorithm,
+you can introduce it by implementing `Booster` trait.
+See `cargo doc --open` for details.
+
+### Boosters
+
+|`BOOSTER` | `FEATURE FLAG` |
+| :---     | :---           |
+| [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub)<br>by Freund and Schapire, 1997 | |
+| [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html)<br>by Rätsch and Warmuth, 2005 | |
+| [SmoothBoost](https://link.springer.com/chapter/10.1007/3-540-44581-1_31)<br>by Rocco A. Servedio, 2003 | |
+| [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970)<br>by Warmuth, Liao, and Rätsch, 2006 | `extended` |
+| [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf)<br>by Demiriz, Bennett, and Shawe-Taylor, 2002 | `extended` |
+| [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf)<br>by Warmuth, Glocer, and Rätsch, 2007 | `extended` |
+| [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf)<br>by Warmuth and Glocer, and Vishwanathan, 2008 | `extended` |
+| [CERLPBoost](https://link.springer.com/article/10.1007/s10994-010-5173-z) (Corrective ERLPBoost)<br>by Shalev-Shwartz and Singer, 2010 | `extended` |
+| [MLPBoost](https://arxiv.org/abs/2209.10831)<br>by Mitsuboshi, Hatano, and Takimoto, 2022 | `extended` |
+| [GBM](https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full) (Gradient Boosting Machine),<br>by Jerome H. Friedman | |
 
 
-### Classification
+### Weak Learners
+|`WEAK LEARNERS`                                                                     |
+| :---                                                                               |
+| [DTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)   |
+| [RTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree) |
 
-
-- Boosters
-    * [AdaBoost](https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub) by Freund and Schapire, 1997
-    * [AdaBoostV](http://jmlr.org/papers/v6/ratsch05a.html) by Rätsch and Warmuth, 2005
-    * [TotalBoost](https://dl.acm.org/doi/10.1145/1143844.1143970) by Warmuth, Liao, and Rätsch, 2006
-    * [LPBoost](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf) by Demiriz, Bennett, and Shawe-Taylor, 2002
-    * [SmoothBoost](https://link.springer.com/chapter/10.1007/3-540-44581-1_31) by Rocco A. Servedio, 2003
-    * [SoftBoost](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf) by Warmuth, Glocer, and Rätsch, 2007
-    * [ERLPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf) by Warmuth and Glocer, and Vishwanathan, 2008
-    * [CERLPBoost](https://link.springer.com/article/10.1007/s10994-010-5173-z) (The Corrective ERLPBoost) by Shalev-Shwartz and Singer, 2010
-    * [MLPBoost](https://arxiv.org/abs/2209.10831) by Mitsuboshi, Hatano, and Takimoto, 2022
-
-
-- Weak Learners
-    - [DTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)
-    - GaussianNB (Naive Bayes), **beta version**
-    - WLUnion, a union of multiple weak learners.
-
-
-### Regression
-- Booster
-    - [GBM](https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full),
-        a. k. a. Gradient Boosting Machine, by Jerome H. Friedman.
-- Weak Learner
-    - [RTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)
 
 ## Future work
 
@@ -62,7 +61,7 @@ You can combine them arbitrarily.
 
 - Others
     - Parallelization
-    - LP/QP solver (This work allows you to use this library without a license).
+    - LP/QP solver (This work allows you to use `extended` features without a license).
 
 
 ## How to use
@@ -72,6 +71,12 @@ You need to write the following line to `Cargo.toml`.
 
 ```TOML
 miniboosts = { git = "https://github.com/rmitsuboshi/miniboosts" }
+```
+
+If you want to use `extended` features, such as `LPBoost`, specify the option:
+
+```TOML
+miniboosts = { git = "https://github.com/rmitsuboshi/miniboosts", features = ["extended"] }
 ```
 
 
@@ -87,13 +92,14 @@ fn main() {
 
     // Read a CSV file
     // The column named `class` is corresponds to the labels (targets).
-    let sample = Sample::from_csv(file, true)
+    let has_header = true;
+    let sample = Sample::from_csv(file, has_header)
         .unwrap()
         .set_target("class");
 
 
     // Set tolerance parameter
-    let tol: f64 = 0.01;
+    let tolerance: f64 = 0.01;
 
 
     // Initialize Booster
@@ -128,7 +134,7 @@ fn main() {
 If you use boosting for soft margin optimization, 
 initialize booster like this:
 ```rust
-let n_sample = df.shape().0;
+let n_sample = sample.shape().0;
 let nu = n_sample as f64 * 0.2;
 let lpboost = LPBoost::init(&sample)
     .tolerance(tol)
