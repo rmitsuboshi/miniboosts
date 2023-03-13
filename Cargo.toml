@@ -14,8 +14,11 @@ license = "MIT"
 
 
 [dependencies]
-grb        = "1.3.0"
-rayon      = "1.6.1"
+grb        = { version = "1.3.0" }
+rayon      = { version = "1.6.1" }
 serde      = { version = "1.0", features = ["rc", "derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 polars     = "0.27.0"
+
+[features]
+extended = []

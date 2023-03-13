@@ -7,7 +7,6 @@ pub mod core;
 pub mod smoothboost;
 pub mod adaboost;
 pub mod adaboostv;
-// pub mod sparsiboost;
 
 pub mod totalboost;
 
@@ -22,7 +21,6 @@ pub mod gradient_boost;
 
 // ------------------------------------------------
 // Regression
-// pub mod leveragings;
 
 
 // Export the Boosters
@@ -42,8 +40,8 @@ pub use self::adaboost::AdaBoost;
 
 /// Hard Margin Maximization
 pub use self::adaboostv::AdaBoostV;
+#[cfg(feature="extended")]
 pub use self::totalboost::TotalBoost;
-// pub use self::sparsiboost::SparsiBoost;
 
 
 /// Soft Margin Maximization
@@ -56,9 +54,3 @@ pub use self::cerlpboost::CERLPBoost;
 pub use self::mlpboost::MLPBoost;
 
 pub use self::gradient_boost::GBM;
-
-// // ------------------------------------------------
-// // Regression
-// pub use self::leveragings::{
-//     SquareLevR,
-// };

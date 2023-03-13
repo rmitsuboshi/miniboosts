@@ -12,21 +12,25 @@ pub use crate::booster::{
 
     // Hard margin maximizing boostings
     AdaBoostV,
-    TotalBoost,
 
+    // Soft margin optimization
+    SmoothBoost,
+    CERLPBoost,
+
+    // Regression
+    GBM,
+};
+
+#[cfg(feature="extended")]
+pub use crate::booster::{
+    TotalBoost,
 
     // Soft margin maximizing boostings
     LPBoost,
     ERLPBoost,
     SoftBoost,
-    SmoothBoost,
-    CERLPBoost,
 
     MLPBoost,
-
-    // // Regression -------------------------------
-    GBM,
-    // SquareLevR,
 };
 
 
