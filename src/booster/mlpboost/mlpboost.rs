@@ -279,16 +279,12 @@ impl<F> MLPBoost<'_, F>
 
 
     /// Choose the better weights by some criterion.
-    fn better_weight(
-        &mut self,
-        prim: Vec<f64>,
-        seco: Vec<f64>,
-    )
+    fn better_weight(&mut self, primary: Vec<f64>, secondary: Vec<f64>)
     {
-        let prim_val = self.objval(&prim[..]);
-        let seco_val = self.objval(&seco[..]);
+        let prim_val = self.objval(&primary[..]);
+        let seco_val = self.objval(&secondary[..]);
 
-        self.weights = if prim_val >= seco_val { prim } else { seco };
+        self.weights = if prim_val >= seco_val { primary } else { secondary };
     }
 }
 
