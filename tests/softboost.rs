@@ -1,73 +1,39 @@
-use polars::prelude::*;
-
 use std::env;
-
 use miniboosts::prelude::*;
-
 
 
 /// Tests for `SoftBoost`.
 #[cfg(test)]
-pub mod softboost_iris {
+pub mod softboost_tests {
     use super::*;
     #[test]
-    fn iris() {
+    fn german() {
         let mut path = env::current_dir().unwrap();
-        println!("path: {:?}", path);
-        path.push("tests/iris.csv");
+        path.push("tests/dataset/german.csv");
 
-        let df = CsvReader::from_path(path)
+        let sample = Sample::from_csv(path, true)
             .unwrap()
-            .has_header(true)
-            .finish()
-            .unwrap();
+            .set_target("class");
+        let n_sample = sample.shape().0 as f64;
 
-
-        let (m, _) = df.shape();
-        let m = m as f64;
-
-
-        let mask = df.column("class")
-            .unwrap()
-            .i64()
-            .unwrap()
-            .not_equal(0);
-
-        let mut df = df.filter(&mask).unwrap();
-        let data = df.apply("class", |col| {
-                col.i64().unwrap().into_iter()
-                    .map(|v| v.map(|i| if i == 1 { -1 } else { 1 }))
-                    .collect::<Int64Chunked>()
-            }).unwrap();
-
-
-        let target = data.drop_in_place(&"class").unwrap();
-
-
-        let nu = 1.0 / m;
-        // let nu = 0.1_f64;
-        let mut booster = SoftBoost::init(&data, &target)
+        let mut booster = SoftBoost::init(&sample)
             .tolerance(0.1)
-            .nu(nu * m as f64);
-        let dtree = DTree::init(&data, &target)
-            .max_depth(1);
+            .nu(0.1 * n_sample);
+        let weak_learner = DTree::init(&sample)
+            .max_depth(3)
+            .criterion(Criterion::Entropy);
 
 
-        let f = booster.run(&dtree);
+        let f = booster.run(&weak_learner);
+        let predictions = f.predict_all(&sample);
 
-
-        let predictions = f.predict_all(&data);
-
-        let loss = target.i64().unwrap()
+        let loss = sample.target()
             .into_iter()
             .zip(predictions)
-            .map(|(t, p)| if t.unwrap() != p { 1.0 } else { 0.0 })
-            .sum::<f64>() / m;
+            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+            .sum::<f64>() / n_sample;
 
-        println!("Loss (iris.csv, SoftBoost, DTree): {loss}");
-        println!("classifier: {f:?}");
+        println!("Loss (german.csv, SoftBoost, DTree): {loss}");
         assert!(true);
     }
 }
-
-

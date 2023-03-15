@@ -2,10 +2,9 @@ use std::env;
 use miniboosts::prelude::*;
 
 
-
-/// Tests for `AdaBoost`.
+/// Tests for `MLPBoost`.
 #[cfg(test)]
-pub mod adaboost_tests {
+pub mod mlpboost_tests {
     use super::*;
     #[test]
     fn german() {
@@ -15,30 +14,26 @@ pub mod adaboost_tests {
         let sample = Sample::from_csv(path, true)
             .unwrap()
             .set_target("class");
+        let n_sample = sample.shape().0 as f64;
 
-
-        let mut booster = AdaBoost::init(&sample)
-            .tolerance(0.01);
+        let mut booster = MLPBoost::init(&sample)
+            .tolerance(0.1)
+            .nu(0.1 * n_sample);
         let weak_learner = DTree::init(&sample)
             .max_depth(3)
             .criterion(Criterion::Entropy);
 
 
         let f = booster.run(&weak_learner);
-
-
-        let (m, _) = sample.shape();
         let predictions = f.predict_all(&sample);
 
         let loss = sample.target()
             .into_iter()
             .zip(predictions)
             .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
-            .sum::<f64>() / m as f64;
+            .sum::<f64>() / n_sample;
 
-        println!("Loss (german.csv, AdaBoost, DTree): {loss}");
+        println!("Loss (german.csv, MLPBoost, DTree): {loss}");
         assert!(true);
     }
 }
-
-

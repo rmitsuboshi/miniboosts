@@ -9,7 +9,11 @@ use std::cmp::Ordering;
 use std::ops::{Mul, Add};
 use std::collections::HashMap;
 
-use crate::{Sample, Feature};
+use crate::Sample;
+use crate::weak_learner::common::{
+    group_by_x,
+    WeightedFeature,
+};
 
 
 /// Edge
@@ -130,9 +134,8 @@ impl Criterion {
                 sample.features()
                     .into_iter()
                     .map(|column| {
-                        let (threshold, decrease) = split_entropy(
-                            column, target, dist, &idx[..]
-                        );
+                        let items = group_by_x(column, target, idx, dist);
+                        let (threshold, decrease) = split_entropy(items);
 
                         (decrease, column.name(), threshold)
                     })
@@ -144,13 +147,12 @@ impl Criterion {
                 sample.features()
                     .into_iter()
                     .map(|column| {
-                        let (threshold, decrease) = split_edge(
-                            column, target, dist, &idx[..]
-                        );
+                        let items = group_by_x(column, target, idx, dist);
+                        let (threshold, decrease) = split_edge(items);
 
                         (decrease, column.name(), threshold)
                     })
-                    .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                    .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
                     .expect("No feature with max edge")
             }
@@ -159,66 +161,38 @@ impl Criterion {
 }
 
 
-fn split_entropy(
-    column: &Feature,
-    target: &[f64],
-    dist: &[f64],
-    idx: &[usize]
-) -> (f64, Impurity)
-{
-    let mut triplets = idx.into_par_iter()
-        .copied()
-        .map(|i| {
-            let x = column[i];
-            let y = target[i] as i64;
-            (x, dist[i], y)
-        })
-        .collect::<Vec<(f64, f64, i64)>>();
-    triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(x2).unwrap());
-
-
-    let total_weight = triplets.par_iter()
-        .map(|(_, d, _)| d)
+fn split_entropy(ws: Vec<WeightedFeature>) -> (f64, Impurity) {
+    let total_weight = ws.iter()
+        .map(|wf| wf.total_weight())
         .sum::<f64>();
 
-
-    let mut left = BestSplitFinder::empty();
-    let mut right = BestSplitFinder::new(&triplets[..]);
-
-
-    let mut iter = triplets.into_iter().peekable();
+    let mut left = EntropicImpurityKeeper::empty();
+    let mut right = EntropicImpurityKeeper::new(&ws[..]);
 
 
+    let mut iter = ws.into_iter().peekable();
     // These variables are used for the best splitting rules.
     let mut best_decrease = right.entropic_impurity();
     let mut best_threshold = iter.peek()
-        .map(|(v, _, _)| *v - 2.0_f64)
+        .map(|wf| wf.feature_val - 1.0_f64)
         .unwrap_or(f64::MIN);
 
-    while let Some((old_val, d, y)) = iter.next() {
-        left.insert(y, d);
-        right.delete(y, d);
+    while let Some(wf) = iter.next() {
+        let curr_x = wf.feature_val;
+        left.insert(&wf);
+        right.delete(&wf);
 
 
-        while let Some(&(xx, dd, yy)) = iter.peek() {
-            if xx != old_val { break; }
+        let next_x = iter.peek()
+            .map(|next_wf| next_wf.feature_val)
+            .unwrap_or(curr_x + 2.0_f64);
 
-            left.insert(yy, dd);
-            right.delete(yy, dd);
-
-            iter.next();
-        }
-
-        let new_val = iter.peek()
-            .map(|(xx, _, _)| *xx)
-            .unwrap_or(old_val + 2.0_f64);
-
-        let threshold = (old_val + new_val) / 2.0;
+        let threshold = (curr_x + next_x) / 2.0;
 
         assert!(total_weight > 0.0);
 
         let lp = left.total / total_weight;
-        let rp = 1.0 - lp;
+        let rp = (1.0 - lp).max(0.0);
 
 
         let decrease = Impurity::from(lp) * left.entropic_impurity()
@@ -232,65 +206,43 @@ fn split_entropy(
     }
 
 
-
     (best_threshold, best_decrease)
 }
 
 
-fn split_edge(
-    column: &Feature,
-    target: &[f64],
-    dist: &[f64],
-    idx: &[usize]
-)
-    -> (f64, Edge)
-{
-    let mut triplets = idx.into_par_iter()
-        .copied()
-        .map(|i| {
-            let x = column[i];
-            let y = target[i];
-            (x, dist[i], y)
+fn split_edge(ws: Vec<WeightedFeature>) -> (f64, Edge) {
+    // Compute the edge of the hypothesis that predicts `+1`
+    // for all instances.
+    let mut edge = ws.iter()
+        .map(|wf| {
+            wf.label_to_weight.iter()
+                .map(|(y, d)| *y as f64 * d)
+                .sum::<f64>()
         })
-        .collect::<Vec<(f64, f64, f64)>>();
-    triplets.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(x2).unwrap());
+        .sum::<f64>();
+    let mut iter = ws.into_iter().peekable();
 
 
     let mut best_edge;
     let mut best_threshold;
-    // Compute the edge of the hypothesis that predicts `+1`
-    // for all instances.
-    let mut edge = triplets.iter()
-        .map(|(_, d, y)| *d * *y)
-        .sum::<f64>();
-
-
-    let mut iter = triplets.into_iter().peekable();
-
-
     // best threshold is the smallest value.
     // we define the initial threshold as the smallest value minus 1.0
     best_threshold = iter.peek()
-        .map(|(v, _, _)| *v - 1.0_f64)
+        .map(|wf| wf.feature_val - 1.0_f64)
         .unwrap_or(f64::MIN);
 
     // best edge
     best_edge = edge.abs();
 
-    while let Some((left, d, y)) = iter.next() {
-        edge -= 2.0 * d * y;
+    while let Some(wf) = iter.next() {
+        let left = wf.feature_val;
+        edge -= 2.0 * wf.label_to_weight.iter()
+            .map(|(y, d)| *y as f64 * d)
+            .sum::<f64>();
 
-
-        while let Some(&(xx, dd, yy)) = iter.peek() {
-            if xx != left { break; }
-
-            edge -= 2.0 * dd * yy;
-
-            iter.next();
-        }
 
         let right = iter.peek()
-            .map(|(xx, _, _)| *xx)
+            .map(|wf_next| wf_next.feature_val)
             .unwrap_or(left + 2.0_f64);
 
         let threshold = (left + right) / 2.0;
@@ -307,14 +259,14 @@ fn split_edge(
 
 
 /// Some information that are useful in `produce(..)`.
-struct BestSplitFinder {
+struct EntropicImpurityKeeper {
     map: HashMap<i64, f64>,
     total: f64,
 }
 
 
-impl BestSplitFinder {
-    /// Build an empty instance of `BestSplitFinder`.
+impl EntropicImpurityKeeper {
+    /// Build an empty instance of `EntropicImpurityKeeper`.
     #[inline(always)]
     pub(self) fn empty() -> Self {
         Self {
@@ -324,16 +276,19 @@ impl BestSplitFinder {
     }
 
 
-    /// Build an instance of `BestSplitFinder`.
+    /// Build an instance of `EntropicImpurityKeeper`.
     #[inline(always)]
-    pub(self) fn new(triplets: &[(f64, f64, i64)]) -> Self {
+    pub(self) fn new(ws: &[WeightedFeature]) -> Self {
         let mut total = 0.0_f64;
         let mut map: HashMap<i64, f64> = HashMap::new();
-        triplets.iter()
-            .for_each(|(_, d, y)| {
-                total += *d;
-                let cnt = map.entry(*y).or_insert(0.0);
-                *cnt += *d;
+        ws.iter()
+            .for_each(|wf| {
+                total += wf.total_weight();
+                wf.label_to_weight.iter()
+                    .for_each(|(y, d)| {
+                        let cnt = map.entry(*y).or_insert(0.0);
+                        *cnt += d;
+                    });
             });
 
         Self { map, total }
@@ -343,14 +298,12 @@ impl BestSplitFinder {
     /// Returns the impurity of this node.
     #[inline(always)]
     pub(self) fn entropic_impurity(&self) -> Impurity {
-        if self.total == 0.0 || self.map.is_empty() {
-            return 0.0.into();
-        }
+        if self.total <= 0.0 || self.map.is_empty() { return 0.0.into(); }
 
         self.map.par_iter()
             .map(|(_, &p)| {
                 let r = p / self.total;
-                if r == 0.0 { 0.0 } else { -r * r.ln() }
+                if r <= 0.0 { 0.0 } else { -r * r.ln() }
             })
             .sum::<f64>()
             .into()
@@ -358,18 +311,30 @@ impl BestSplitFinder {
 
 
     /// Increase the number of positive examples by one.
-    pub(self) fn insert(&mut self, y: i64, weight: f64) {
-        let cnt = self.map.entry(y).or_insert(0.0);
-        *cnt += weight;
-        self.total += weight;
+    pub(self) fn insert(&mut self, item: &WeightedFeature) {
+        item.label_to_weight.iter()
+            .for_each(|(y, d)| {
+                let dd = self.map.entry(*y).or_insert(0.0);
+                *dd += d;
+            });
+        self.total += item.total_weight();
     }
 
 
     /// Decrease the number of positive examples by one.
-    pub(self) fn delete(&mut self, y: i64, weight: f64) {
-        if let Some(key) = self.map.get_mut(&y) {
-            *key -= weight;
-            self.total -= weight;
-        }
+    pub(self) fn delete(&mut self, item: &WeightedFeature) {
+        let mut to_be_removed = Vec::new();
+        item.label_to_weight.iter()
+            .for_each(|(y, d)| {
+                if let Some(val) = self.map.get_mut(&y) {
+                    *val -= d;
+                    self.total -= d;
+
+                    if *val <= 0.0 { to_be_removed.push(y); }
+                }
+            });
+
+        to_be_removed.into_iter()
+            .for_each(|y| { self.map.remove(&y); });
     }
 }
