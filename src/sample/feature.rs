@@ -58,6 +58,16 @@ impl Feature {
     }
 
 
+    pub(super) fn replace_name<S>(&mut self, name: S) -> String
+        where S: ToString,
+    {
+        match self {
+            Self::Dense(feat) => feat.replace_name(name),
+            Self::Sparse(feat) => feat.replace_name(name),
+        }
+    }
+
+
     pub(crate) fn into_target(self) -> Vec<f64> {
         match self {
             Self::Dense(feat) => feat.into_target(),
@@ -88,6 +98,14 @@ impl DenseFeature {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+
+    pub(self) fn replace_name<S>(&mut self, name: S) -> String
+        where S: ToString,
+    {
+        let name = name.to_string();
+        std::mem::replace(&mut self.name, name)
     }
 
 
@@ -137,6 +155,14 @@ impl SparseFeature {
     /// Append an example to this feature.
     pub fn append(&mut self, (i, x): (usize, f64)) {
         self.sample.push((i, x));
+    }
+
+
+    pub(self) fn replace_name<S>(&mut self, name: S) -> String
+        where S: ToString,
+    {
+        let name = name.to_string();
+        std::mem::replace(&mut self.name, name)
     }
 
 

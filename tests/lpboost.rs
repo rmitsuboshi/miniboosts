@@ -40,11 +40,11 @@ pub mod lpboost_tests {
 
 
     #[test]
-    fn german_libsvm() {
+    fn german_svmlight() {
         let mut path = env::current_dir().unwrap();
-        path.push("tests/dataset/german.lightsvm");
+        path.push("tests/dataset/german.svmlight");
 
-        let sample = Sample::from_lightsvm(path).unwrap();
+        let sample = Sample::from_svmlight(path).unwrap();
         let n_sample = sample.shape().0 as f64;
 
         let mut booster = LPBoost::init(&sample)
@@ -64,7 +64,7 @@ pub mod lpboost_tests {
             .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
             .sum::<f64>() / n_sample;
 
-        println!("Loss (german.lightsvm, LPBoost, DTree): {loss}");
+        println!("Loss (german.svmlight, LPBoost, DTree): {loss}");
         assert!(true);
     }
 }
