@@ -188,6 +188,11 @@ impl Sample {
     /// where `y` is the target label of type `f64`,
     /// `index` is the feature index, and `value` is the value
     /// at the feature.
+    /// 
+    /// **Note**
+    /// The SVMLight format file is basically 1-indexed,
+    /// while the `sklearn.datasets.dump_svmlight_file` outputs
+    /// a svmlight format file with 0-indexed, by default.
     pub fn from_svmlight<P: AsRef<Path>>(file: P) -> io::Result<Self> {
         let mut features = Vec::new();
         let mut target = Vec::new();
@@ -209,13 +214,13 @@ impl Sample {
             for word in words {
                 let (i, x) = index_and_feature(word);
 
-                while features.len() < i {
+                while features.len() <= i {
                     let k = features.len() + 1;
                     let name = format!("Feat. [{k}]");
                     features.push(SparseFeature::new(name));
                 }
 
-                features[i-1].append((n_sample, x));
+                features[i].append((n_sample, x));
             }
             n_sample += 1;
         }
