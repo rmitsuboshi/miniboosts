@@ -1,67 +1,40 @@
-use polars::prelude::*;
-
 use std::env;
-
 use miniboosts::prelude::*;
-
 
 
 /// Tests for `SmoothBoost`.
 #[cfg(test)]
-pub mod smoothboost_iris {
+pub mod smoothboost_tests {
     use super::*;
     #[test]
-    fn iris() {
+    fn german() {
         let mut path = env::current_dir().unwrap();
         println!("path: {:?}", path);
-        path.push("tests/iris.csv");
+        path.push("tests/dataset/german.csv");
 
-        let df = CsvReader::from_path(path)
+        let sample = Sample::from_csv(path, true)
             .unwrap()
-            .has_header(true)
-            .finish()
-            .unwrap();
+            .set_target("class");
+        let n_sample = sample.shape().0 as f64;
 
-
-        let mask = df.column("class")
-            .unwrap()
-            .i64()
-            .unwrap()
-            .not_equal(0);
-
-        let mut df = df.filter(&mask).unwrap();
-        let data = df.apply("class", |col| {
-                col.i64().unwrap().into_iter()
-                    .map(|v| v.map(|i| if i == 1 { -1 } else { 1 }))
-                    .collect::<Int64Chunked>()
-            }).unwrap();
-
-
-        let target = data.drop_in_place(&"class").unwrap();
-
-
-        let mut smoothboost = SmoothBoost::init(&data, &target)
+        let mut booster = SmoothBoost::init(&sample)
             .tolerance(0.1)
             .gamma(0.1);
-        let dtree = DTree::init(&data, &target);
+        let weak_learner = DTree::init(&sample)
+            .max_depth(3)
+            .criterion(Criterion::Entropy);
 
 
-        let f = smoothboost.run(&dtree);
+        let f = booster.run(&weak_learner);
+        let predictions = f.predict_all(&sample);
 
-
-        let (m, _) = data.shape();
-        let predictions = f.predict_all(&data);
-
-        let loss = target.i64().unwrap()
+        let loss = sample.target()
             .into_iter()
             .zip(predictions)
-            .map(|(t, p)| if t.unwrap() != p { 1.0 } else { 0.0 })
-            .sum::<f64>() / m as f64;
+            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+            .sum::<f64>() / n_sample;
 
-        println!("classifier: {f:?}");
-        println!("Loss (iris.csv, SmoothBoost, DTree): {loss}");
+        println!("Loss (german.csv, SmoothBoost, DTree): {loss}");
         assert!(true);
     }
 }
-
-

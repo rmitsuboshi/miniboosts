@@ -1,6 +1,10 @@
 use serde::{Serialize, Deserialize};
-use std::ops;
-use std::cmp;
+use std::{ops, cmp};
+use std::collections::HashMap;
+
+use crate::sample::feature::{SparseFeature, DenseFeature};
+use crate::Feature;
+
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[repr(transparent)]
@@ -262,4 +266,163 @@ impl cmp::PartialEq<f64> for Threshold {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct WeightedFeature {
+    pub(crate) feature_val: f64,
+    pub(crate) label_to_weight: HashMap<i64, f64>,
+    total_weight: f64,
+}
+
+
+impl WeightedFeature {
+    pub(crate) fn new(
+        feature_val: f64,
+        label_to_weight: HashMap<i64, f64>,
+    ) -> Self
+    {
+        let total_weight = label_to_weight.values().sum::<f64>();
+        Self { feature_val, label_to_weight, total_weight, }
+    }
+
+
+    pub(crate) fn total_weight(&self) -> f64 {
+        self.total_weight
+    }
+}
+
+
+pub(crate) fn group_by_x(
+    feature: &Feature,
+    target: &[f64],
+    indices: &[usize],
+    dist: &[f64],
+) -> Vec<WeightedFeature>
+{
+    let mut grouped = match feature {
+        Feature::Dense(f) => group_by_x_dense(f, target, indices, dist),
+        Feature::Sparse(f) => group_by_x_sparse(f, target, indices, dist),
+    };
+    grouped.shrink_to_fit();
+
+    grouped
+}
+
+
+fn group_by_x_dense(
+    feature: &DenseFeature,
+    target: &[f64],
+    indices: &[usize],
+    dist: &[f64],
+) -> Vec<WeightedFeature>
+{
+    if indices.is_empty() { return Vec::with_capacity(0); }
+
+    let mut indices = indices.to_vec();
+    indices.sort_by(|&i, &j|
+        feature[i].partial_cmp(&feature[j]).unwrap()
+    );
+
+    let mut iter = indices.into_iter();
+
+    let idx = iter.next().unwrap();
+    let mut x = feature[idx];
+    let mut label_to_weight = HashMap::new();
+    let y = target[idx] as i64;
+    let weight = label_to_weight.entry(y).or_insert(0.0);
+    *weight += dist[idx];
+
+    let mut items = Vec::new();
+    while let Some(i) = iter.next() {
+        let xi = feature[i];
+        let di = dist[i];
+        let yi = target[i] as i64;
+        if x != xi {
+            let f = WeightedFeature::new(x, label_to_weight);
+            items.push(f);
+
+            label_to_weight = HashMap::new();
+            x = xi;
+        }
+
+        let weight = label_to_weight.entry(yi).or_insert(0.0);
+        *weight += di;
+    }
+    items.push(WeightedFeature::new(x, label_to_weight));
+
+    items
+}
+
+
+pub(crate) fn group_by_x_sparse(
+    feature: &SparseFeature,
+    target: &[f64],
+    indices: &[usize],
+    dist: &[f64],
+) -> Vec<WeightedFeature>
+{
+    if indices.is_empty() { return Vec::with_capacity(0); }
+
+    let mut zero_map = HashMap::new();
+
+
+    let mut x_y_d = indices.into_iter()
+        .filter_map(|&i| {
+            let rx = feature.sample.binary_search_by(|(j, _)| j.cmp(&i));
+            let d = dist[i];
+            let y = target[i] as i64;
+            match rx {
+                Ok(ii) => {
+                    let (_, x) = feature.sample[ii];
+                    Some((x, y, d))
+                },
+                Err(_) => {
+                    let val = zero_map.entry(y as i64).or_insert(0.0);
+                    *val += d;
+                    None
+                }
+            }
+        })
+        .collect::<Vec<(f64, i64, f64)>>();
+    x_y_d.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(&x2).unwrap());
+
+    let mut x_y_d = x_y_d.into_iter();
+
+    let (mut x, y, d) = x_y_d.next().unwrap();
+    let mut label_to_weight = HashMap::new();
+    label_to_weight.insert(y, d);
+
+    let mut items = Vec::new();
+    while let Some((xi, yi, di)) = x_y_d.next() {
+        if x != xi {
+            let f = WeightedFeature::new(x, label_to_weight);
+            items.push(f);
+
+            label_to_weight = HashMap::new();
+            label_to_weight.insert(yi, di);
+            x = xi;
+        } else {
+            let weight = label_to_weight.entry(yi).or_insert(0.0);
+            *weight += di;
+        }
+    }
+    items.push(WeightedFeature::new(x, label_to_weight));
+
+    let res = items.binary_search_by(|x|
+        x.feature_val.partial_cmp(&0.0).unwrap()
+    );
+
+
+    // If there is a zero-valued sample for this feature,
+    // insert it to `items`.
+    if !zero_map.is_empty() {
+        let zero = WeightedFeature::new(0.0, zero_map);
+        match res {
+            Ok(_) => {
+                panic!("Zero-valued feature is not grouped properly");
+            },
+            Err(idx) => { items.insert(idx, zero); },
+        }
+    }
+    items
+}
 

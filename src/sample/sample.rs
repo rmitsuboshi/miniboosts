@@ -4,6 +4,7 @@ use std::io::{self, BufRead, BufReader};
 use std::collections::HashMap;
 use std::ops::Index;
 use std::cell::{Ref, RefMut, RefCell};
+use std::mem;
 
 use polars::prelude::*;
 use rayon::prelude::*;
@@ -235,11 +236,21 @@ impl Sample {
             .map(|(i, f)| (f.name().to_string(), i))
             .collect::<HashMap<_, _>>();
 
-        let sample = Self {
+        let mut sample = Self {
             name_to_index, features, target, n_sample, n_feature,
         };
 
+        sample.remove_allzero_features();
+
         Ok(sample)
+    }
+
+
+    fn remove_allzero_features(&mut self) {
+        let features = mem::replace(&mut self.features, vec![]);
+        self.features = features.into_iter()
+            .filter(|feat| feat.len() > 0)
+            .collect();
     }
 
 

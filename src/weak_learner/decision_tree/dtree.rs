@@ -103,11 +103,9 @@ impl WeakLearner for DTree {
     {
         let n_sample = sample.shape().0;
 
-        let mut indices = (0..n_sample).into_iter()
+        let indices = (0..n_sample).into_iter()
             .filter(|&i| dist[i] > 0.0)
             .collect::<Vec<usize>>();
-
-        indices.sort_by(|&i, &j| dist[i].partial_cmp(&dist[j]).unwrap());
 
         let criterion = self.criterion;
 

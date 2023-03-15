@@ -1,73 +1,39 @@
-use polars::prelude::*;
-
 use std::env;
-
 use miniboosts::prelude::*;
 
 
 /// Tests for `ERLPBoost`.
 #[cfg(test)]
-pub mod erlpboost_iris {
+pub mod erlpboost_tests {
     use super::*;
     #[test]
-    fn iris() {
+    fn german() {
         let mut path = env::current_dir().unwrap();
-        println!("path: {:?}", path);
-        path.push("tests/iris.csv");
+        path.push("tests/dataset/german.csv");
 
-        let df = CsvReader::from_path(path)
+        let sample = Sample::from_csv(path, true)
             .unwrap()
-            .has_header(true)
-            .finish()
-            .unwrap();
+            .set_target("class");
+        let n_sample = sample.shape().0 as f64;
 
-
-        let (m, _) = df.shape();
-
-        let m = m as f64;
-
-
-        let mask = df.column("class")
-            .unwrap()
-            .i64()
-            .unwrap()
-            .not_equal(0);
-
-        let mut df = df.filter(&mask).unwrap();
-        let data = df.apply("class", |col| {
-                col.i64().unwrap().into_iter()
-                    .map(|v| v.map(|i| if i == 1 { -1 } else { 1 }))
-                    .collect::<Int64Chunked>()
-            }).unwrap();
-
-
-        let target = data.drop_in_place(&"class").unwrap();
-
-
-        // let nu = 0.1_f64;
-        let ratio = 1.0_f64 / m;
-        let mut booster = ERLPBoost::init(&data, &target)
+        let mut booster = ERLPBoost::init(&sample)
             .tolerance(0.1)
-            .nu(ratio * m);
-
-        let dtree = DTree::init(&data, &target)
-            .max_depth(1);
-
-
-        let f = booster.run(&dtree);
+            .nu(0.1 * n_sample);
+        let weak_learner = DTree::init(&sample)
+            .max_depth(3)
+            .criterion(Criterion::Entropy);
 
 
-        let (m, _) = data.shape();
-        let predictions = f.predict_all(&data);
+        let f = booster.run(&weak_learner);
+        let predictions = f.predict_all(&sample);
 
-        let loss = target.i64().unwrap()
+        let loss = sample.target()
             .into_iter()
             .zip(predictions)
-            .map(|(t, p)| if t.unwrap() != p { 1.0 } else { 0.0 })
-            .sum::<f64>() / m as f64;
+            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+            .sum::<f64>() / n_sample;
 
-        println!("Loss (iris.csv, ERLPBoost, DTree): {loss}");
-        println!("classifier: {f:?}");
+        println!("Loss (german.csv, ERLPBoost, DTree): {loss}");
         assert!(true);
     }
 }
