@@ -170,17 +170,17 @@ fn main() {
 
 
     // Run MLPBoost
-    let objective = SoftMarginObjective::new(nu);
-    println!("Running MLPBoost");
-    let booster = MLPBoost::init(&train)
-        .tolerance(TOLERANCE)
-        // .frank_wolfe(FWType::LineSearch)
-        .nu(nu);
-    let tree = DTree::init(&train)
-        .max_depth(2)
-        .criterion(Criterion::Entropy);
-    let mut logger = Logger::new(
-        booster, tree, objective, zero_one_loss, &train, &test
-    );
-    let _ = logger.run("mlpboost.csv");
+    // let objective = SoftMarginObjective::new(nu);
+    // println!("Running MLPBoost");
+    // let booster = MLPBoost::init(&train)
+    //     .tolerance(TOLERANCE)
+    //     // .frank_wolfe(FWType::LineSearch)
+    //     .nu(nu);
+    // let tree = DTree::init(&train)
+    //     .max_depth(2)
+    //     .criterion(Criterion::Entropy);
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("mlpboost.csv");
 }

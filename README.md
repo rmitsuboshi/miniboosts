@@ -20,7 +20,7 @@ Currently, I implemented the following Boosters and Weak Learners.
 
 If you invent a new boosting algorithm,
 you can introduce it by implementing `Booster` trait.
-See `cargo doc --open` for details.
+See `cargo doc -F extended --open` for details.
 
 ### Boosters
 
@@ -213,4 +213,4 @@ fn main() {
 
 Further, one can log your algorithm by implementing `Research` trait.
 
-Run `cargo doc --open` to see more information.
+Run `cargo doc -F extended --open` to see more information.
