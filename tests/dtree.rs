@@ -51,9 +51,9 @@ fn from_raw_representation() {
 #[test]
 fn from_lightsvm() {
     let mut path = std::env::current_dir().unwrap();
-    path.push("tests/dataset/toy.lightsvm");
+    path.push("tests/dataset/toy.svmlight");
 
-    let sample = Sample::from_lightsvm(path).unwrap();
+    let sample = Sample::from_svmlight(path).unwrap();
 
     let dtree = DTree::init(&sample)
         .criterion(Criterion::Entropy);

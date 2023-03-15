@@ -179,16 +179,16 @@ impl Sample {
     }
 
 
-    /// Read a LightSVM format file to `Sample` type.
+    /// Read a SVMLight format file to `Sample` type.
     /// 
-    /// Each line of LightSVM format file has the following form:
+    /// Each line of SVMLight format file has the following form:
     /// ```txt
     /// y index:value index: value
     /// ```
     /// where `y` is the target label of type `f64`,
     /// `index` is the feature index, and `value` is the value
     /// at the feature.
-    pub fn from_lightsvm<P: AsRef<Path>>(file: P) -> io::Result<Self> {
+    pub fn from_svmlight<P: AsRef<Path>>(file: P) -> io::Result<Self> {
         let mut features = Vec::new();
         let mut target = Vec::new();
         let mut n_sample = 0_usize;
@@ -246,6 +246,7 @@ impl Sample {
     }
 
 
+    /// Removes the empty features in `self.features`.
     fn remove_allzero_features(&mut self) {
         let features = mem::replace(&mut self.features, vec![]);
         self.features = features.into_iter()
@@ -258,6 +259,28 @@ impl Sample {
     /// the number of features
     pub fn shape(&self) -> (usize, usize) {
         (self.n_sample, self.n_feature)
+    }
+
+
+    /// Set the feature (column) names.
+    /// This method panics when the length of given feature names is
+    /// not equals to the one of `self.features`.
+    pub fn replace_names<S, T>(&mut self, names: T) -> Vec<String>
+        where S: ToString + std::fmt::Display,
+              T: AsRef<[S]>,
+    {
+        let names = names.as_ref();
+
+        let n_features = self.shape().1;
+        let n_names = names.len();
+        if n_features != n_names {
+            panic!("The number of names is not equals to the one of `self.features`");
+        }
+
+        names.into_iter()
+            .zip(&mut self.features[..])
+            .map(|(name, feature)| feature.replace_name(name))
+            .collect()
     }
 }
 

@@ -385,6 +385,17 @@ pub(crate) fn group_by_x_sparse(
         .collect::<Vec<(f64, i64, f64)>>();
     x_y_d.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(&x2).unwrap());
 
+
+    // `x_y_d` might be empty, even though `indices` is not.
+    // This happens when all feature values are zero.
+    if x_y_d.is_empty() {
+        let mut ret = Vec::with_capacity(1);
+        if !zero_map.is_empty() {
+            ret.push(WeightedFeature::new(0.0, zero_map));
+        }
+        return ret;
+    }
+
     let mut x_y_d = x_y_d.into_iter();
 
     let (mut x, y, d) = x_y_d.next().unwrap();
