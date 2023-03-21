@@ -30,6 +30,7 @@ pub enum FWType {
     // Pairwise,
 }
 
+
 pub(crate) struct FrankWolfe {
     eta: f64, // Strongly-smooth parameter
     nu: f64,
@@ -149,7 +150,7 @@ impl FrankWolfe {
         let step = numer / (self.eta * denom.powi(2));
 
         // Clip the step size to `[0, 1]`.
-        let step_size = (step.max(0.0_f64)).min(1.0_f64);
+        let step_size = step.max(0.0_f64).min(1.0_f64);
 
 
         // Update the weights

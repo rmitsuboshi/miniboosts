@@ -2,6 +2,7 @@ use grb::prelude::*;
 
 
 use crate::{Sample, Classifier};
+use crate::common::utils;
 
 pub(super) struct LPModel {
     model: Model,
@@ -62,10 +63,8 @@ impl LPModel {
         // 1. append the corresponding constraint, and
         // 2. optimize the model.
         if let Some(h) = opt_h {
-            let edge = sample.target()
+            let edge = utils::margins_of_hypothesis(sample, h)
                 .into_iter()
-                .enumerate()
-                .map(|(i, y)| y * h.confidence(sample, i))
                 .zip(self.dist.iter().copied())
                 .map(|(yh, d)| d * yh)
                 .grb_sum();

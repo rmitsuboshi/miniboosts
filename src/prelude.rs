@@ -40,14 +40,20 @@ pub use crate::weak_learner::{
 
 
     // Classification ---------------------------
-    // Decision tree
     DTree,
     DTreeClassifier,
     Criterion,
 
 
+    // GaussianNB,
+    // NBayesClassifier,
+    NeuralNetwork,
+    NNHypothesis,
+    Activation,
+    NNLoss,
+
+
     // Regression -------------------------------
-    // Regression tree
     RTree,
     RTreeRegressor,
     LossType,

@@ -214,9 +214,10 @@ impl<'a, F> MLPBoost<'a, F> {
 
     /// Initialize the LP solver.
     fn init_solver(&mut self) {
-        let upper_bound = 1.0 / self.nu;
+        // `ub` is the upper-bound of distribution for each example.
+        let ub = 1.0 / self.nu;
 
-        let lp_model = RefCell::new(LPModel::init(self.n_sample, upper_bound));
+        let lp_model = RefCell::new(LPModel::init(self.n_sample, ub));
 
         self.secondary = Some(lp_model);
     }
@@ -260,12 +261,22 @@ impl<F> MLPBoost<'_, F>
     }
 
 
-    /// Returns the objective value 
-    /// `- \tilde{f}^\star (-Aw)` at the current weighting `w = weights`.
+    /// Returns the smoothed objective value 
+    /// `-f*` at the current weighting `self.weights`.
+    /// 
+    /// ```text
+    /// - max [ - d^T Aw - sum_i [ di ln( di ) ] ]
+    /// s.t. sum_i di = 1, 0 <= di <= 1 / self.nu, for all i <= m.
+    ///  ^
+    ///  |
+    ///  v
+    /// min [ d^T Aw + sum_i [ di ln( di ) ] ]
+    /// s.t. sum_i di = 1, 0 <= di <= 1 / self.nu, for all i <= m.
+    /// ```
     fn objval(&self, weights: &[f64]) -> f64 {
 
         let dist = utils::exp_distribution(
-            self.eta, self.nu, self.sample, weights, &self.hypotheses[..],
+            self.eta, self.nu, self.sample, weights, &self.hypotheses,
         );
 
         let edge = utils::edge_of_weighted_hypothesis(
@@ -278,13 +289,16 @@ impl<F> MLPBoost<'_, F>
     }
 
 
-    /// Choose the better weights by some criterion.
-    fn better_weight(&mut self, primary: Vec<f64>, secondary: Vec<f64>)
+    /// Choose the better weights
+    /// by comparing the smoothed objective value.
+    /// Since MLPBoost maximizes `-f*`,
+    /// this method picks the one that yields the better value.
+    fn better_weight(&mut self, w1: Vec<f64>, w2: Vec<f64>)
     {
-        let prim_val = self.objval(&primary[..]);
-        let seco_val = self.objval(&secondary[..]);
+        let v1 = self.objval(&w1[..]);
+        let v2 = self.objval(&w2[..]);
 
-        self.weights = if prim_val >= seco_val { primary } else { secondary };
+        self.weights = if v1 >= v2 { w1 } else { w2 };
     }
 }
 
@@ -361,7 +375,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         }
 
 
-        // Compute the objective value.
+        // Compute the smoothed objective value `-f*`.
         let objval = self.objval(&self.weights[..]);
 
 
@@ -402,10 +416,10 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         // Secondary update
         let seco = self.secondary_update(opt_h);
 
-
         // Choose the better one
         self.better_weight(prim, seco);
 
+        // DEBUG
         checker::check_capped_simplex_condition(&self.weights[..], 1.0);
 
         State::Continue

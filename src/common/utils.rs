@@ -1,6 +1,6 @@
 //! This file provides some common functions
 //! such as edge calculation.
-
+use rayon::prelude::*;
 use crate::{Sample, Classifier};
 
 
@@ -202,11 +202,38 @@ pub(crate) fn entropy(dist: &[f64]) -> f64 {
 
 /// Compute the inner-product of the given two slices.
 pub(crate) fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
-    v1.into_iter()
+    v1.into_par_iter()
         .zip(v2)
         .map(|(a, b)| a * b)
         .sum::<f64>()
 }
 
 
+pub(crate) fn normalize(items: &mut [f64]) {
+    let z = items.iter()
+        .map(|it| it.abs())
+        .sum::<f64>();
 
+    assert_ne!(z, 0.0);
+
+    items.iter_mut()
+        .for_each(|item| { *item /= z; });
+}
+
+
+pub(crate) fn hadamard_product(m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>)
+    -> Vec<Vec<f64>>
+{
+    assert_eq!(m1.len(), m2.len());
+    assert_eq!(m1[0].len(), m2[0].len());
+
+    m1.into_iter()
+        .zip(m2)
+        .map(|(r1, r2)| {
+            r1.into_iter()
+                .zip(r2)
+                .map(|(a, b)| a * b)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>()
+}
