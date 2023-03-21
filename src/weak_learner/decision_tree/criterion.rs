@@ -46,6 +46,36 @@ impl PartialOrd for Edge {
 }
 
 
+/// Gini
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub(super) struct Gini(f64);
+
+
+impl From<f64> for Gini {
+    #[inline(always)]
+    fn from(gini: f64) -> Self {
+        Self(gini)
+    }
+}
+
+
+impl PartialEq for Gini {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+
+impl PartialOrd for Gini {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+
 
 /// Impurity
 #[repr(transparent)]
@@ -111,8 +141,8 @@ pub enum Criterion {
     /// Weighted accuracy.
     /// This criterion is designed for binary classification problems.
     Edge,
-    // /// Gini index.
-    // Gini,
+    /// Gini index.
+    Gini,
     // /// Twoing rule.
     // Twoing,
 }
@@ -135,7 +165,7 @@ impl Criterion {
                     .into_iter()
                     .map(|column| {
                         let items = group_by_x(column, target, idx, dist);
-                        let (threshold, decrease) = split_entropy(items);
+                        let (threshold, decrease) = split_by_entropy(items);
 
                         (decrease, column.name(), threshold)
                     })
@@ -148,20 +178,33 @@ impl Criterion {
                     .into_iter()
                     .map(|column| {
                         let items = group_by_x(column, target, idx, dist);
-                        let (threshold, decrease) = split_edge(items);
+                        let (threshold, decrease) = split_by_edge(items);
 
                         (decrease, column.name(), threshold)
                     })
                     .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
                     .expect("No feature with max edge")
-            }
+            },
+            Criterion::Gini => {
+                sample.features()
+                    .into_iter()
+                    .map(|column| {
+                        let items = group_by_x(column, target, idx, dist);
+                        let (threshold, decrease) = split_by_gini(items);
+
+                        (decrease, column.name(), threshold)
+                    })
+                    .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                    .map(|(_, name, threshold)| (name, threshold))
+                    .expect("No feature with max edge")
+            },
         }
     }
 }
 
 
-fn split_entropy(ws: Vec<WeightedFeature>) -> (f64, Impurity) {
+fn split_by_entropy(ws: Vec<WeightedFeature>) -> (f64, Impurity) {
     let total_weight = ws.iter()
         .map(|wf| wf.total_weight())
         .sum::<f64>();
@@ -210,7 +253,7 @@ fn split_entropy(ws: Vec<WeightedFeature>) -> (f64, Impurity) {
 }
 
 
-fn split_edge(ws: Vec<WeightedFeature>) -> (f64, Edge) {
+fn split_by_edge(ws: Vec<WeightedFeature>) -> (f64, Edge) {
     // Compute the edge of the hypothesis that predicts `+1`
     // for all instances.
     let mut edge = ws.iter()
@@ -255,6 +298,11 @@ fn split_edge(ws: Vec<WeightedFeature>) -> (f64, Edge) {
     }
 
     (best_threshold, Edge::from(best_edge))
+}
+
+
+fn split_by_gini(ws: Vec<WeightedFeature>) -> (f64, Gini) {
+    todo!()
 }
 
 

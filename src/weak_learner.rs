@@ -16,6 +16,9 @@ pub mod decision_tree;
 /// Defines Regression Tree.
 pub mod regression_tree;
 
+/// Defines Neural network.
+pub mod neural_network;
+
 
 // /// Defines Naive Bayes.
 // pub mod naive_bayes;
@@ -38,6 +41,14 @@ pub use self::regression_tree::{
     LossType,
     RTree,
     RTreeRegressor,
+};
+
+
+pub use self::neural_network::{
+    NeuralNetwork,
+    NNHypothesis,
+    Activation,
+    NNLoss,
 };
 
 

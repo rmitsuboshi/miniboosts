@@ -15,4 +15,8 @@ pub mod frank_wolfe;
 /// Defines some checker functions.
 pub(crate) mod checker;
 
+/// Defines machine learning tasks.
+pub(crate) mod task;
+
 pub use objective_functions::ObjectiveFunction;
+pub use task::*;

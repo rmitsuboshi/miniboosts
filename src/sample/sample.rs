@@ -287,6 +287,17 @@ impl Sample {
             .map(|(name, feature)| feature.replace_name(name))
             .collect()
     }
+
+
+    /// Returns the `idx`-th instance `(x, y)`.
+    pub fn at(&self, idx: usize) -> (Vec<f64>, f64) {
+        let x = self.features.iter()
+            .map(|feat| feat[idx])
+            .collect::<Vec<f64>>();
+        let y = self.target.borrow()[idx];
+
+        (x, y)
+    }
 }
 
 
