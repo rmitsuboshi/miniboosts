@@ -43,6 +43,7 @@ See `cargo doc -F extended --open` for details.
 | :---                                                                               |
 | [DTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)   |
 | [RTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree) |
+| NeuralNetwork (Experimental) |
 
 
 ## Future work
@@ -55,7 +56,6 @@ See `cargo doc -F extended --open` for details.
 - Weak Learners
     - Bag of words
     - TF-IDF
-    - Two-Layer Neural Network
     - [RBF-Net](https://link.springer.com/content/pdf/10.1023/A:1007618119488.pdf)
 
 
