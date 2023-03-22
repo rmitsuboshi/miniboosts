@@ -25,8 +25,7 @@ impl Layer {
     {
         let mut rng = thread_rng();
         let dist = Normal::<f64>::new(MEAN, DEVIATION).unwrap();
-        let matrix = (0..nrow).into_iter()
-            .map(|_|
+        let matrix = (0..nrow).map(|_|
                 dist.sample_iter(&mut rng)
                     .take(ncol)
                     .collect::<Vec<_>>()
@@ -57,7 +56,7 @@ impl Layer {
 
         self.matrix.par_iter()
             .zip(&self.bias)
-            .map(|(w, b)| utils::inner_product(w, &x[..]) + b)
+            .map(|(w, b)| utils::inner_product(w, x) + b)
             .collect::<Vec<f64>>()
     }
 
@@ -159,7 +158,7 @@ pub(super) fn column_sum(matrix: &[Vec<f64>]) -> Vec<f64> {
     let ncol = matrix[0].len();
     let mut columns = vec![0.0; ncol];
 
-    matrix.into_iter()
+    matrix.iter()
         .for_each(|row| {
             columns.iter_mut()
                 .zip(row)
