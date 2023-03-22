@@ -86,9 +86,9 @@ impl<'a, H, B, W, F, G> Logger<'a, B, W, F, G>
 
             let hypothesis = self.booster.current_hypothesis();
 
-            let obj = self.objective_func.eval(&self.train, &hypothesis);
-            let train = (self.loss_func)(&self.train, &hypothesis);
-            let test = (self.loss_func)(&self.test, &hypothesis);
+            let obj = self.objective_func.eval(self.train, &hypothesis);
+            let train = (self.loss_func)(self.train, &hypothesis);
+            let test = (self.loss_func)(self.test, &hypothesis);
 
             // Write the results to `file`.
             let line = format!("{obj},{train},{test},{time_acc}\n");

@@ -1,7 +1,7 @@
 //! Two-layered neural network module.
 
 /// Defines a neural network trainer
-pub mod neural_network;
+pub mod nn_weak_learner;
 /// Defines a neural network hypothesis
 pub mod nn_hypothesis;
 /// Defines some loss functions
@@ -10,7 +10,7 @@ pub mod nn_loss;
 pub mod activation;
 pub(crate) mod layer;
 
-pub use neural_network::NeuralNetwork;
+pub use nn_weak_learner::NeuralNetwork;
 pub use nn_loss::NNLoss;
 pub use activation::Activation;
 pub use nn_hypothesis::NNHypothesis;

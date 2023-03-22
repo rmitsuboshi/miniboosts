@@ -38,7 +38,7 @@ impl Activation {
 #[inline]
 fn softmax<T: AsRef<[f64]>>(eta: f64, x: T) -> Vec<f64> {
     let x = x.as_ref();
-    let iter = x.into_iter().map(|xi| eta * xi);
+    let iter = x.iter().map(|xi| eta * xi);
 
     utils::project_log_distribution_to_capped_simplex(1.0, iter)
 }
@@ -47,7 +47,7 @@ fn softmax<T: AsRef<[f64]>>(eta: f64, x: T) -> Vec<f64> {
 #[inline]
 fn sigmoid<T: AsRef<[f64]>>(eta: f64, x: T) -> Vec<f64> {
     let x = x.as_ref();
-    x.into_iter()
+    x.iter()
         .map(|xi| 1.0 / (1.0 + (-eta * xi).exp()))
         .collect()
 }
@@ -56,7 +56,7 @@ fn sigmoid<T: AsRef<[f64]>>(eta: f64, x: T) -> Vec<f64> {
 #[inline]
 fn relu<T: AsRef<[f64]>>(threshold: f64, x: T) -> Vec<f64> {
     let x = x.as_ref();
-    x.into_iter()
+    x.iter()
         .map(|xi| if *xi <= threshold { 0.0 } else { *xi })
         .collect()
 }
@@ -82,7 +82,7 @@ fn softmax_diff<T: AsRef<[f64]>>(eta: f64, x: T) -> Vec<f64> {
 #[inline]
 fn sigmoid_diff<T: AsRef<[f64]>>(eta: f64, x: T) -> Vec<f64> {
     let x = x.as_ref();
-    x.into_iter()
+    x.iter()
         .map(|xi| {
             let e = (-eta * xi).exp();
             eta * e / (1.0 + e)
@@ -94,7 +94,7 @@ fn sigmoid_diff<T: AsRef<[f64]>>(eta: f64, x: T) -> Vec<f64> {
 #[inline]
 fn relu_diff<T: AsRef<[f64]>>(threshold: f64, x: T) -> Vec<f64> {
     let x = x.as_ref();
-    x.into_iter()
+    x.iter()
         .map(|xi| if *xi < threshold { 0.0 } else { 1.0 })
         .collect()
 }

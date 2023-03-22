@@ -60,6 +60,7 @@ pub struct NeuralNetwork {
 
 impl NeuralNetwork {
     /// Construct a new instance of `NeuralNetwork`.
+    #[inline(always)]
     pub fn init(sample: &Sample) -> Self {
         let (n_samples, n_features) = sample.shape();
 
@@ -94,6 +95,7 @@ impl NeuralNetwork {
 
 
     /// Append a new layer to the current network.
+    #[inline(always)]
     pub fn append(
         mut self,
         dim: OutputDim,
@@ -108,6 +110,7 @@ impl NeuralNetwork {
 
 
     /// Set the number of epochs
+    #[inline(always)]
     pub fn n_epoch(mut self, epoch: usize) -> Self {
         self.n_epoch = epoch;
         self
@@ -115,8 +118,26 @@ impl NeuralNetwork {
 
 
     /// Set the number of iterations per epoch
+    #[inline(always)]
     pub fn n_iter(mut self, iter: usize) -> Self {
         self.n_iter_per_epoch = iter;
+        self
+    }
+
+
+    /// Set the mini-batch size
+    #[inline(always)]
+    pub fn minibatch_size(mut self, batch_size: usize) -> Self {
+        self.minibatch_size = batch_size;
+        self
+    }
+
+
+    /// Set the task.
+    /// Currently, Binary classification is available.
+    #[inline(always)]
+    pub fn task(mut self, task: Task) -> Self {
+        self.task = task;
         self
     }
 }
