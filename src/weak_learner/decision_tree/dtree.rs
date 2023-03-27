@@ -36,7 +36,7 @@ use std::collections::HashMap;
 /// // Read the training data from the CSV file.
 /// let file = "/path/to/data/file.csv";
 /// let has_header = true;
-/// let mut sample = Sample::from_csv(file, has_header)
+/// let sample = Sample::from_csv(file, has_header)
 ///     .unwrap()
 ///     .set_target("class");
 /// 
@@ -235,7 +235,7 @@ fn construct_leaf(
 
 
 /// This function returns a tuple `(c, l)` where
-/// - `c` is the **confidence** for some label 'y'
+/// - `c` is the **confidence** for some label `y`
 /// that minimizes the training loss.
 /// - `l` is the training loss when the confidence is `y`.
 /// 

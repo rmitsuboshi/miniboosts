@@ -9,6 +9,7 @@ const MEAN: f64 = 0.0;
 const DEVIATION: f64 = 5.0;
 
 
+#[derive(Clone, PartialEq)]
 pub(crate) struct Layer {
     nrow: usize,
     ncol: usize,

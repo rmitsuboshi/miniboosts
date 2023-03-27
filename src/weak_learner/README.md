@@ -14,6 +14,9 @@ The weak learners defined in this directory are listed below:
 - [RTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418),  
     Regression Tree.
     Defined in `regression_tree/` directory.
+- [NeuralNetwork],  
+    A naive implementation of neural network.
+    Defined in `neural_network/` directory.
 - GaussianNB,  
     Naive bayes algorithm.  
     Defined in `naive_bayes/` directory.

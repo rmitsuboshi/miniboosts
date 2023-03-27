@@ -1,7 +1,7 @@
 use crate::common::utils;
 
 /// Activation functions available to neural networks.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Activation {
     /// Soft Max function
     SoftMax(f64),

@@ -33,15 +33,11 @@ impl Splitter {
 
     /// Defines the splitting.
     #[inline]
-    pub fn split(&self, data: &Sample, row: usize) -> LR {
+    pub fn split(&self, sample: &Sample, row: usize) -> LR {
         let name = &self.feature;
 
-        let value = data[name][row];
+        let value = sample[name][row];
 
-        if value < self.threshold.0 {
-            LR::Left
-        } else {
-            LR::Right
-        }
+        if value < self.threshold.0 { LR::Left } else { LR::Right }
     }
 }

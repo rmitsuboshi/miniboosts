@@ -183,6 +183,7 @@ pub(crate) fn project_log_distribution_to_capped_simplex<I>(
 
 
 /// Compute the relative entropy from the uniform distribution.
+#[inline(always)]
 pub(crate) fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
     let n_dim = dist.len() as f64;
     let e = entropy(dist);
@@ -192,6 +193,7 @@ pub(crate) fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
 
 
 /// Compute the entropy of the given distribution.
+#[inline(always)]
 pub(crate) fn entropy(dist: &[f64]) -> f64 {
     dist.into_iter()
         .copied()
@@ -201,6 +203,7 @@ pub(crate) fn entropy(dist: &[f64]) -> f64 {
 
 
 /// Compute the inner-product of the given two slices.
+#[inline(always)]
 pub(crate) fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
     v1.into_par_iter()
         .zip(v2)
@@ -209,6 +212,7 @@ pub(crate) fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
 }
 
 
+#[inline(always)]
 pub(crate) fn normalize(items: &mut [f64]) {
     let z = items.iter()
         .map(|it| it.abs())
@@ -216,24 +220,24 @@ pub(crate) fn normalize(items: &mut [f64]) {
 
     assert_ne!(z, 0.0);
 
-    items.iter_mut()
+    items.par_iter_mut()
         .for_each(|item| { *item /= z; });
 }
 
 
-pub(crate) fn hadamard_product(m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>)
+#[inline(always)]
+pub(crate) fn hadamard_product(mut m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>)
     -> Vec<Vec<f64>>
 {
     assert_eq!(m1.len(), m2.len());
     assert_eq!(m1[0].len(), m2[0].len());
 
-    m1.into_iter()
+    m1.iter_mut()
         .zip(m2)
-        .map(|(r1, r2)| {
-            r1.into_iter()
+        .for_each(|(r1, r2)| {
+            r1.iter_mut()
                 .zip(r2)
-                .map(|(a, b)| a * b)
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>()
+                .for_each(|(a, b)| { *a *= b; });
+        });
+    m1
 }
