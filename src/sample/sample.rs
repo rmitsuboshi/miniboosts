@@ -254,9 +254,21 @@ impl Sample {
     /// Removes the empty features in `self.features`.
     fn remove_allzero_features(&mut self) {
         let features = mem::replace(&mut self.features, vec![]);
+        self.name_to_index = features.iter()
+            .filter_map(|feat| {
+                if feat.len() > 0 {
+                    Some(feat.name().to_string())
+                } else {
+                    None
+                }
+            })
+            .enumerate()
+            .map(|(i, name)| (name, i))
+            .collect();
         self.features = features.into_iter()
             .filter(|feat| feat.len() > 0)
             .collect();
+        self.n_feature = self.features.len();
     }
 
 
@@ -282,10 +294,17 @@ impl Sample {
             panic!("The number of names is not equals to the one of `self.features`");
         }
 
-        names.into_iter()
+        let old_names = names.into_iter()
             .zip(&mut self.features[..])
             .map(|(name, feature)| feature.replace_name(name))
-            .collect()
+            .collect();
+
+        self.name_to_index = self.features.iter()
+            .map(|feature| feature.name().to_string())
+            .enumerate()
+            .map(|(i, name)| (name, i))
+            .collect();
+        old_names
     }
 
 

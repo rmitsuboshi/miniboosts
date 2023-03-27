@@ -144,7 +144,7 @@ impl NeuralNetwork {
 
 
 impl WeakLearner for NeuralNetwork {
-    type Hypothesis = NNHypothesis;
+    type Hypothesis = NNClassifier;
 
     #[inline]
     fn produce(&self, sample: &Sample, dist: &[f64])
@@ -167,6 +167,6 @@ impl WeakLearner for NeuralNetwork {
                 f.train(rate, self.loss_func, sample, &minibatch);
             }
         }
-        f
+        NNClassifier::new(f)
     }
 }

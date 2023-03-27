@@ -10,6 +10,48 @@ use super::{
     activation::*,
 };
 
+
+/// A wrapper for `NNHypothesis`.
+#[derive(Clone, PartialEq)]
+#[repr(transparent)]
+pub struct NNClassifier(NNHypothesis);
+
+impl NNClassifier {
+    /// Construct a new instance of `NNClassifier`.
+    #[inline(always)]
+    pub fn new(hypothesis: NNHypothesis) -> Self {
+        Self(hypothesis)
+    }
+
+
+    /// Print stats for this classifier.
+    #[inline(always)]
+    pub fn stats(&self) {
+        self.0.stats();
+    }
+}
+
+
+/// A wrapper for `NNHypothesis`.
+#[derive(Clone, PartialEq)]
+#[repr(transparent)]
+pub struct NNRegressor(NNHypothesis);
+
+impl NNRegressor {
+    /// Construct a new instance of `NNRegressor`.
+    #[inline(always)]
+    pub fn new(hypothesis: NNHypothesis) -> Self {
+        Self(hypothesis)
+    }
+
+
+    /// Print stats for this regressor.
+    #[inline(always)]
+    pub fn stats(&self) {
+        self.0.stats();
+    }
+}
+
 /// 2-layered neural network.
 /// ```text
 ///          O
@@ -31,6 +73,7 @@ use super::{
 /// Here, `z` is a `k`-dimensional vector,
 /// `W'` is a matrix of size `2xk`,
 /// and `b` is a `2`-dimensional vector.
+#[derive(Clone, PartialEq)]
 pub struct NNHypothesis {
     task: Task,
     layers: Vec<Layer>,
@@ -189,13 +232,14 @@ impl NNHypothesis {
 }
 
 
-impl Classifier for NNHypothesis {
+impl Classifier for NNClassifier {
     #[inline(always)]
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+        let f = &self.0;
         let (x, _) = sample.at(row);
 
-        let conf = self.eval(x);
-        match self.task {
+        let conf = f.eval(x);
+        match f.task {
             Task::Binary => task::binarize(conf),
             Task::MultiClass(n_class) => task::discretize(conf, n_class),
             Task::Regression => {
@@ -206,20 +250,21 @@ impl Classifier for NNHypothesis {
 }
 
 
-// impl Regressor for NNHypothesis {
-//     #[inline(always)]
-//     fn predict(&self, sample: &Sample, row: usize) -> f64 {
-//         let (x, _) = sample.at(row);
-// 
-//         let conf = self.eval(x);
-//         match self.task {
-//             Task::Binary | Task::MultiClass(_) => {
-//                 panic!("Task unmatched!");
-//             },
-//             Task::Regression => {
-//                 assert_eq!(conf.len(), 1);
-//                 conf[0]
-//             },
-//         }
-//     }
-// }
+impl Regressor for NNRegressor {
+    #[inline(always)]
+    fn predict(&self, sample: &Sample, row: usize) -> f64 {
+        let f = &self.0;
+        let (x, _) = sample.at(row);
+
+        let conf = f.eval(x);
+        match f.task {
+            Task::Regression => {
+                assert_eq!(conf.len(), 1);
+                conf[0]
+            },
+            Task::Binary | Task::MultiClass(_) => {
+                panic!("Task unmatched!");
+            },
+        }
+    }
+}

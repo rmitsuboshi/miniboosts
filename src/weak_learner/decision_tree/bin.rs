@@ -27,12 +27,8 @@ impl Bin {
         -> Vec<Self>
     {
         match feature {
-            Feature::Dense(feat) => {
-                Self::cut_dense(feat, n_bin)
-            },
-            Feature::Sparse(feat) => {
-                Self::cut_sparse(feat, n_bin)
-            },
+            Feature::Dense(feat) => Self::cut_dense(feat, n_bin),
+            Feature::Sparse(feat) => Self::cut_sparse(feat, n_bin),
         }
     }
 

@@ -266,15 +266,23 @@ impl cmp::PartialEq<f64> for Threshold {
     }
 }
 
+
+/// In general, there exists a pair of instances `(x1, y1)` and `(x2, y2)`
+/// such that `x1 == x2` and `y1 != y2`.
+/// This struct bundles such instances by the `x`-value.
 #[derive(Debug)]
 pub(crate) struct WeightedFeature {
+    /// The `x`-value
     pub(crate) feature_val: f64,
+    /// The mapping from `y`-value to the sum of weights on each `(x, y)`.
     pub(crate) label_to_weight: HashMap<i64, f64>,
+    /// `total_weight` is the sum of the values in `label_to_weight`.
     total_weight: f64,
 }
 
 
 impl WeightedFeature {
+    #[inline(always)]
     pub(crate) fn new(
         feature_val: f64,
         label_to_weight: HashMap<i64, f64>,
@@ -285,6 +293,8 @@ impl WeightedFeature {
     }
 
 
+    /// Returns the total weight.
+    #[inline(always)]
     pub(crate) fn total_weight(&self) -> f64 {
         self.total_weight
     }
@@ -365,6 +375,8 @@ pub(crate) fn group_by_x_sparse(
     let mut zero_map = HashMap::new();
 
 
+    // Construct a vector of triplet `(x, y, d)`, where
+    // `x` is the feature value, `y` is its label, and `d` is its weight
     let mut x_y_d = indices.into_iter()
         .filter_map(|&i| {
             let rx = feature.sample.binary_search_by(|(j, _)| j.cmp(&i));
@@ -372,10 +384,14 @@ pub(crate) fn group_by_x_sparse(
             let y = target[i] as i64;
             match rx {
                 Ok(ii) => {
+                    // If the index is found,
+                    // the feature value is non-zero.
                     let (_, x) = feature.sample[ii];
                     Some((x, y, d))
                 },
                 Err(_) => {
+                    // If the index is not found,
+                    // the feature value is zero.
                     let val = zero_map.entry(y as i64).or_insert(0.0);
                     *val += d;
                     None
@@ -418,14 +434,14 @@ pub(crate) fn group_by_x_sparse(
     }
     items.push(WeightedFeature::new(x, label_to_weight));
 
-    let res = items.binary_search_by(|x|
-        x.feature_val.partial_cmp(&0.0).unwrap()
-    );
 
 
     // If there is a zero-valued sample for this feature,
     // insert it to `items`.
     if !zero_map.is_empty() {
+        let res = items.binary_search_by(|x|
+            x.feature_val.partial_cmp(&0.0).unwrap()
+        );
         let zero = WeightedFeature::new(0.0, zero_map);
         match res {
             Ok(_) => {

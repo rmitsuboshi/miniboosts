@@ -40,11 +40,17 @@ fn from_raw_representation() {
 
 
     let dtree = DTree::init(&sample)
-        .criterion(Criterion::Edge);
+        .criterion(Criterion::Entropy);
     let dist = vec![1.0/7.0; 7];
     let f = dtree.produce(&sample, &dist[..]);
 
     println!("SCRATCH:  {f:?}");
+    let loss = f.predict_all(&sample)
+        .into_iter()
+        .zip(sample.target().into_iter())
+        .map(|(p, y)| if p != *y as i64 { 1.0 } else { 0.0 })
+        .sum::<f64>();
+    println!("LOSS (Scratch): {loss}");
 }
 
 
@@ -53,12 +59,20 @@ fn from_lightsvm() {
     let mut path = std::env::current_dir().unwrap();
     path.push("tests/dataset/toy.svmlight");
 
-    let sample = Sample::from_svmlight(path).unwrap();
+    let mut sample = Sample::from_svmlight(path).unwrap();
+    sample.replace_names(["x", "y"]);
+    println!("{sample:?}");
 
     let dtree = DTree::init(&sample)
         .criterion(Criterion::Entropy);
     let dist = vec![1.0/7.0; 7];
     let f = dtree.produce(&sample, &dist[..]);
 
-    println!("LIGHTSVM: {f:?}");
+    println!("SVMLight: {f:?}");
+    let loss = f.predict_all(&sample)
+        .into_iter()
+        .zip(sample.target().into_iter())
+        .map(|(p, y)| if p != *y as i64 { 1.0 } else { 0.0 })
+        .sum::<f64>();
+    println!("LOSS (SVMLight): {loss}");
 }

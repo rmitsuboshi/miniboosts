@@ -76,38 +76,7 @@ impl PartialOrd for Gini {
 }
 
 
-
-/// Impurity
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(super) struct Impurity(f64);
-
-
-impl From<f64> for Impurity {
-    #[inline(always)]
-    fn from(impurity: f64) -> Self {
-        Impurity(impurity)
-    }
-}
-
-
-impl PartialEq for Impurity {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
-
-
-impl PartialOrd for Impurity {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-}
-
-
-impl Mul for Impurity {
+impl Mul for Gini {
     type Output = Self;
     #[inline]
     fn mul(self, other: Self) -> Self::Output {
@@ -116,7 +85,56 @@ impl Mul for Impurity {
 }
 
 
-impl Add for Impurity {
+impl Add for Gini {
+    type Output = Self;
+    #[inline]
+    fn add(self, other: Self) -> Self::Output {
+        Self(self.0 + other.0)
+    }
+}
+
+
+
+/// Entropic Impurity
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub(super) struct EntropicImpurity(f64);
+
+
+impl From<f64> for EntropicImpurity {
+    #[inline(always)]
+    fn from(impurity: f64) -> Self {
+        EntropicImpurity(impurity)
+    }
+}
+
+
+impl PartialEq for EntropicImpurity {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+
+impl PartialOrd for EntropicImpurity {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+
+impl Mul for EntropicImpurity {
+    type Output = Self;
+    #[inline]
+    fn mul(self, other: Self) -> Self::Output {
+        Self(self.0 * other.0)
+    }
+}
+
+
+impl Add for EntropicImpurity {
     type Output = Self;
     #[inline]
     fn add(self, other: Self) -> Self::Output {
@@ -197,20 +215,20 @@ impl Criterion {
                     })
                     .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature with max edge")
+                    .expect("No feature that minimizes Gini impurity")
             },
         }
     }
 }
 
 
-fn split_by_entropy(ws: Vec<WeightedFeature>) -> (f64, Impurity) {
+fn split_by_entropy(ws: Vec<WeightedFeature>) -> (f64, EntropicImpurity) {
     let total_weight = ws.iter()
         .map(|wf| wf.total_weight())
         .sum::<f64>();
 
-    let mut left = EntropicImpurityKeeper::empty();
-    let mut right = EntropicImpurityKeeper::new(&ws[..]);
+    let mut left = ImpurityKeeper::empty();
+    let mut right = ImpurityKeeper::new(&ws[..]);
 
 
     let mut iter = ws.into_iter().peekable();
@@ -238,8 +256,8 @@ fn split_by_entropy(ws: Vec<WeightedFeature>) -> (f64, Impurity) {
         let rp = (1.0 - lp).max(0.0);
 
 
-        let decrease = Impurity::from(lp) * left.entropic_impurity()
-            + Impurity::from(rp) * right.entropic_impurity();
+        let decrease = EntropicImpurity::from(lp) * left.entropic_impurity()
+            + EntropicImpurity::from(rp) * right.entropic_impurity();
 
 
         if decrease < best_decrease {
@@ -302,19 +320,63 @@ fn split_by_edge(ws: Vec<WeightedFeature>) -> (f64, Edge) {
 
 
 fn split_by_gini(ws: Vec<WeightedFeature>) -> (f64, Gini) {
-    todo!()
+    let total_weight = ws.iter()
+        .map(|wf| wf.total_weight())
+        .sum::<f64>();
+
+    let mut left = ImpurityKeeper::empty();
+    let mut right = ImpurityKeeper::new(&ws[..]);
+
+
+    let mut iter = ws.into_iter().peekable();
+    // These variables are used for the best splitting rules.
+    let mut best_decrease = right.gini_impurity();
+    let mut best_threshold = iter.peek()
+        .map(|wf| wf.feature_val - 1.0_f64)
+        .unwrap_or(f64::MIN);
+
+    while let Some(wf) = iter.next() {
+        let curr_x = wf.feature_val;
+        left.insert(&wf);
+        right.delete(&wf);
+
+
+        let next_x = iter.peek()
+            .map(|next_wf| next_wf.feature_val)
+            .unwrap_or(curr_x + 2.0_f64);
+
+        let threshold = (curr_x + next_x) / 2.0;
+
+        assert!(total_weight > 0.0);
+
+        let lp = left.total / total_weight;
+        let rp = (1.0 - lp).max(0.0);
+
+
+        let decrease = Gini::from(lp) * left.gini_impurity()
+            + Gini::from(rp) * right.gini_impurity();
+
+
+        if decrease < best_decrease {
+            best_decrease = decrease;
+            best_threshold = threshold;
+        }
+    }
+
+
+    (best_threshold, best_decrease)
 }
 
 
 /// Some information that are useful in `produce(..)`.
-struct EntropicImpurityKeeper {
+struct ImpurityKeeper {
     map: HashMap<i64, f64>,
     total: f64,
 }
 
 
-impl EntropicImpurityKeeper {
-    /// Build an empty instance of `EntropicImpurityKeeper`.
+impl ImpurityKeeper {
+    /// Build an empty instance of `ImpurityKeeper`.
     #[inline(always)]
     pub(self) fn empty() -> Self {
         Self {
@@ -324,7 +386,7 @@ impl EntropicImpurityKeeper {
     }
 
 
-    /// Build an instance of `EntropicImpurityKeeper`.
+    /// Build an instance of `ImpurityKeeper`.
     #[inline(always)]
     pub(self) fn new(ws: &[WeightedFeature]) -> Self {
         let mut total = 0.0_f64;
@@ -343,9 +405,9 @@ impl EntropicImpurityKeeper {
     }
 
 
-    /// Returns the impurity of this node.
+    /// Returns the entropic-impurity of this node.
     #[inline(always)]
-    pub(self) fn entropic_impurity(&self) -> Impurity {
+    pub(self) fn entropic_impurity(&self) -> EntropicImpurity {
         if self.total <= 0.0 || self.map.is_empty() { return 0.0.into(); }
 
         self.map.par_iter()
@@ -355,6 +417,19 @@ impl EntropicImpurityKeeper {
             })
             .sum::<f64>()
             .into()
+    }
+
+
+    /// Returns the gini-impurity of this node.
+    #[inline(always)]
+    pub(self) fn gini_impurity(&self) -> Gini {
+        if self.total <= 0.0 || self.map.is_empty() { return 0.0.into(); }
+
+        let correct = self.map.par_iter()
+            .map(|(_, &w)| (w / self.total).powi(2))
+            .sum::<f64>();
+
+        Gini::from(1.0 - correct)
     }
 
 
