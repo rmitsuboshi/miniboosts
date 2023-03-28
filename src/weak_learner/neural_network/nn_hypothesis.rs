@@ -11,7 +11,7 @@ use super::{
 };
 
 
-/// A wrapper for `NNHypothesis`.
+/// A wrapper for [`NNHypothesis`](NNHypothesis).
 #[derive(Clone, PartialEq)]
 #[repr(transparent)]
 pub struct NNClassifier(NNHypothesis);
@@ -32,7 +32,7 @@ impl NNClassifier {
 }
 
 
-/// A wrapper for `NNHypothesis`.
+/// A wrapper for [`NNHypothesis`](NNHypothesis).
 #[derive(Clone, PartialEq)]
 #[repr(transparent)]
 pub struct NNRegressor(NNHypothesis);
@@ -52,27 +52,8 @@ impl NNRegressor {
     }
 }
 
-/// 2-layered neural network.
-/// ```text
-///          O
-///  O
-///          O        O
-///  O
-///          O        O
-///  O
-///          O
-/// L0      L1       L2
-/// ```
-/// # Layer 1
-/// Computes `z = activation_1(u)` for `u = Wx + b`.
-/// Here, `x` is an `n`-dimensional vector,
-/// `W` is a matrix of size `kxn`,
-/// and `b` is an `k`-dimensional vector.
-/// # Layer 2
-/// Computes `activation_2(v)` for `v = W'z + b'`.
-/// Here, `z` is a `k`-dimensional vector,
-/// `W'` is a matrix of size `2xk`,
-/// and `b` is a `2`-dimensional vector.
+/// A neural network hypothesis, 
+/// produced by [`NeuralNetwork`](crate::weak_learner::NeuralNetwork).
 #[derive(Clone, PartialEq)]
 pub struct NNHypothesis {
     task: Task,
