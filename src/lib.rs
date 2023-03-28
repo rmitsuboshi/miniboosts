@@ -28,6 +28,7 @@
 //! This crate also includes some Weak Learners.
 //! * Classification
 //!     - [`DTree`](DTree)
+//!     - [`NeuralNetwork`](NeuralNetwork)
 //! * Regression
 //!     - [`RTree`](RTree). Note that the current implement is not efficient.
 //! 
@@ -51,6 +52,7 @@
 //! [`LPBoost::tolerance`]: LPBoost::tolerance
 //! [`DTree`]: crate::weak_learner::DTree
 //! [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+//! [`NeuralNetwork`]: crate::weak_learner::NeuralNetwork
 //! [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
 //! [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
 //! [`DTree::criterion`]: crate::weak_learner::DTree::criterion
@@ -61,20 +63,15 @@
 //! 
 //! 
 //! ```no_run
-//! // Import `polars` to read CSV file as `DataFrame`.
-//! use polars::prelude::*;
-//! // Import `miniboost` default features.
 //! use miniboosts::prelude::*;
 //! 
-//! // Read the training data from the CSV file.
-//! let mut data = CsvReader::from_path(path_to_csv_file)
+//! // Read the training sample from the CSV file.
+//! // We use the column named `class` as the label.
+//! let path = "path/to/dataset.csv";
+//! let has_header = true;
+//! let sample = Sample::from_csv(path, has_header)
 //!     .unwrap()
-//!     .has_header(true)
-//!     .finish()
-//!     .unwrap();
-//! 
-//! // Split the column corresponding to labels.
-//! let target = data.drop_in_place(class_column_name).unwrap();
+//!     .set_target("class");
 //! 
 //! // Get the number of training examples.
 //! let n_sample = data.shape().0 as f64;
@@ -89,12 +86,12 @@
 //! // LPBoost calls `LPBoost::nu` to set the capping parameter 
 //! // as `0.1 * n_sample`, which means that, 
 //! // at most, `0.1 * n_sample` examples are regarded as outliers.
-//! let booster = LPBoost::init(&data, &target)
+//! let booster = LPBoost::init(&sample)
 //!     .tolerance(0.01)
 //!     .nu(0.1 * n_sample);
 //! 
 //! // Set the weak learner with setting parameters.
-//! let weak_learner = DecisionTree::init(&data, &target)
+//! let weak_learner = DecisionTree::init(&sample)
 //!     .max_depth(2)
 //!     .criterion(Criterion::Edge);
 //! 
@@ -105,17 +102,12 @@
 //! let predictions: Vec<i64> = f.predict_all(&data);
 //! 
 //! // Calculate the training loss.
-//! let training_loss = target.i64()
-//!     .unwrap()
-//!     .into_iter()
+//! let target = sample.target();
+//! let training_loss = target.into_iter()
 //!     .zip(predictions)
-//!     .map(|(true_label, prediction) {
-//!         let true_label = true_label.unwrap();
-//!         if true_label == prediction { 0.0 } else { 1.0 }
-//!     })
+//!     .map(|(&y, fx) if y as i64 == fx { 0.0 } else { 1.0 })
 //!     .sum::<f64>()
 //!     / n_sample;
-//! 
 //!
 //! println!("Training Loss is: {training_loss}");
 //! ```

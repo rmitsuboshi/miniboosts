@@ -24,27 +24,46 @@ const MINIBATCH_SIZE: usize = 128;
 
 type OutputDim = usize;
 
-/// 2-layered neural network.
-/// ```text
-///          O
-///  O
-///          O        O
-///  O
-///          O        O
-///  O
-///          O
-/// L0      L1       L2
+/// A neural network weak learner.
+/// Since this is just a weak learner, a shallow network is preferred.
+/// Of course, you can use a deep network 
+/// if you don't care about running time.
+/// # Example
+/// ```no_run
+/// use miniboosts::prelude::*;
+/// 
+/// // Read a dataset from a CSV file.
+/// let path = "/path/to/dataset.csv";
+/// let has_header = true;
+/// let sample = Sample::from_csv(path, has_header)
+///     .unwrap()
+///     .set_target("class");
+/// let n_sample = sample.shape().0;
+/// let batch_size = n_sample / 10;
+/// 
+/// // Construct a new instance of a neural network learner.
+/// let nn = NeuralNetwork::init(&sample)
+///     .append(100, Activation::ReLu(1.0))
+///     .append(2, Activation::SoftMax(1.0))
+///     .n_epoch(10)
+///     .n_iter(100)
+///     .minibatch_size(batch_size);
+/// 
+/// // Construct the uniform distribution over examples.
+/// let dist = vec![1.0 / n_sample as f64; n_sample];
+/// 
+/// // Train a neural network and obtain a hypothesis.
+/// let f = nn.produce(&sample, &dist[..]);
+/// 
+/// // Train loss
+/// let predictions = f.predict_all(&sample);
+/// let loss = sample.target()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+///     .sum::<f64>() / n_sample as f64;
+/// println!("0/1-loss (train): {loss}");
 /// ```
-/// # Layer 1
-/// Computes `z = activation_1(u)` for `u = Wx + b`.
-/// Here, `x` is an `n`-dimensional vector,
-/// `W` is a matrix of size `kxn`,
-/// and `b` is an `k`-dimensional vector.
-/// # Layer 2
-/// Computes `activation_2(v)` for `v = W'z + b'`.
-/// Here, `z` is a `k`-dimensional vector,
-/// `W'` is a matrix of size `2xk`,
-/// and `b` is a `2`-dimensional vector.
 pub struct NeuralNetwork {
     task: Task,
     learning_rate: f64,
@@ -60,6 +79,7 @@ pub struct NeuralNetwork {
 
 impl NeuralNetwork {
     /// Construct a new instance of `NeuralNetwork`.
+    /// At the initial state, `NeuralNetwork` constructs a network of depth 0.
     #[inline(always)]
     pub fn init(sample: &Sample) -> Self {
         let (n_samples, n_features) = sample.shape();
