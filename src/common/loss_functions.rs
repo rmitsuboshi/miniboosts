@@ -12,7 +12,7 @@ pub trait LossFunction {
         assert_eq!(n_items, target.len());
 
 
-        predictions.into_iter()
+        predictions.iter()
             .zip(target)
             .map(|(&p, &y)| self.eval_at_point(p, y))
             .sum::<f64>()
@@ -64,13 +64,13 @@ impl LossFunction for GBMLoss {
 
         match self {
             Self::L1 => {
-                predictions.into_iter()
+                predictions.iter()
                     .zip(target)
                     .map(|(p, y)| (p - y).signum() / n_sample)
                     .collect()
             },
             Self::L2 => {
-                predictions.into_iter()
+                predictions.iter()
                     .zip(target)
                     .map(|(p, y)| 2.0 * (p - y) / n_sample)
                     .collect()
@@ -87,7 +87,7 @@ impl LossFunction for GBMLoss {
     {
         match self {
             Self::L1 => {
-                let mut items = residuals.into_iter()
+                let mut items = residuals.iter()
                     .zip(predictions)
                     .filter_map(|(&r, &p)| 
                         if p == 0.0 { None } else { Some((p.abs(), r / p)) }
@@ -97,8 +97,8 @@ impl LossFunction for GBMLoss {
                 weighted_median(&mut items[..])
             },
             Self::L2 => {
-                let r_sum = residuals.into_iter().sum::<f64>();
-                let p_sum = predictions.into_iter().sum::<f64>();
+                let r_sum = residuals.iter().sum::<f64>();
+                let p_sum = predictions.iter().sum::<f64>();
 
                 assert!(p_sum != 0.0);
 
@@ -126,8 +126,7 @@ fn weighted_median(items: &mut [(f64, f64)]) -> f64 {
 
 
     let mut partial_sum = 0.0_f64;
-    let mut iter = items.into_iter();
-    while let Some((w, x)) = iter.next() {
+    for (w, x) in items {
         partial_sum += *w;
         if partial_sum >= 0.5 * total_weight {
             return *x;

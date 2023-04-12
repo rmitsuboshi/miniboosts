@@ -1,12 +1,12 @@
 //! Struct `Sample` represents a batch sample for training.
 
 /// provides feature struct.
-pub mod feature;
+pub mod feature_struct;
 /// provides sample struct.
-pub mod sample;
+pub mod sample_struct;
 
 
 
-pub use sample::Sample;
-pub use feature::Feature;
+pub use sample_struct::Sample;
+pub use feature_struct::Feature;
 

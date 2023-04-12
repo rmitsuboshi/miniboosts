@@ -56,11 +56,11 @@ impl<H> ObjectiveFunction<H> for SoftMarginObjective
 
         let mut margins = hypothesis.confidence_all(sample)
             .into_iter()
-            .zip(target.into_iter())
+            .zip(target.iter())
             .map(|(hx, y)| y * hx)
             .collect::<Vec<f64>>();
 
-        margins.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+        margins.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         let unit_weight = 1.0 / self.0;
         let mut weight_left = 1.0;
