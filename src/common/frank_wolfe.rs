@@ -25,9 +25,9 @@ pub enum FWType {
     /// Adopt the best step size on the descent direction.
     LineSearch,
 
-    // /// Pairwise strategy, 
-    // /// See [this paper](https://arxiv.org/abs/1511.05932). 
-    // Pairwise,
+    /// Pairwise strategy, 
+    /// See [this paper](https://proceedings.mlr.press/v162/tsuji22a). 
+    BlendedPairwise,
 }
 
 
@@ -93,6 +93,10 @@ impl FrankWolfe {
             FWType::LineSearch
                 => self.line_search(
                     sample, hypotheses, position_of_new_one, weights,
+                ),
+            FWType::BlendedPairwise
+                => self.blended_pairwise(
+                    sample, dist, hypotheses, position_of_new_one, weights,
                 ),
         }
     }
@@ -237,10 +241,155 @@ impl FrankWolfe {
 
 
         interior_point(step_size, position_of_new_one, base)
-        // base.into_iter()
-        //     .zip(dir)
-        //     .map(|(b, d)| b + step_size * d)
-        //     .collect::<Vec<_>>()
+    }
+
+
+    fn blended_pairwise<H>(
+        &self,
+        sample: &Sample,
+        dist: &[f64],
+        hypotheses: &[H],
+        position_of_new_one: usize,
+        mut weights: Vec<f64>,
+    ) -> Vec<f64>
+        where H: Classifier,
+    {
+        // Find a hypothesis that has a smallest edge.
+        let mut worst_edge = 2.0;
+        let mut local_best_edge = -2.0;
+        let mut global_best_edge = -2.0;
+        let mut position_of_worst_one = hypotheses.len();
+        let mut position_of_local_best_one = hypotheses.len();
+        let mut position_of_global_best_one = position_of_new_one;
+        weights.iter()
+            .zip(hypotheses)
+            .enumerate()
+            .filter_map(|(j, (w, h))| {
+                if *w <= 0.0 {
+                    None
+                } else {
+                    let edge = utils::edge_of_hypothesis(sample, dist, h);
+                    Some((j, edge))
+                }
+            })
+            .for_each(|(j, edge)| {
+                if j != position_of_new_one && edge > local_best_edge {
+                    local_best_edge = edge;
+                    position_of_local_best_one = j;
+                }
+
+                if edge > global_best_edge {
+                    global_best_edge = edge;
+                    position_of_global_best_one = j;
+                }
+
+
+                if edge < worst_edge {
+                    worst_edge = edge;
+                    position_of_worst_one = j;
+                }
+            });
+
+        // If the following condition holds,
+        // the global FW atom is not the newly attained one
+        // so that the local one is the same as the global one.
+        if position_of_global_best_one + 1 != hypotheses.len() {
+            local_best_edge = global_best_edge;
+            position_of_local_best_one = position_of_global_best_one;
+        }
+
+        let current_edge = utils::edge_of_weighted_hypothesis(
+            sample, dist, &weights[..], hypotheses
+        );
+
+        let lhs = local_best_edge - worst_edge;
+        let rhs = global_best_edge - current_edge;
+        if lhs >= rhs {
+            // Pairwise update!
+            let max_stepsize = weights[position_of_worst_one];
+
+            // TODO
+            // Find the best stepsize by line-search
+            let local_best_margins = utils::margins_of_hypothesis(
+                sample, &hypotheses[position_of_local_best_one]
+            );
+            let worst_margins = utils::margins_of_hypothesis(
+                sample, &hypotheses[position_of_worst_one]
+            );
+
+            let dir_margins = local_best_margins.into_iter()
+                .zip(worst_margins)
+                .map(|(a, b)| a - b)
+                .collect::<Vec<_>>();
+
+
+            // You don't need to remove the newly attaind hypothesis
+            // since the weight of new one is assigned as 0 at this point.
+            let base_margins = utils::margins_of_weighted_hypothesis(
+                sample, &weights[..], &hypotheses[..],
+            );
+
+
+            let margins = dir_margins.iter()
+                .zip(base_margins.iter())
+                .map(|(dir, cur)| cur + max_stepsize * dir)
+                .collect::<Vec<_>>();
+
+
+            let dist = utils::exp_distribution(
+                self.eta, self.nu, sample, &margins[..], hypotheses,
+            );
+
+
+            // If the max step size is the best one,
+            // 1. Set 0 weight on `position_of_worst_one`,
+            // 2. Set `max_stepsize` on `position_of_local_best_one`.
+            if utils::inner_product(&dist[..], &dir_margins[..]) <= 0.0 {
+                weights[position_of_new_one] = max_stepsize;
+                weights[position_of_worst_one] = 0.0;
+                return weights;
+            }
+
+            let mut ub = max_stepsize;
+            let mut lb = 0.0;
+            while ub - lb > SUB_TOLERANCE {
+                let step_size = (lb + ub) / 2.0;
+
+                let margins = base_margins.iter()
+                    .zip(&dir_margins[..])
+                    .map(|(&b, &d)| b + step_size * d);
+                let dist = utils::exp_distribution_from_margins(
+                    self.eta, self.nu, margins,
+                );
+
+
+                // Compute the gradient for the direction `dir`.
+                let dot = utils::inner_product(&dist[..], &dir_margins[..]);
+
+                if dot < 0.0 {
+                    lb = step_size;
+                } else if dot > 0.0 {
+                    ub = step_size;
+                } else {
+                    break;
+                }
+            }
+
+            // Update the weights
+            let step_size = (lb + ub) / 2.0;
+
+
+            weights[position_of_local_best_one] += step_size;
+            weights[position_of_worst_one] -= step_size;
+
+            weights
+        } else {
+            // Ordinal FW update!
+            // Find the best step size over [0, 1].
+            self.line_search(
+                sample, hypotheses, position_of_new_one, weights,
+            )
+        }
     }
 }
 

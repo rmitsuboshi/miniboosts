@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::{ops, cmp};
 use std::collections::HashMap;
 
-use crate::sample::feature::{SparseFeature, DenseFeature};
+use crate::sample::feature_struct::{SparseFeature, DenseFeature};
 use crate::Feature;
 
 

@@ -1,6 +1,9 @@
 //! The core library for `Hypothesis` traits.
 use serde::{Serialize, Deserialize};
-use crate::Sample;
+use crate::{
+    common::utils,
+    Sample,
+};
 
 
 /// A trait that defines the behavor of classifier.
@@ -23,8 +26,7 @@ pub trait Classifier {
     /// Computes the confidence of `df`.
     fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
         let n_sample = sample.shape().0;
-        (0..n_sample).into_iter()
-            .map(|row| self.confidence(sample, row))
+        (0..n_sample).map(|row| self.confidence(sample, row))
             .collect::<Vec<_>>()
     }
 
@@ -33,8 +35,7 @@ pub trait Classifier {
     fn predict_all(&self, sample: &Sample) -> Vec<i64>
     {
         let n_sample = sample.shape().0;
-        (0..n_sample).into_iter()
-            .map(|row| self.predict(sample, row))
+        (0..n_sample).map(|row| self.predict(sample, row))
             .collect::<Vec<_>>()
     }
 }
@@ -51,8 +52,7 @@ pub trait Regressor {
     fn predict_all(&self, sample: &Sample) -> Vec<f64>
     {
         let n_sample = sample.shape().0;
-        (0..n_sample).into_iter()
-            .map(|row| self.predict(sample, row))
+        (0..n_sample).map(|row| self.predict(sample, row))
             .collect::<Vec<_>>()
     }
 }
@@ -76,7 +76,7 @@ impl<H: Clone> CombinedHypothesis<H> {
         let mut new_weights = Vec::with_capacity(weights.len());
         let mut new_hypotheses = Vec::with_capacity(hypotheses.len());
 
-        weights.into_iter()
+        weights.iter()
             .copied()
             .zip(hypotheses)
             .for_each(|(w, h)| {
@@ -85,6 +85,7 @@ impl<H: Clone> CombinedHypothesis<H> {
                     new_hypotheses.push(h.clone());
                 }
             });
+        utils::normalize(&mut new_weights[..]);
 
 
         Self { weights: new_weights, hypotheses: new_hypotheses, }

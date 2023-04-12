@@ -83,6 +83,15 @@ impl Feature {
             Self::Sparse(feat) => feat.len(),
         }
     }
+
+
+    /// Returns `true` if the number of examples is equals to `0`.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Dense(feat) => feat.is_empty(),
+            Self::Sparse(feat) => feat.is_empty(),
+        }
+    }
 }
 
 
@@ -137,6 +146,12 @@ impl DenseFeature {
     /// Returns the number of items in `self.sample`.
     pub fn len(&self) -> usize {
         self.sample.len()
+    }
+
+
+    /// Returns `true` if `self.len()` is equals to `0`.
+    pub fn is_empty(&self) -> bool {
+        self.sample.is_empty()
     }
 }
 
@@ -199,6 +214,12 @@ impl SparseFeature {
     /// Returns the number of indices that have zero-value.
     pub fn zero_counts(&self) -> usize {
         self.n_sample - self.len()
+    }
+
+
+    /// Returns `true` if `self.len()` is equals to `0`.
+    pub fn is_empty(&self) -> bool {
+        self.n_sample == 0
     }
 }
 

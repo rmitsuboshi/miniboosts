@@ -8,7 +8,7 @@ use std::mem;
 
 use polars::prelude::*;
 use rayon::prelude::*;
-use super::feature::*;
+use super::feature_struct::*;
 
 
 /// Struct `Sample` holds a batch sample with dense/sparse format.
@@ -69,7 +69,7 @@ impl Sample {
         if has_header {
             let line = lines.next().unwrap();
             features = line?.split(',')
-                .map(|name| DenseFeature::new(name))
+                .map(DenseFeature::new)
                 .collect::<Vec<_>>();
         }
         let mut n_sample = 0_usize;
@@ -87,8 +87,7 @@ impl Sample {
                     .collect::<Vec<_>>();
 
                 let n_feature = xs.len();
-                features = (1..=n_feature).into_iter()
-                    .map(|i| {
+                features = (1..=n_feature).map(|i| {
                         let name = format!("Feat. [{i}]");
                         DenseFeature::new(name)
                     })
@@ -114,7 +113,7 @@ impl Sample {
         }
 
         let features = features.into_par_iter()
-            .map(|feat| Feature::Dense(feat))
+            .map(Feature::Dense)
             .collect::<Vec<_>>();
 
         let n_feature = features.len();
@@ -253,20 +252,20 @@ impl Sample {
 
     /// Removes the empty features in `self.features`.
     fn remove_allzero_features(&mut self) {
-        let features = mem::replace(&mut self.features, vec![]);
+        let features = mem::take(&mut self.features);
         self.name_to_index = features.iter()
             .filter_map(|feat| {
-                if feat.len() > 0 {
-                    Some(feat.name().to_string())
-                } else {
+                if feat.is_empty() {
                     None
+                } else {
+                    Some(feat.name().to_string())
                 }
             })
             .enumerate()
             .map(|(i, name)| (name, i))
             .collect();
         self.features = features.into_iter()
-            .filter(|feat| feat.len() > 0)
+            .filter(|feat| !feat.is_empty())
             .collect();
         self.n_feature = self.features.len();
     }
@@ -294,7 +293,7 @@ impl Sample {
             panic!("The number of names is not equals to the one of `self.features`");
         }
 
-        let old_names = names.into_iter()
+        let old_names = names.iter()
             .zip(&mut self.features[..])
             .map(|(name, feature)| feature.replace_name(name))
             .collect();

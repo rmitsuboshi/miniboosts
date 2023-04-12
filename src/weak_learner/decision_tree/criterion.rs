@@ -180,7 +180,7 @@ impl Criterion {
         match self {
             Criterion::Entropy => {
                 sample.features()
-                    .into_iter()
+                    .iter()
                     .map(|column| {
                         let items = group_by_x(column, target, idx, dist);
                         let (threshold, decrease) = split_by_entropy(items);
@@ -193,7 +193,7 @@ impl Criterion {
             },
             Criterion::Edge => {
                 sample.features()
-                    .into_iter()
+                    .iter()
                     .map(|column| {
                         let items = group_by_x(column, target, idx, dist);
                         let (threshold, decrease) = split_by_edge(items);
@@ -206,7 +206,7 @@ impl Criterion {
             },
             Criterion::Gini => {
                 sample.features()
-                    .into_iter()
+                    .iter()
                     .map(|column| {
                         let items = group_by_x(column, target, idx, dist);
                         let (threshold, decrease) = split_by_gini(items);
