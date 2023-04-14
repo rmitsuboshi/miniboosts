@@ -36,13 +36,13 @@ impl QPModel {
 
         let dist = (0..size).map(|i| {
                 let name = format!("d[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0..upper_bound)
+                add_ctsvar!(model, name: &name, bounds: 0_f64..upper_bound)
                     .unwrap()
             }).collect::<Vec<Var>>();
 
 
         // Set a constraint
-        model.add_constr(&"sum_is_1", c!(dist.iter().grb_sum() == 1.0))
+        model.add_constr("sum_is_1", c!(dist.iter().grb_sum() == 1.0))
             .unwrap();
 
 
@@ -75,7 +75,7 @@ impl QPModel {
         // 1. append a constraint, and
         // 2. optimize the model.
         let edge = sample.target()
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(i, y)| y * clf.confidence(sample, i))
             .zip(self.dist.iter().copied())
@@ -133,7 +133,7 @@ impl QPModel {
             dist.iter_mut()
                 .zip(&self.dist[..])
                 .for_each(|(d, grb_d)| {
-                    let g = self.model.get_obj_attr(attr::X, &grb_d)
+                    let g = self.model.get_obj_attr(attr::X, grb_d)
                         .unwrap();
                     any_zero |= g == 0.0;
                     *d = g;

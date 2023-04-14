@@ -5,12 +5,11 @@ use crate::{
     Sample,
     Booster,
     WeakLearner,
-    State,
     Regressor,
     CombinedHypothesis
 };
 
-// use crate::research::Logger;
+use std::ops::ControlFlow;
 
 
 /// Defines `GBM`.
@@ -200,11 +199,11 @@ impl<F> Booster<F> for GBM<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
 
@@ -222,7 +221,7 @@ impl<F> Booster<F> for GBM<'_, F>
         // Thus, we can terminate the boosting at this point.
         if coef == 0.0 {
             self.terminated = iteration;
-            return State::Terminate;
+            return ControlFlow::Break(iteration);
         }
 
         // Update the residual vector
@@ -237,7 +236,7 @@ impl<F> Booster<F> for GBM<'_, F>
         self.weights.push(coef);
         self.hypotheses.push(h);
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

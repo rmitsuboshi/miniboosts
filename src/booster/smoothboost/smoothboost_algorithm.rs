@@ -10,12 +10,13 @@ use crate::{
     Booster,
     WeakLearner,
 
-    State,
     Classifier,
     CombinedHypothesis,
 
     research::Research,
 };
+
+use std::ops::ControlFlow;
 
 
 /// `SmoothBoost`.
@@ -251,12 +252,12 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>
     {
 
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
         self.current = iteration;
@@ -266,7 +267,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
         // Check the stopping criterion.
         if sum < self.n_sample as f64 * self.kappa {
             self.terminated = iteration - 1;
-            return State::Terminate;
+            return ControlFlow::Break(iteration);
         }
 
 
@@ -284,7 +285,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 
 
         let target = self.sample.target();
-        let margins = target.into_iter()
+        let margins = target.iter()
             .enumerate()
             .map(|(i, y)| y * h.confidence(self.sample, i));
 
@@ -308,7 +309,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
                 }
             });
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

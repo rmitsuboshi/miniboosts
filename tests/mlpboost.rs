@@ -18,7 +18,7 @@ pub mod mlpboost_tests {
 
         let mut booster = MLPBoost::init(&sample)
             .tolerance(0.1)
-            .frank_wolfe(FWType::LineSearch)
+            .frank_wolfe(FWType::ShortStep)
             .nu(0.1 * n_sample);
         let weak_learner = DTree::init(&sample)
             .max_depth(2)

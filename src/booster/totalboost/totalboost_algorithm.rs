@@ -7,7 +7,6 @@ use crate::{
     Booster,
     WeakLearner,
 
-    State,
     Classifier,
     CombinedHypothesis,
 
@@ -15,6 +14,8 @@ use crate::{
 
     research::Research,
 };
+
+use std::ops::ControlFlow;
 
 
 /// `TotalBoost`.
@@ -134,7 +135,7 @@ impl<F> Booster<F> for TotalBoost<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>
     {
         self.softboost.boost(weak_learner, iteration)

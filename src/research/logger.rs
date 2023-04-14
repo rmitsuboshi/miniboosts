@@ -1,6 +1,5 @@
 use crate::{
     Sample,
-    State,
     Booster,
     WeakLearner,
     CombinedHypothesis,
@@ -52,11 +51,11 @@ impl<'a, H, B, W, F, G> Logger<'a, B, W, F, G>
     /// Run the given boosting algorithm with logging.
     /// Note that this method is almost the same as `Booster::run`.
     /// This method measures running time per iteration.
-    pub fn run<P: AsRef<Path>>(&mut self, file: P)
+    pub fn run<P: AsRef<Path>>(&mut self, filename: P)
         -> std::io::Result<CombinedHypothesis<H>>
     {
         // Open file
-        let mut file = File::create(file)?;
+        let mut file = File::create(filename)?;
 
         // Write header to the file
         file.write_all(HEADER.as_bytes())?;
@@ -72,11 +71,11 @@ impl<'a, H, B, W, F, G> Logger<'a, B, W, F, G>
 
         // ---------------------------------------------------------------------
         // Boosting step
-        for it in 1.. {
+        (1..).try_for_each(|iter| {
             // Start measuring time
             let now = Instant::now();
 
-            let state = self.booster.boost(&self.weak_learner, it);
+            let flow = self.booster.boost(&self.weak_learner, iter);
 
             // Stop measuring and convert `Duration` to Milliseconds.
             let time = now.elapsed().as_millis();
@@ -92,13 +91,11 @@ impl<'a, H, B, W, F, G> Logger<'a, B, W, F, G>
 
             // Write the results to `file`.
             let line = format!("{obj},{train},{test},{time_acc}\n");
-            file.write_all(line.as_bytes())?;
+            file.write_all(line.as_bytes())
+                .expect("Failed to writing {filename:?}");
 
-
-            if state == State::Terminate {
-                break;
-            }
-        }
+            flow
+        });
 
         let f = self.booster.postprocess(&self.weak_learner);
         Ok(f)

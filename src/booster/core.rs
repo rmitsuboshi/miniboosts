@@ -5,15 +5,7 @@ use crate::{
     CombinedHypothesis,
 };
 
-
-/// State of the boosting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum State {
-    /// Terminate the boosting process
-    Terminate,
-    /// Continue the boosting process
-    Continue,
-}
+use std::ops::ControlFlow;
 
 
 /// The trait [`Booster`](Booster) defines the standard framework of Boosting.
@@ -32,13 +24,9 @@ pub trait Booster<F> {
     {
         self.preprocess(weak_learner);
 
-        for it in 1.. {
-            let state = self.boost(weak_learner, it);
-
-            if state == State::Terminate {
-                break;
-            }
-        }
+        let _ = (1..).try_for_each(|iter| {
+            self.boost(weak_learner, iter)
+        });
 
         self.postprocess(weak_learner)
     }
@@ -56,14 +44,13 @@ pub trait Booster<F> {
 
     /// Boosting step per iteration.
     /// This method returns 
-    /// `State::Continue` if the stopping criterion is satisfied,
-    /// `State::Terminate` otherwise.  
-    /// See [`State`](State)
+    /// `ControlFlow::Continue(())` if the stopping criterion is satisfied,
+    /// `ControlFlow::Break(terminated_iter)` otherwise.  
     fn boost<W>(
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>;
 
 

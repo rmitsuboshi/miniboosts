@@ -7,7 +7,6 @@ use crate::{
     Booster,
     WeakLearner,
 
-    State,
     Classifier,
     CombinedHypothesis,
     common::utils,
@@ -16,6 +15,7 @@ use crate::{
 
 
 use grb::prelude::*;
+use std::ops::ControlFlow;
 
 
 
@@ -237,14 +237,14 @@ impl<F> SoftBoost<'_, F>
             }).collect::<Vec<_>>();
         let xi_vec = (0..n_sample).map(|i| {
                 let name = format!("xi[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0_f64..).unwrap()
+                add_ctsvar!(model, name: &name, bounds: 0_f64..).unwrap()
             }).collect::<Vec<_>>();
         let rho = add_ctsvar!(model, name: "rho", bounds: ..)?;
 
 
         // Set constraints
         let target = self.sample.target();
-        let iter = target.into_iter()
+        let iter = target.iter()
             .zip(xi_vec.iter())
             .enumerate();
 
@@ -320,7 +320,7 @@ impl<F> SoftBoost<'_, F>
                 .for_each(|(j, h)| {
                     let expr = vars.iter()
                         .zip(self.dist.iter().copied())
-                        .zip(self.sample.target().into_iter())
+                        .zip(self.sample.target().iter())
                         .enumerate()
                         .map(|(i, ((v, d), y))| {
                             let p = h.confidence(self.sample, i);
@@ -434,11 +434,11 @@ impl<F> Booster<F> for SoftBoost<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
         // Receive a hypothesis from the base learner
@@ -459,10 +459,10 @@ impl<F> Booster<F> for SoftBoost<'_, F>
         // Update the parameters
         if self.update_params_mut().is_none() {
             self.terminated = iteration;
-            return State::Terminate;
+            return ControlFlow::Break(self.terminated);
         }
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

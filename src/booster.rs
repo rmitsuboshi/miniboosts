@@ -11,6 +11,9 @@ pub mod adaboostv;
 #[cfg(feature="extended")]
 pub mod totalboost;
 
+// TODO PerturbedLPBoost is an experimental boosting.
+#[cfg(feature="extended")]
+
 pub mod cerlpboost;
 #[cfg(feature="extended")]
 pub mod lpboost;
@@ -24,14 +27,11 @@ pub mod mlpboost;
 pub mod gradient_boost;
 
 
-// ------------------------------------------------
-// Export the Boosters
-
 /// Booster trait
-pub use self::core::{
-    Booster,
-    State,
-};
+pub use self::core::Booster;
+
+// ------------------------------------------------
+// Regression
 
 // ------------------------------------------------
 // Classification
@@ -61,3 +61,10 @@ pub use self::cerlpboost::CERLPBoost;
 pub use self::mlpboost::MLPBoost;
 
 pub use self::gradient_boost::GBM;
+
+// // ------------------------------------------------
+// // Regression
+// pub use self::soft_lae::SLBoost;
+// pub use self::leveragings::{
+//     SquareLevR,
+// };

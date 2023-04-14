@@ -2,6 +2,6 @@
 //! This struct is based on the book: 
 //! [Boosting: Foundations and Algorithms](https://direct.mit.edu/books/oa-monograph/5342/BoostingFoundations-and-Algorithms)
 //! by Robert E. Schapire and Yoav Freund.
-pub mod adaboost;
+pub mod adaboost_algorithm;
 
-pub use adaboost::AdaBoost;
+pub use adaboost_algorithm::AdaBoost;

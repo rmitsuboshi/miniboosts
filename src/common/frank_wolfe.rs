@@ -326,7 +326,7 @@ impl FrankWolfe {
             // You don't need to remove the newly attaind hypothesis
             // since the weight of new one is assigned as 0 at this point.
             let base_margins = utils::margins_of_weighted_hypothesis(
-                sample, &weights[..], &hypotheses[..],
+                sample, &weights[..], hypotheses,
             );
 
 

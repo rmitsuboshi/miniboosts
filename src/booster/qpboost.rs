@@ -3,10 +3,9 @@
 //! of ERLPBoost objective, while ERLPBoost minimizes it repeatedly
 //! until convergence.
 
-pub mod qpb;
+pub mod qpboost_algorithm;
 mod qp_model;
-mod utils;
 
 
-pub use qpb::QPBoost;
+pub use qpboost_algorithm::QPBoost;
 

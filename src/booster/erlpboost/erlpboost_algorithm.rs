@@ -7,7 +7,6 @@ use crate::{
     Booster,
     WeakLearner,
 
-    State,
     Classifier,
     CombinedHypothesis,
     common::utils,
@@ -19,6 +18,7 @@ use super::qp_model::QPModel;
 
 
 use std::cell::RefCell;
+use std::ops::ControlFlow;
 
 
 
@@ -333,11 +333,11 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
         // Receive a hypothesis from the base learner
@@ -352,7 +352,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         let diff = self.gamma_hat - self.gamma_star;
         if diff <= self.half_tolerance {
             self.terminated = iteration;
-            return State::Terminate;
+            return ControlFlow::Break(iteration);
         }
 
         // At this point, the stopping criterion is not satisfied.
@@ -368,7 +368,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         // update `self.gamma_star`.
         self.update_gamma_star_mut();
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

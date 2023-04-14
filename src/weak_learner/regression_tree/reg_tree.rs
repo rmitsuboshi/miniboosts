@@ -75,8 +75,7 @@ impl WeakLearner for RTree {
     fn produce(&self, sample: &Sample, dist: &[f64])
         -> Self::Hypothesis
     {
-        let indices = (0..self.n_sample).into_iter()
-            .filter(|&i| dist[i] > 0.0)
+        let indices = (0..self.n_sample).filter(|&i| dist[i] > 0.0)
             .collect::<Vec<usize>>();
 
         let depth = self.max_depth;
