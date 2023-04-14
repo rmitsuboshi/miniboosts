@@ -99,6 +99,13 @@ impl HardMarginObjective {
     }
 }
 
+
+impl Default for HardMarginObjective {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<H> ObjectiveFunction<H> for HardMarginObjective
     where H: Classifier,
 {

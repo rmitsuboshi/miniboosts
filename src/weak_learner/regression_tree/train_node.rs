@@ -112,7 +112,7 @@ impl TrainNode {
     ) -> Rc<RefCell<Self>>
     {
         let leaf = TrainLeafNode {
-            prediction: prediction,
+            prediction,
             total_instances,
             loss_as_leaf,
         };

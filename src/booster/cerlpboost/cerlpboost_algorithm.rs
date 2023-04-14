@@ -13,7 +13,6 @@ use crate::{
     Booster,
     WeakLearner,
 
-    State,
     Classifier,
     CombinedHypothesis,
     common::utils,
@@ -21,6 +20,8 @@ use crate::{
     common::frank_wolfe::{FrankWolfe, FWType},
     research::Research,
 };
+
+use std::ops::ControlFlow;
 
 /// Corrective ERLPBoost struct.  
 /// This algorithm is based on this paper:
@@ -279,11 +280,11 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
     where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
         // Update the distribution over examples
@@ -326,7 +327,7 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
         // Update the parameters
         if diff <= self.half_tolerance {
             self.terminated = iteration;
-            return State::Terminate;
+            return ControlFlow::Break(iteration);
         }
 
 
@@ -339,14 +340,14 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
             self.weights.push(0.0);
         }
 
-        let weights = mem::replace(&mut self.weights, vec![]);
+        let weights = mem::take(&mut self.weights);
         // Update the weight on hypotheses
         self.weights = self.frank_wolfe.next_iterate(
             iteration, self.sample, &self.dist[..],
             &self.hypotheses[..], pos, weights,
         );
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

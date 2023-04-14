@@ -449,7 +449,7 @@ impl ImpurityKeeper {
         let mut to_be_removed = Vec::new();
         item.label_to_weight.iter()
             .for_each(|(y, d)| {
-                if let Some(val) = self.map.get_mut(&y) {
+                if let Some(val) = self.map.get_mut(y) {
                     *val -= d;
                     self.total -= d;
 
@@ -458,6 +458,6 @@ impl ImpurityKeeper {
             });
 
         to_be_removed.into_iter()
-            .for_each(|y| { self.map.remove(&y); });
+            .for_each(|y| { self.map.remove(y); });
     }
 }

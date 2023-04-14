@@ -5,7 +5,6 @@ use rayon::prelude::*;
 use crate::{
     Booster,
     WeakLearner,
-    State,
     Classifier,
     CombinedHypothesis,
     Sample,
@@ -13,6 +12,8 @@ use crate::{
     common::utils,
     research::Research,
 };
+
+use std::ops::ControlFlow;
 
 
 /// Defines `AdaBoost`.
@@ -229,11 +230,11 @@ impl<F> Booster<F> for AdaBoost<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
 
@@ -255,7 +256,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
             self.terminated = iteration;
             self.weights = vec![edge.signum()];
             self.hypotheses = vec![h];
-            return State::Terminate;
+            return ControlFlow::Break(iteration);
         }
 
 
@@ -264,7 +265,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
         self.weights.push(weight);
         self.hypotheses.push(h);
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

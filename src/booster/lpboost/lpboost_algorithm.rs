@@ -8,7 +8,6 @@ use crate::{
     Sample,
     Booster,
     WeakLearner,
-    State,
 
     Classifier,
     CombinedHypothesis,
@@ -19,7 +18,7 @@ use crate::{
 
 
 use std::cell::RefCell;
-
+use std::ops::ControlFlow;
 
 
 /// LPBoost struct.  
@@ -234,8 +233,8 @@ impl<F> Booster<F> for LPBoost<'_, F>
     fn boost<W>(
         &mut self,
         weak_learner: &W,
-        _iteration: usize,
-    ) -> State
+        iteration: usize,
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
         let h = weak_learner.produce(self.sample, &self.dist);
@@ -251,7 +250,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
 
         if gamma_star >= self.gamma_hat - self.tolerance {
             self.terminated = self.hypotheses.len();
-            return State::Terminate;
+            return ControlFlow::Break(iteration);
         }
 
         self.hypotheses.push(h);
@@ -262,7 +261,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
             .borrow()
             .distribution();
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

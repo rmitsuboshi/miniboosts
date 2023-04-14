@@ -26,13 +26,13 @@ impl LPModel {
 
         let dist = (0..n_sample).map(|i| {
                 let name = format!("d[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0..upper_bound)
+                add_ctsvar!(model, name: &name, bounds: 0_f64..upper_bound)
                     .unwrap()
             }).collect::<Vec<Var>>();
 
 
         // Set a constraint
-        model.add_constr(&"sum_is_1", c!(dist.iter().grb_sum() == 1.0))
+        model.add_constr("sum_is_1", c!(dist.iter().grb_sum() == 1.0))
             .unwrap();
 
 

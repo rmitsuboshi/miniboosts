@@ -342,7 +342,7 @@ fn group_by_x_dense(
     *weight += dist[idx];
 
     let mut items = Vec::new();
-    while let Some(i) = iter.next() {
+    for i in iter {
         let xi = feature[i];
         let di = dist[i];
         let yi = target[i] as i64;
@@ -377,7 +377,7 @@ pub(crate) fn group_by_x_sparse(
 
     // Construct a vector of triplet `(x, y, d)`, where
     // `x` is the feature value, `y` is its label, and `d` is its weight
-    let mut x_y_d = indices.into_iter()
+    let mut x_y_d = indices.iter()
         .filter_map(|&i| {
             let rx = feature.sample.binary_search_by(|(j, _)| j.cmp(&i));
             let d = dist[i];
@@ -392,14 +392,14 @@ pub(crate) fn group_by_x_sparse(
                 Err(_) => {
                     // If the index is not found,
                     // the feature value is zero.
-                    let val = zero_map.entry(y as i64).or_insert(0.0);
+                    let val = zero_map.entry(y).or_insert(0.0);
                     *val += d;
                     None
                 }
             }
         })
         .collect::<Vec<(f64, i64, f64)>>();
-    x_y_d.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(&x2).unwrap());
+    x_y_d.sort_by(|(x1, _, _), (x2, _, _)| x1.partial_cmp(x2).unwrap());
 
 
     // `x_y_d` might be empty, even though `indices` is not.
@@ -419,7 +419,7 @@ pub(crate) fn group_by_x_sparse(
     label_to_weight.insert(y, d);
 
     let mut items = Vec::new();
-    while let Some((xi, yi, di)) = x_y_d.next() {
+    for (xi, yi, di) in x_y_d {
         if x != xi {
             let f = WeightedFeature::new(x, label_to_weight);
             items.push(f);

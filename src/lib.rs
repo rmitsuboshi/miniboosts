@@ -139,11 +139,7 @@ pub use hypothesis::{
 
 
 // Export the `Booster` trait.
-pub use booster::{
-    Booster,
-    State,
-};
-
+pub use booster::Booster;
 
 // Export the boosting algorithms that minimizes the empirical loss.
 pub use booster::{

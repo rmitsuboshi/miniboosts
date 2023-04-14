@@ -43,7 +43,7 @@ impl LossType {
             .into_par_iter()
             .map(|feature| {
                 let (loss_value, threshold) = self.best_split_at(
-                    feature, target, dist, &idx[..]
+                    feature, target, dist, idx,
                 );
 
                 (loss_value, feature.name(), threshold)
@@ -174,9 +174,7 @@ fn best_split_l1(
         }
     }
 
-    let loss = LossValue::from(best_loss_value);
-    let threshold = Threshold::from(best_threshold);
-    (loss, threshold)
+    (best_loss_value, best_threshold)
 }
 
 
@@ -281,11 +279,10 @@ impl BestSplitFinderL2 {
     /// Returns the pair of variance and threshold.
     pub(self) fn variance_and_threshold(&self) -> (f64, f64) {
         // Compute the threshold to make the current split.
-        let threshold;
-        if self.right.is_empty() {
+        let threshold = if self.right.is_empty() {
             let left_largest = self.left.last()
                 .map(|(x, _, _)| x).unwrap();
-            threshold = left_largest + 1.0;
+            left_largest + 1.0
         } else {
             let right_smallest = self.right.last()
                 .map(|(x, _, _)| x)
@@ -293,8 +290,8 @@ impl BestSplitFinderL2 {
             let left_largest = self.left.last()
                 .map(|(x, _, _)| *x)
                 .unwrap_or(right_smallest - 2.0);
-            threshold = (left_largest + right_smallest) / 2.0;
-        }
+            (left_largest + right_smallest) / 2.0
+        };
 
 
         // Compute the variance.
@@ -406,12 +403,11 @@ impl BestSplitFinderL1 {
         -> (LossValue, Threshold)
     {
         // Compute the threshold to make the current split.
-        let threshold;
-        if self.right.is_empty() {
+        let threshold = if self.right.is_empty() {
             let left_largest = self.left.last()
                 .map(|(x, _, _)| x.0)
                 .unwrap();
-            threshold = left_largest + 1.0;
+            left_largest + 1.0
         } else {
             let right_smallest = self.right.last()
                 .map(|(x, _, _)| x.0)
@@ -419,8 +415,8 @@ impl BestSplitFinderL1 {
             let left_largest = self.left.last()
                 .map(|(x, _, _)| x.0)
                 .unwrap_or(right_smallest - 2.0);
-            threshold = (left_largest + right_smallest) / 2.0;
-        }
+            (left_largest + right_smallest) / 2.0
+        };
 
         let threshold = Threshold::from(threshold);
 
@@ -482,7 +478,7 @@ fn inner_prediction_and_loss(triplets: &[(FeatureValue, Mass, Target)])
 
     let mut triplets = triplets.to_vec();
     triplets.sort_by(|(_, _, t1), (_, _, t2)|
-        t1.partial_cmp(&t2).unwrap()
+        t1.partial_cmp(t2).unwrap()
     );
 
 

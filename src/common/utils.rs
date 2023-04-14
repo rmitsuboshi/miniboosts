@@ -30,7 +30,7 @@ pub(crate) fn margins_of_hypothesis<H>(sample: &Sample, h: &H)
 {
     let targets = sample.target();
 
-    targets.into_iter()
+    targets.iter()
         .enumerate()
         .map(|(i, y)| y * h.confidence(sample, i))
         .collect()
@@ -67,10 +67,10 @@ pub(crate) fn margins_of_weighted_hypothesis<H>(
 {
     let targets = sample.target();
 
-    targets.into_iter()
+    targets.iter()
         .enumerate()
         .map(|(i, y)| {
-            let fx = weights.into_iter()
+            let fx = weights.iter()
                 .copied()
                 .zip(hypotheses)
                 .map(|(w, h)| w * h.confidence(sample, i))
@@ -170,7 +170,7 @@ pub(crate) fn project_log_distribution_to_capped_simplex<I>(
         // Check the stopping criterion
         if log_xi + d + log_nu <= 0.0 {
             dist[i_sorted] = (log_xi + d).exp();
-            while let Some((_, (ii, _))) = ix_with_logsum.next() {
+            for (_, (ii, _)) in ix_with_logsum {
                 dist[ii] = (log_xi + dist[ii]).exp();
             }
             break;
@@ -195,7 +195,7 @@ pub(crate) fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
 /// Compute the entropy of the given distribution.
 #[inline(always)]
 pub(crate) fn entropy(dist: &[f64]) -> f64 {
-    dist.into_iter()
+    dist.iter()
         .copied()
         .map(|d| if d == 0.0 { 0.0 } else { d * d.ln() })
         .sum::<f64>()

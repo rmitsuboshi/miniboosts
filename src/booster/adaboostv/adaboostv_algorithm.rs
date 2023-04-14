@@ -10,13 +10,14 @@ use crate::{
     Booster,
     WeakLearner,
 
-    State,
     Classifier,
     CombinedHypothesis,
 
     common::utils,
     research::Research,
 };
+
+use std::ops::ControlFlow;
 
 
 
@@ -242,11 +243,11 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
         // Get a new hypothesis
@@ -267,7 +268,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
             self.terminated = iteration;
             self.weights = vec![edge.signum()];
             self.hypotheses = vec![h];
-            return State::Terminate;
+            return ControlFlow::Break(iteration);
         }
 
 
@@ -276,7 +277,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
         self.weights.push(weight);
         self.hypotheses.push(h);
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

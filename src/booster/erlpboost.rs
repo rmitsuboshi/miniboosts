@@ -1,7 +1,7 @@
 //! ERLPBoost module.
 
-pub mod erlpboost;
+pub mod erlpboost_algorithm;
 mod qp_model;
 
-pub use erlpboost::ERLPBoost;
+pub use erlpboost_algorithm::ERLPBoost;
 

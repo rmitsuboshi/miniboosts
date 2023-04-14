@@ -11,7 +11,6 @@ use crate::{
     Booster,
     WeakLearner,
 
-    State,
     Classifier,
     CombinedHypothesis,
     common::{
@@ -23,8 +22,9 @@ use crate::{
 };
 
 
-use std::cell::RefCell;
 use std::mem;
+use std::cell::RefCell;
+use std::ops::ControlFlow;
 
 
 
@@ -332,12 +332,12 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         &mut self,
         weak_learner: &W,
         iteration: usize,
-    ) -> State
+    ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
 
         if self.max_iter < iteration {
-            return State::Terminate;
+            return ControlFlow::Break(self.max_iter);
         }
 
         // ------------------------------------------------------
@@ -371,7 +371,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
             // **DO NOT FORGET** to update the LP model.
             let _ = self.secondary_update(self.hypotheses.last());
 
-            return State::Continue;
+            return ControlFlow::Continue(())
         }
 
 
@@ -384,7 +384,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         // optimality guaranteed with the precision.
         if self.gamma - objval <= self.half_tolerance {
             self.terminated = iteration;
-            return State::Terminate;
+            return ControlFlow::Break(self.terminated);
         }
 
 
@@ -406,7 +406,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         }
 
 
-        let weights = mem::replace(&mut self.weights, vec![]);
+        let weights = mem::take(&mut self.weights);
 
         let prim = self.primary.next_iterate(
             iteration, self.sample, &dist[..],
@@ -422,7 +422,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
         // DEBUG
         checker::check_capped_simplex_condition(&self.weights[..], 1.0);
 
-        State::Continue
+        ControlFlow::Continue(())
     }
 
 

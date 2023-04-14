@@ -31,13 +31,13 @@ impl LPModel {
 
         let dist = (0..size).map(|i| {
                 let name = format!("d[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0.0..upper_bound)
+                add_ctsvar!(model, name: &name, bounds: 0_f64..upper_bound)
                     .unwrap()
             }).collect::<Vec<Var>>();
 
 
         // Set a constraint
-        model.add_constr(&"sum_is_1", c!(dist.iter().grb_sum() == 1.0))
+        model.add_constr("sum_is_1", c!(dist.iter().grb_sum() == 1.0))
             .unwrap();
 
 
@@ -72,7 +72,7 @@ impl LPModel {
         // 1. append a constraint, and
         // 2. optimize the model.
         let edge = sample.target()
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(i, y)| y * clf.confidence(sample, i))
             .zip(self.dist.iter().copied())

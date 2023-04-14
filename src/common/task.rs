@@ -42,9 +42,9 @@ pub(crate) fn discretize<T: AsRef<[f64]>>(y: T, n_class: usize) -> f64 {
 
     assert_eq!(y.len(), n_class);
 
-    let k = y.into_iter()
+    let k = y.iter()
         .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
         .unwrap().0;
 
     k as f64
