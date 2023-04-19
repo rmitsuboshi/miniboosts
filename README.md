@@ -199,6 +199,9 @@ fn main() {
         .max_depth(2)
         .criterion(Criterion::Entropy);
 
+    // Set the objective function.
+    // One can use your own function by implementing ObjectiveFunction trait.
+    let objective = SoftMarginObjective::new(nu);
 
     let mut logger = Logger::new(
         booster, tree, objective, zero_one_loss, &train, &test
