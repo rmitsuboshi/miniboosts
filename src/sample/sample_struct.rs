@@ -340,7 +340,7 @@ impl Sample {
         // Check whether the target values can be converted into integers.
         let y = self.target();
         let non_integers = y.iter()
-            .filter(|yi| yi.trunc().eq(yi))
+            .filter(|yi| !yi.trunc().eq(yi))
             .collect::<Vec<_>>();
         if !non_integers.is_empty() {
             let line = non_integers.iter().take(5)
