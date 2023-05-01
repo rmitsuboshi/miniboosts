@@ -312,6 +312,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
+        self.sample.is_valid_binary_instance();
         self.n_sample = self.sample.shape().0;
 
         self.init_params();
@@ -377,6 +378,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
 
         // Compute the smoothed objective value `-f*`.
         let objval = self.objval(&self.weights[..]);
+        println!("self.weights = {:?}", self.weights);
 
 
         // If the difference between `gamma` and `objval` is

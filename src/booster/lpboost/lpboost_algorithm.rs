@@ -217,6 +217,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
+        self.sample.is_valid_binary_instance();
         let n_sample = self.sample.shape().0;
         let uni = 1.0_f64 / self.n_sample as f64;
 

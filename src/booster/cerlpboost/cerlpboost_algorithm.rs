@@ -260,6 +260,7 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
+        self.sample.is_valid_binary_instance();
         let n_sample = self.sample.shape().0;
         let uni = 1.0 / n_sample as f64;
 
