@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 use std::cell::{Ref, RefMut, RefCell};
 use std::mem;
@@ -23,8 +23,7 @@ pub struct Sample {
 
 
 impl Sample {
-    /// Convert `polars::DataFrame` and `polars::Series` into
-    /// `Sample`.
+    /// Convert `polars::DataFrame` and `polars::Series` into `Sample`.
     /// This method takes the ownership for the given pair
     /// `data` and `target`.
     pub fn from_dataframe(data: DataFrame, target: Series)
@@ -135,9 +134,6 @@ impl Sample {
 
     /// Returns a slice of type `f64`.
     pub fn target(&self) -> Ref<'_, [f64]> {
-    // pub fn target(&self) -> &[f64] {
-        // &self.target[..]
-        // &self.target.borrow()[..]
         Ref::map(self.target.borrow(), |x| &x[..])
     }
 
@@ -290,7 +286,10 @@ impl Sample {
         let n_features = self.shape().1;
         let n_names = names.len();
         if n_features != n_names {
-            panic!("The number of names is not equals to the one of `self.features`");
+            panic!(
+                "The number of names is \
+                not equal to the one of `self.features`"
+            );
         }
 
         let old_names = names.iter()
@@ -315,6 +314,81 @@ impl Sample {
         let y = self.target.borrow()[idx];
 
         (x, y)
+    }
+
+
+    fn target_is_specified(&self) {
+        let n_sample = self.shape().0;
+        let y = self.target();
+
+        if n_sample != y.len() {
+            panic!(
+                "The target class is not specified.\n\
+                 Use `Sample::set_target(\"Column Name\")`."
+            );
+        }
+    }
+
+
+    /// Check whether `self` is 
+    /// a training set for binary classification or not.
+    pub fn is_valid_binary_instance(&self) {
+        // Check whether the target column is specified.
+        self.target_is_specified();
+
+
+        // Check whether the target values can be converted into integers.
+        let y = self.target();
+        let non_integers = y.iter()
+            .filter(|yi| yi.trunc().eq(yi))
+            .collect::<Vec<_>>();
+        if !non_integers.is_empty() {
+            let line = non_integers.iter().take(5)
+                .map(|yi| yi.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            panic!(
+                "Target values are non-integer types.\n\
+                 Ex. [{line}, ...]."
+            );
+        }
+
+
+        // Check whether the target values takes exactly 2 kinds.
+        let set = y.iter()
+            .copied()
+            .map(|yi| yi as i32)
+            .collect::<HashSet<_>>();
+        let n_label = set.len();
+        if n_label > 2 {
+            panic!(
+                "The target values take more than 2 kinds. \
+                 Expected 2 kinds, got {n_label} kinds."
+            );
+        } else if n_label < 2 {
+            panic!(
+                "The target values take less than 2 kinds. \
+                 Expected 2 kinds, got {n_label} kinds."
+            );
+        }
+
+
+        // Check whether the target values takes +1 or -1.
+        let is_pm = set.iter().all(|y| y.eq(&1) || y.eq(&-1));
+        if !is_pm {
+            let line = set.iter()
+                .map(|y| y.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!(
+                "Warning: the target values take values not in [-1.0, 1.0].\n\
+                 Currently, the labels are: [{line}]."
+            );
+        }
+
+
+        // At this point, all tests are passed
+        // so that the sample is valid one for binary classification.
     }
 }
 

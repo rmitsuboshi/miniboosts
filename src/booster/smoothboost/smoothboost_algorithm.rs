@@ -228,6 +228,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
+        self.sample.is_valid_binary_instance();
         self.n_sample = self.sample.shape().0;
         // Set the paremeter `theta`.
         self.theta();

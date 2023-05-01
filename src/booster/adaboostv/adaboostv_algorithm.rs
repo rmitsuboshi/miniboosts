@@ -223,6 +223,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
     )
         where W: WeakLearner<Hypothesis = F>
     {
+        self.sample.is_valid_binary_instance();
         // Initialize parameters
         let n_sample = self.sample.shape().0;
         self.dist = vec![1.0 / n_sample as f64; n_sample];
