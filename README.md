@@ -14,6 +14,32 @@ by specifying `features = ["extended"]` in `Cargo.toml`.
 If you are trying to use the `extended` feature without a Gurobi license,
 the compilation fails.
 
+# Why MiniBoosts?
+I, a Ph.D. student, 
+needed to implement boosting algorithms 
+to show the effectiveness of a proposed algorithm. 
+Some boosting algorithms 
+for empirical risk minimization are implemented in Python 3, 
+but three main issues exist.
+- They are dedicated to boosting algorithm users, not to developers. 
+    Most algorithms are implemented by C/C++ internally, 
+    so implementing a new boosting algorithm by Python 3
+    results in a slow running time.
+- These boosting algorithms are designed 
+    for a decision-tree weak learner 
+    even though the boosting protocol does not demand.
+- No implementation for margin optimization boosting algorithms. 
+    Margin optimization is a better goal than empirical risk minimization 
+    in binary classification.
+
+MiniBoosts is a crate to address the above issues.
+This crate provides:
+Two main traits, named Booster and WeakLearner,
+Some famous boosting algorithms, including AdaBoost, LPBoost, ERLPBoost, etc.
+Some weak learners, including Decision-Tree, Regression-Tree, etc.
+Also, one can implement a new Booster or Weak Learner 
+by implementing the above traits.
+
 
 ## Features
 Currently, I implemented the following Boosters and Weak Learners.
