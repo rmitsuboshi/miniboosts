@@ -1,5 +1,6 @@
 use polars::prelude::*;
 use std::ops::Index;
+use std::slice::Iter;
 
 const BUF_SIZE: usize = 256;
 
@@ -92,6 +93,14 @@ impl Feature {
             Self::Sparse(feat) => feat.is_empty(),
         }
     }
+
+
+    pub(crate) fn distinct_value_count(&self) -> usize {
+        match self {
+            Self::Dense(feat) => feat.distinct_value_count(),
+            Self::Sparse(feat) => feat.distinct_value_count(),
+        }
+    }
 }
 
 
@@ -115,6 +124,12 @@ impl DenseFeature {
     {
         let name = name.to_string();
         std::mem::replace(&mut self.name, name)
+    }
+
+
+    /// Returns an iterator over feature values.
+    pub fn iter(&self) -> Iter<'_, f64> {
+        self.sample.iter()
     }
 
 
@@ -153,6 +168,12 @@ impl DenseFeature {
     pub fn is_empty(&self) -> bool {
         self.sample.is_empty()
     }
+
+
+    fn distinct_value_count(&self) -> usize {
+        let values = self.sample[..].to_vec();
+        inner_distinct_value_count(values)
+    }
 }
 
 
@@ -183,6 +204,12 @@ impl SparseFeature {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+
+    /// Returns an iterator over non-zero feature values.
+    pub fn iter(&self) -> Iter<'_, (usize, f64)> {
+        self.sample.iter()
     }
 
 
@@ -221,6 +248,20 @@ impl SparseFeature {
     pub fn is_empty(&self) -> bool {
         self.n_sample == 0
     }
+
+
+    fn distinct_value_count(&self) -> usize {
+    
+        let values = self.sample[..]
+            .into_iter()
+            .map(|(_, v)| *v)
+            .collect::<Vec<_>>();
+        let mut uniq_value_count = inner_distinct_value_count(values);
+        if self.has_zero() {
+            uniq_value_count += 1;
+        }
+        uniq_value_count
+    }
 }
 
 
@@ -232,6 +273,28 @@ impl Index<usize> for Feature {
             Self::Sparse(feat) => &feat[idx],
         }
     }
+}
+
+
+/// Count the number of items in `src` that has the same value.
+/// The given vector `src` is assumed to be sorted in ascending order.
+fn inner_distinct_value_count(mut src: Vec<f64>) -> usize {
+    src.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+    let mut iter = src.into_iter();
+    let mut value = match iter.next() {
+        Some(v) => v,
+        None => { return 0; }
+    };
+    let mut uniq_value_count = 1;
+
+    for v in iter {
+        if v != value {
+            value = v;
+            uniq_value_count += 1;
+        }
+    }
+
+    return uniq_value_count;
 }
 
 

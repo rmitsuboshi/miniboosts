@@ -28,6 +28,7 @@ pub use self::core::WeakLearner;
 pub use self::decision_tree::{
     Criterion,
     DTree,
+    DTreeBuilder,
     DTreeClassifier,
 };
 

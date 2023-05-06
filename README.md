@@ -133,12 +133,11 @@ fn main() {
         .tolerance(tol); // Set the tolerance parameter.
 
 
-    // Initialize Weak Learner
-    // For decision tree, the default `max_depth` is `None` so that 
-    // The tree grows extremely large.
-    let weak_learner = DTree::init(&sample)
-        .max_depth(2) // Specify the max depth (default is not specified)
-        .criterion(Criterion::Edge); // Choose the split criterion
+    // Construct `DTree` Weak Learner from `DTreeBuilder`.
+    let weak_learner = DTreeBuilder::new(&sample)
+        .max_depth(3) // Specify the max depth (default is 2)
+        .criterion(Criterion::Edge) // Choose the split criterion
+        .build(); // Build `DTree`.
 
 
     // Run boosting algorithm
@@ -155,6 +154,10 @@ fn main() {
     let prediction = f.predict(&sample, i);
 }
 ```
+
+
+**Note:** Currently, Regression tree is under re-desining,
+so one cannot use it in similarly.
 
 
 If you use boosting for soft margin optimization, 

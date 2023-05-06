@@ -41,6 +41,7 @@ pub use crate::weak_learner::{
 
     // Classification ---------------------------
     DTree,
+    DTreeBuilder,
     DTreeClassifier,
     Criterion,
 
