@@ -11,9 +11,6 @@ pub mod adaboostv;
 #[cfg(feature="extended")]
 pub mod totalboost;
 
-// TODO PerturbedLPBoost is an experimental boosting.
-#[cfg(feature="extended")]
-
 pub mod cerlpboost;
 #[cfg(feature="extended")]
 pub mod lpboost;
@@ -55,6 +52,7 @@ pub use self::erlpboost::ERLPBoost;
 pub use self::softboost::SoftBoost;
 
 pub use self::smoothboost::SmoothBoost;
+
 pub use self::cerlpboost::CERLPBoost;
 
 #[cfg(feature="extended")]
