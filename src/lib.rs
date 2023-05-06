@@ -184,6 +184,7 @@ pub use weak_learner::WeakLearner;
 // Export the instances of the `WeakLearner` trait.
 pub use weak_learner::{
     DTree,
+    DTreeBuilder,
     Criterion,
 
     // WLUnion,

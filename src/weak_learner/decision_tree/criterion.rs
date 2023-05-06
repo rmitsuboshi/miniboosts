@@ -11,9 +11,10 @@ use std::collections::HashMap;
 
 use crate::Sample;
 use crate::weak_learner::common::{
-    group_by_x,
-    WeightedFeature,
+    type_and_struct::*,
 };
+
+use super::bin::*;
 
 
 /// Edge
@@ -170,6 +171,7 @@ impl Criterion {
     /// Returns the best splitting rule based on the criterion.
     pub(super) fn best_split<'a>(
         &self,
+        bins_map: &HashMap<&'a str, Bins>,
         sample: &'a Sample,
         dist: &[f64],
         idx: &[usize],
@@ -181,11 +183,13 @@ impl Criterion {
             Criterion::Entropy => {
                 sample.features()
                     .iter()
-                    .map(|column| {
-                        let items = group_by_x(column, target, idx, dist);
-                        let (threshold, decrease) = split_by_entropy(items);
+                    .map(|feature| {
+                        let name = feature.name();
+                        let bin = bins_map.get(name).unwrap();
+                        let pack = bin.pack(idx, feature, target, dist);
+                        let (threshold, score) = split_by_entropy(pack);
 
-                        (decrease, column.name(), threshold)
+                        (score, name, threshold)
                     })
                     .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
@@ -194,11 +198,13 @@ impl Criterion {
             Criterion::Edge => {
                 sample.features()
                     .iter()
-                    .map(|column| {
-                        let items = group_by_x(column, target, idx, dist);
-                        let (threshold, decrease) = split_by_edge(items);
+                    .map(|feature| {
+                        let name = feature.name();
+                        let bin = bins_map.get(name).unwrap();
+                        let pack = bin.pack(idx, feature, target, dist);
+                        let (threshold, score) = split_by_edge(pack);
 
-                        (decrease, column.name(), threshold)
+                        (score, name, threshold)
                     })
                     .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
@@ -207,11 +213,13 @@ impl Criterion {
             Criterion::Gini => {
                 sample.features()
                     .iter()
-                    .map(|column| {
-                        let items = group_by_x(column, target, idx, dist);
-                        let (threshold, decrease) = split_by_gini(items);
+                    .map(|feature| {
+                        let name = feature.name();
+                        let bin = bins_map.get(name).unwrap();
+                        let pack = bin.pack(idx, feature, target, dist);
+                        let (threshold, score) = split_by_gini(pack);
 
-                        (decrease, column.name(), threshold)
+                        (score, name, threshold)
                     })
                     .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
@@ -222,242 +230,161 @@ impl Criterion {
 }
 
 
-fn split_by_entropy(ws: Vec<WeightedFeature>) -> (f64, EntropicImpurity) {
-    let total_weight = ws.iter()
-        .map(|wf| wf.total_weight())
+fn split_by_entropy(pack: Vec<(Bin, LabelToWeight)>)
+    -> (f64, EntropicImpurity)
+{
+    let weight_sum = pack.iter()
+        .map(|(_, mp)| mp.values().sum::<f64>())
         .sum::<f64>();
 
-    let mut left = ImpurityKeeper::empty();
-    let mut right = ImpurityKeeper::new(&ws[..]);
 
+    let mut left_weight = LabelToWeight::new();
+    let mut left_weight_sum = 0.0;
+    let mut right_weight = LabelToWeight::new();
+    let mut right_weight_sum = 0.0;
 
-    let mut iter = ws.into_iter().peekable();
-    // These variables are used for the best splitting rules.
-    let mut best_decrease = right.entropic_impurity();
-    let mut best_threshold = iter.peek()
-        .map(|wf| wf.feature_val - 1.0_f64)
-        .unwrap_or(f64::MIN);
-
-    while let Some(wf) = iter.next() {
-        let curr_x = wf.feature_val;
-        left.insert(&wf);
-        right.delete(&wf);
-
-
-        let next_x = iter.peek()
-            .map(|next_wf| next_wf.feature_val)
-            .unwrap_or(curr_x + 2.0_f64);
-
-        let threshold = (curr_x + next_x) / 2.0;
-
-        assert!(total_weight > 0.0);
-
-        let lp = left.total / total_weight;
-        let rp = (1.0 - lp).max(0.0);
-
-
-        let decrease = EntropicImpurity::from(lp) * left.entropic_impurity()
-            + EntropicImpurity::from(rp) * right.entropic_impurity();
-
-
-        if decrease < best_decrease {
-            best_decrease = decrease;
-            best_threshold = threshold;
+    for (_, mp) in pack.iter() {
+        for (y, w) in mp.iter() {
+            let entry = right_weight.entry(*y).or_insert(0.0);
+            *entry += w;
+            right_weight_sum += w;
         }
     }
 
+    let mut best_score = entropic_impurity(&right_weight);
+    let mut best_threshold = f64::MIN;
 
-    (best_threshold, best_decrease)
+    for (bin, map) in pack {
+        for (y, w) in map {
+            let entry = left_weight.entry(y).or_insert(0.0);
+            *entry += w;
+            left_weight_sum += w;
+            let entry = right_weight.get_mut(&y).unwrap();
+            *entry -= w;
+            right_weight_sum -= w;
+        }
+        let lp = left_weight_sum / weight_sum;
+        let rp = (1.0 - lp).max(0.0);
+
+        let left_impurity = entropic_impurity(&left_weight);
+        let right_impurity = entropic_impurity(&right_weight);
+        let score = lp * left_impurity + rp * right_impurity;
+
+
+        if score < best_score {
+            best_score = score;
+            best_threshold = bin.0.end;
+        }
+    }
+    let best_score = EntropicImpurity::from(best_score);
+    (best_threshold, best_score)
 }
 
 
-fn split_by_edge(ws: Vec<WeightedFeature>) -> (f64, Edge) {
+fn split_by_edge(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Edge) {
     // Compute the edge of the hypothesis that predicts `+1`
     // for all instances.
-    let mut edge = ws.iter()
-        .map(|wf| {
-            wf.label_to_weight.iter()
+    let mut edge = pack.iter()
+        .map(|(_, map)| {
+            map.iter()
                 .map(|(y, d)| *y as f64 * d)
                 .sum::<f64>()
         })
         .sum::<f64>();
-    let mut iter = ws.into_iter().peekable();
+
+    let mut best_edge = edge.abs();
+    let mut best_threshold = f64::MIN;
 
 
-    let mut best_edge;
-    let mut best_threshold;
-    // best threshold is the smallest value.
-    // we define the initial threshold as the smallest value minus 1.0
-    best_threshold = iter.peek()
-        .map(|wf| wf.feature_val - 1.0_f64)
-        .unwrap_or(f64::MIN);
-
-    // best edge
-    best_edge = edge.abs();
-
-    while let Some(wf) = iter.next() {
-        let left = wf.feature_val;
-        edge -= 2.0 * wf.label_to_weight.iter()
-            .map(|(y, d)| *y as f64 * d)
+    for (bin, map) in pack {
+        edge -= 2.0 * map.into_iter()
+            .map(|(y, d)| y as f64 * d)
             .sum::<f64>();
-
-
-        let right = iter.peek()
-            .map(|wf_next| wf_next.feature_val)
-            .unwrap_or(left + 2.0_f64);
-
-        let threshold = (left + right) / 2.0;
 
 
         if best_edge < edge.abs() {
             best_edge = edge.abs();
-            best_threshold = threshold;
+            best_threshold = bin.0.end;
         }
     }
-
-    (best_threshold, Edge::from(best_edge))
+    let best_edge = Edge::from(best_edge);
+    (best_threshold, best_edge)
 }
 
 
-fn split_by_gini(ws: Vec<WeightedFeature>) -> (f64, Gini) {
-    let total_weight = ws.iter()
-        .map(|wf| wf.total_weight())
+fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Gini) {
+    let weight_sum = pack.iter()
+        .map(|(_, mp)| mp.values().sum::<f64>())
         .sum::<f64>();
 
-    let mut left = ImpurityKeeper::empty();
-    let mut right = ImpurityKeeper::new(&ws[..]);
 
+    let mut left_weight = LabelToWeight::new();
+    let mut left_weight_sum = 0.0;
+    let mut right_weight = LabelToWeight::new();
+    let mut right_weight_sum = 0.0;
 
-    let mut iter = ws.into_iter().peekable();
-    // These variables are used for the best splitting rules.
-    let mut best_decrease = right.gini_impurity();
-    let mut best_threshold = iter.peek()
-        .map(|wf| wf.feature_val - 1.0_f64)
-        .unwrap_or(f64::MIN);
+    for (_, mp) in pack.iter() {
+        for (y, w) in mp.iter() {
+            let entry = right_weight.entry(*y).or_insert(0.0);
+            *entry += w;
+            right_weight_sum += w;
+        }
+    }
 
-    while let Some(wf) = iter.next() {
-        let curr_x = wf.feature_val;
-        left.insert(&wf);
-        right.delete(&wf);
+    let mut best_score = gini_impurity(&right_weight);
+    let mut best_threshold = f64::MIN;
 
-
-        let next_x = iter.peek()
-            .map(|next_wf| next_wf.feature_val)
-            .unwrap_or(curr_x + 2.0_f64);
-
-        let threshold = (curr_x + next_x) / 2.0;
-
-        assert!(total_weight > 0.0);
-
-        let lp = left.total / total_weight;
+    for (bin, map) in pack {
+        for (y, w) in map {
+            let entry = left_weight.entry(y).or_insert(0.0);
+            *entry += w;
+            left_weight_sum += w;
+            let entry = right_weight.get_mut(&y).unwrap();
+            *entry -= w;
+            right_weight_sum -= w;
+        }
+        let lp = left_weight_sum / weight_sum;
         let rp = (1.0 - lp).max(0.0);
 
+        let left_impurity = gini_impurity(&left_weight);
+        let right_impurity = gini_impurity(&right_weight);
+        let score = lp * left_impurity + rp * right_impurity;
 
-        let decrease = Gini::from(lp) * left.gini_impurity()
-            + Gini::from(rp) * right.gini_impurity();
 
-
-        if decrease < best_decrease {
-            best_decrease = decrease;
-            best_threshold = threshold;
+        if score < best_score {
+            best_score = score;
+            best_threshold = bin.0.end;
         }
     }
-
-
-    (best_threshold, best_decrease)
+    let best_score = Gini::from(best_score);
+    (best_threshold, best_score)
 }
 
 
-/// Some information that are useful in `produce(..)`.
-struct ImpurityKeeper {
-    map: HashMap<i64, f64>,
-    total: f64,
+/// Returns the entropic-impurity of the given map.
+#[inline(always)]
+pub(self) fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
+    let total = map.values().sum::<f64>();
+    if total <= 0.0 || map.is_empty() { return 0.0.into(); }
+
+    map.par_iter()
+        .map(|(_, &p)| {
+            let r = p / total;
+            if r <= 0.0 { 0.0 } else { -r * r.ln() }
+        })
+        .sum::<f64>()
 }
 
 
-impl ImpurityKeeper {
-    /// Build an empty instance of `ImpurityKeeper`.
-    #[inline(always)]
-    pub(self) fn empty() -> Self {
-        Self {
-            map: HashMap::new(),
-            total: 0.0_f64,
-        }
-    }
+/// Returns the gini-impurity of the given map.
+#[inline(always)]
+pub(self) fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
+    let total = map.values().sum::<f64>();
+    if total <= 0.0 || map.is_empty() { return 0.0.into(); }
 
+    let correct = map.par_iter()
+        .map(|(_, &w)| (w / total).powi(2))
+        .sum::<f64>();
 
-    /// Build an instance of `ImpurityKeeper`.
-    #[inline(always)]
-    pub(self) fn new(ws: &[WeightedFeature]) -> Self {
-        let mut total = 0.0_f64;
-        let mut map: HashMap<i64, f64> = HashMap::new();
-        ws.iter()
-            .for_each(|wf| {
-                total += wf.total_weight();
-                wf.label_to_weight.iter()
-                    .for_each(|(y, d)| {
-                        let cnt = map.entry(*y).or_insert(0.0);
-                        *cnt += d;
-                    });
-            });
-
-        Self { map, total }
-    }
-
-
-    /// Returns the entropic-impurity of this node.
-    #[inline(always)]
-    pub(self) fn entropic_impurity(&self) -> EntropicImpurity {
-        if self.total <= 0.0 || self.map.is_empty() { return 0.0.into(); }
-
-        self.map.par_iter()
-            .map(|(_, &p)| {
-                let r = p / self.total;
-                if r <= 0.0 { 0.0 } else { -r * r.ln() }
-            })
-            .sum::<f64>()
-            .into()
-    }
-
-
-    /// Returns the gini-impurity of this node.
-    #[inline(always)]
-    pub(self) fn gini_impurity(&self) -> Gini {
-        if self.total <= 0.0 || self.map.is_empty() { return 0.0.into(); }
-
-        let correct = self.map.par_iter()
-            .map(|(_, &w)| (w / self.total).powi(2))
-            .sum::<f64>();
-
-        Gini::from(1.0 - correct)
-    }
-
-
-    /// Increase the number of positive examples by one.
-    pub(self) fn insert(&mut self, item: &WeightedFeature) {
-        item.label_to_weight.iter()
-            .for_each(|(y, d)| {
-                let dd = self.map.entry(*y).or_insert(0.0);
-                *dd += d;
-            });
-        self.total += item.total_weight();
-    }
-
-
-    /// Decrease the number of positive examples by one.
-    pub(self) fn delete(&mut self, item: &WeightedFeature) {
-        let mut to_be_removed = Vec::new();
-        item.label_to_weight.iter()
-            .for_each(|(y, d)| {
-                if let Some(val) = self.map.get_mut(y) {
-                    *val -= d;
-                    self.total -= d;
-
-                    if *val <= 0.0 { to_be_removed.push(y); }
-                }
-            });
-
-        to_be_removed.into_iter()
-            .for_each(|y| { self.map.remove(y); });
-    }
+    (1.0 - correct).max(0.0)
 }
