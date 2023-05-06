@@ -224,9 +224,10 @@ fn main() {
 
 
     let booster = LPBoost::init(&train);
-    let weak_learner = DTree::init(&train)
+    let weak_learner = DTreeBuilder::new(&train)
         .max_depth(2)
-        .criterion(Criterion::Entropy);
+        .criterion(Criterion::Entropy)
+        .build();
 
     // Set the objective function.
     // One can use your own function by implementing ObjectiveFunction trait.
