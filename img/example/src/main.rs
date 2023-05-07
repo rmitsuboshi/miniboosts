@@ -51,10 +51,12 @@ fn main() {
     // let objective = SoftMarginObjective::new(1.0);
     // println!("Running AdaBoost");
     // let booster = AdaBoost::init(&train)
+    //     .force_quit_at(300)
     //     .tolerance(TOLERANCE);
-    // let tree = DTree::init(&train)
+    // let tree = DTreeBuilder::new(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
+    //     .criterion(Criterion::Entropy)
+    //     .build();
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
@@ -65,10 +67,12 @@ fn main() {
     // let objective = SoftMarginObjective::new(1.0);
     // println!("Running AdaBoostV");
     // let booster = AdaBoostV::init(&train)
+    //     .force_quit_at(300)
     //     .tolerance(TOLERANCE);
-    // let tree = DTree::init(&train)
+    // let tree = DTreeBuilder::new(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
+    //     .criterion(Criterion::Entropy)
+    //     .build();
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
@@ -80,33 +84,35 @@ fn main() {
     // println!("Running TotalBoost");
     // let booster = TotalBoost::init(&train)
     //     .tolerance(TOLERANCE);
-    // let tree = DTree::init(&train)
+    // let tree = DTreeBuilder::new(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
+    //     .criterion(Criterion::Entropy)
+    //     .build();
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
     // let _ = logger.run("totalboost.csv");
 
 
-    // // Run SmoothBoost
-    // // `gamma` is the weak-learner guarantee.
-    // // For this case, the following holds;
-    // // for any distribution, the weak learner returns a hypothesis
-    // // such that the edge is at least 0.006.
-    // // This value `0.006` is derived from the LPBoost.
-    // let objective = SoftMarginObjective::new(nu);
-    // println!("Running SmoothBoost");
-    // let booster = SmoothBoost::init(&train)
-    //     .tolerance(TOLERANCE)
-    //     .gamma(0.006);
-    // let tree = DTree::init(&train)
-    //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
-    // let mut logger = Logger::new(
-    //     booster, tree, objective, zero_one_loss, &train, &test
-    // );
-    // let _ = logger.run("smoothboost.csv");
+    // Run SmoothBoost
+    // `gamma` is the weak-learner guarantee.
+    // For this case, the following holds;
+    // for any distribution, the weak learner returns a hypothesis
+    // such that the edge is at least 0.006.
+    // This value `0.006` is derived from the LPBoost.
+    let objective = SoftMarginObjective::new(nu);
+    println!("Running SmoothBoost");
+    let booster = SmoothBoost::init(&train)
+        .tolerance(TOLERANCE)
+        .gamma(0.006);
+    let tree = DTreeBuilder::new(&train)
+        .max_depth(2)
+        .criterion(Criterion::Entropy)
+        .build();
+    let mut logger = Logger::new(
+        booster, tree, objective, zero_one_loss, &train, &test
+    );
+    let _ = logger.run("smoothboost.csv");
 
 
     // // Run SoftBoost
@@ -115,9 +121,10 @@ fn main() {
     // let booster = SoftBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .nu(nu);
-    // let tree = DTree::init(&train)
+    // let tree = DTreeBuilder::new(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
+    //     .criterion(Criterion::Entropy)
+    //     .build();
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
@@ -130,9 +137,10 @@ fn main() {
     // let booster = LPBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .nu(nu);
-    // let tree = DTree::init(&train)
+    // let tree = DTreeBuilder::new(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
+    //     .criterion(Criterion::Entropy)
+    //     .build();
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
@@ -145,13 +153,31 @@ fn main() {
     // let booster = ERLPBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .nu(nu);
-    // let tree = DTree::init(&train)
+    // let tree = DTreeBuilder::new(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
+    //     .criterion(Criterion::Entropy)
+    //     .build();
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
     // let _ = logger.run("erlpboost.csv");
+
+
+    // // Run MLPBoost
+    // let objective = SoftMarginObjective::new(nu);
+    // println!("Running MLPBoost");
+    // let booster = MLPBoost::init(&train)
+    //     .tolerance(TOLERANCE)
+    //     // .frank_wolfe(FWType::LineSearch)
+    //     .nu(nu);
+    // let tree = DTreeBuilder::new(&train)
+    //     .max_depth(2)
+    //     .criterion(Criterion::Entropy)
+    //     .build();
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // );
+    // let _ = logger.run("mlpboost.csv");
 
 
     // // Run Corrective ERLPBoost
@@ -160,27 +186,12 @@ fn main() {
     // let booster = CERLPBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .nu(nu);
-    // let tree = DTree::init(&train)
+    // let tree = DTreeBuilder::new(&train)
     //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
+    //     .criterion(Criterion::Entropy)
+    //     .build();
     // let mut logger = Logger::new(
     //     booster, tree, objective, zero_one_loss, &train, &test
     // );
     // let _ = logger.run("cerlpboost.csv");
-
-
-    // Run MLPBoost
-    // let objective = SoftMarginObjective::new(nu);
-    // println!("Running MLPBoost");
-    // let booster = MLPBoost::init(&train)
-    //     .tolerance(TOLERANCE)
-    //     // .frank_wolfe(FWType::LineSearch)
-    //     .nu(nu);
-    // let tree = DTree::init(&train)
-    //     .max_depth(2)
-    //     .criterion(Criterion::Entropy);
-    // let mut logger = Logger::new(
-    //     booster, tree, objective, zero_one_loss, &train, &test
-    // );
-    // let _ = logger.run("mlpboost.csv");
 }

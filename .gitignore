@@ -2,8 +2,11 @@
 
 .DS_Store
 local_test.rs
-.ipynb_checkpoints/
-img/csv/
+.ipynb_checkpoints
+img/csv
+img/example/target
+
+tests/dataset
 
 # Added by cargo
 #
