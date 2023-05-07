@@ -285,12 +285,11 @@ impl Sample {
 
         let n_features = self.shape().1;
         let n_names = names.len();
-        if n_features != n_names {
-            panic!(
-                "The number of names is \
-                not equal to the one of `self.features`"
-            );
-        }
+        assert_eq!(
+            n_names, n_features,
+            "The number of names is \
+            not equal to the one of `self.features.`"
+        );
 
         let old_names = names.iter()
             .zip(&mut self.features[..])

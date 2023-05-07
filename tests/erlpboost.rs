@@ -19,12 +19,14 @@ pub mod erlpboost_tests {
         let mut booster = ERLPBoost::init(&sample)
             .tolerance(0.1)
             .nu(0.1 * n_sample);
-        let weak_learner = DTree::init(&sample)
-            .max_depth(3)
-            .criterion(Criterion::Entropy);
+
+        let wl = DTreeBuilder::new(&sample)
+            .max_depth(2)
+            .criterion(Criterion::Entropy)
+            .build();
 
 
-        let f = booster.run(&weak_learner);
+        let f = booster.run(&wl);
         let predictions = f.predict_all(&sample);
 
         let loss = sample.target()

@@ -15,7 +15,10 @@ use crate::sample::{
 };
 
 
-const EPS: f64 = 0.01;
+const EPS: f64 = 0.001;
+/// A tolerance parameter for numerical error.
+/// This program ignores the difference smaller than this value.
+const NUM_TOLERANCE: f64 = 1e-9;
 
 
 /// Binning: A feature processing.
@@ -102,8 +105,8 @@ impl Bins {
         // If the minimum value equals to the maximum one,
         // slightly perturb them.
         if min == max {
-            min = min - 1e-3;
-            max = max + 1e-3;
+            min = min - EPS;
+            max = max + EPS;
         }
 
 
@@ -118,7 +121,7 @@ impl Bins {
 
             // Numerical error leads an unexpected split.
             // So, we ignore the bin with width smaller than 1e-9.
-            if (right - max).abs() < 1e-9 { break; }
+            if (right - max).abs() < NUM_TOLERANCE { break; }
 
             left = right;
         }
@@ -143,14 +146,6 @@ impl Bins {
             });
 
 
-        // If the minimum value equals to the maximum one,
-        // slightly perturb them.
-        if min == max {
-            min = min - 1e-3;
-            min = min + 1e-3;
-        }
-
-
         if min > 0.0 && feature.has_zero() {
             min = 0.0;
         }
@@ -158,6 +153,14 @@ impl Bins {
 
         if max < 0.0 && feature.has_zero() {
             max = 0.0;
+        }
+
+
+        // If the minimum value equals to the maximum one,
+        // slightly perturb them.
+        if min == max {
+            min = min - EPS;
+            max = max + EPS;
         }
 
 
@@ -169,6 +172,10 @@ impl Bins {
         while left < max {
             let right = left + intercept;
             bins.push(Bin::new(left..right));
+
+            // Numerical error leads an unexpected split.
+            // So, we ignore the bin with width smaller than 1e-9.
+            if (right - max).abs() < NUM_TOLERANCE { break; }
 
             left = right;
         }

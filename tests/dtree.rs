@@ -39,8 +39,9 @@ fn from_raw_representation() {
     let sample = Sample::from_dataframe(df, target).unwrap();
 
 
-    let dtree = DTree::init(&sample)
-        .criterion(Criterion::Entropy);
+    let dtree = DTreeBuilder::new(&sample)
+        .criterion(Criterion::Entropy)
+        .build();
     let dist = vec![1.0/7.0; 7];
     let f = dtree.produce(&sample, &dist[..]);
 
@@ -63,8 +64,9 @@ fn from_lightsvm() {
     sample.replace_names(["x", "y"]);
     println!("{sample:?}");
 
-    let dtree = DTree::init(&sample)
-        .criterion(Criterion::Entropy);
+    let dtree = DTreeBuilder::new(&sample)
+        .criterion(Criterion::Entropy)
+        .build();
     let dist = vec![1.0/7.0; 7];
     let f = dtree.produce(&sample, &dist[..]);
 
