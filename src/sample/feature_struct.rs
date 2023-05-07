@@ -246,7 +246,7 @@ impl SparseFeature {
 
     /// Returns `true` if `self.len()` is equals to `0`.
     pub fn is_empty(&self) -> bool {
-        self.n_sample == 0
+        self.sample.is_empty()
     }
 
 

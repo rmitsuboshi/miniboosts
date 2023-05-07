@@ -20,12 +20,14 @@ pub mod smoothboost_tests {
         let mut booster = SmoothBoost::init(&sample)
             .tolerance(0.1)
             .gamma(0.1);
-        let weak_learner = DTree::init(&sample)
-            .max_depth(3)
-            .criterion(Criterion::Entropy);
+
+        let wl = DTreeBuilder::new(&sample)
+            .max_depth(2)
+            .criterion(Criterion::Entropy)
+            .build();
 
 
-        let f = booster.run(&weak_learner);
+        let f = booster.run(&wl);
         let predictions = f.predict_all(&sample);
 
         let loss = sample.target()

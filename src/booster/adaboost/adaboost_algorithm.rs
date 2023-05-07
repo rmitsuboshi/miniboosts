@@ -100,6 +100,11 @@ pub struct AdaBoost<'a, F> {
     // Max iteration until AdaBoost guarantees the optimality.
     max_iter: usize,
 
+
+    // Optional. If this value is `Some(it)`,
+    // the algorithm terminates after `it` iterations.
+    force_quit_at: Option<usize>,
+
     // Terminated iteration.
     // AdaBoost terminates in eary step 
     // if the training set is linearly separable.
@@ -124,7 +129,7 @@ impl<'a, F> AdaBoost<'a, F> {
             hypotheses: Vec::new(),
 
             max_iter: usize::MAX,
-
+            force_quit_at: None,
             terminated: usize::MAX,
         }
     }
@@ -140,6 +145,15 @@ impl<'a, F> AdaBoost<'a, F> {
         let n_sample = self.sample.shape().0 as f64;
 
         (n_sample.ln() / self.tolerance.powi(2)) as usize
+    }
+
+
+    /// Force quits after `it` iterations.
+    /// Note that if `it` is smaller than the iteration bound
+    /// for AdaBoost, the returned hypothesis has no guarantee.
+    pub fn force_quit_at(mut self, it: usize) -> Self {
+        self.force_quit_at = Some(it);
+        self
     }
 
 
@@ -224,6 +238,10 @@ impl<F> Booster<F> for AdaBoost<'_, F>
 
 
         self.max_iter = self.max_loop();
+
+        if let Some(it) = self.force_quit_at {
+            self.max_iter = it;
+        }
     }
 
 

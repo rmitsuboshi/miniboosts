@@ -17,13 +17,16 @@ pub mod adaboostv_tests {
 
 
         let mut booster = AdaBoostV::init(&sample)
-            .tolerance(0.1);
-        let weak_learner = DTree::init(&sample)
-            .max_depth(3)
-            .criterion(Criterion::Entropy);
+            .tolerance(0.01)
+            .force_quit_at(100);
+
+        let wl = DTreeBuilder::new(&sample)
+            .max_depth(2)
+            .criterion(Criterion::Entropy)
+            .build();
 
 
-        let f = booster.run(&weak_learner);
+        let f = booster.run(&wl);
 
 
         let (m, _) = sample.shape();

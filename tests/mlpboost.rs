@@ -20,12 +20,14 @@ pub mod mlpboost_tests {
             .tolerance(0.1)
             .frank_wolfe(FWType::ShortStep)
             .nu(0.1 * n_sample);
-        let weak_learner = DTree::init(&sample)
+
+        let wl = DTreeBuilder::new(&sample)
             .max_depth(2)
-            .criterion(Criterion::Entropy);
+            .criterion(Criterion::Entropy)
+            .build();
 
 
-        let f = booster.run(&weak_learner);
+        let f = booster.run(&wl);
         let predictions = f.predict_all(&sample);
 
         let loss = sample.target()

@@ -105,6 +105,10 @@ pub struct AdaBoostV<'a, F> {
 
     max_iter: usize,
 
+    // Optional. If this value is `Some(it)`,
+    // the algorithm terminates after `it` iterations.
+    force_quit_at: Option<usize>,
+
     terminated: usize,
 }
 
@@ -132,6 +136,7 @@ impl<'a, F> AdaBoostV<'a, F> {
 
             max_iter: usize::MAX,
             terminated: usize::MAX,
+            force_quit_at: None,
         }
     }
 
@@ -157,6 +162,15 @@ impl<'a, F> AdaBoostV<'a, F> {
         let m = self.dist.len();
 
         (2.0 * (m as f64).ln() / self.tolerance.powi(2)) as usize
+    }
+
+
+    /// Force quits after `it` iterations.
+    /// Note that if `it` is smaller than the iteration bound
+    /// for AdaBoost, the returned hypothesis has no guarantee.
+    pub fn force_quit_at(mut self, it: usize) -> Self {
+        self.force_quit_at = Some(it);
+        self
     }
 
 
@@ -237,6 +251,10 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
 
 
         self.max_iter = self.max_loop();
+
+        if let Some(it) = self.force_quit_at {
+            self.max_iter = it;
+        }
     }
 
 

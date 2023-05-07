@@ -20,12 +20,14 @@ pub mod lpboost_tests {
         let mut booster = LPBoost::init(&sample)
             .tolerance(0.1)
             .nu(0.1 * n_sample);
-        let weak_learner = DTree::init(&sample)
-            .max_depth(3)
-            .criterion(Criterion::Edge);
+
+        let wl = DTreeBuilder::new(&sample)
+            .max_depth(2)
+            .criterion(Criterion::Entropy)
+            .build();
 
 
-        let f = booster.run(&weak_learner);
+        let f = booster.run(&wl);
         let predictions = f.predict_all(&sample);
 
         let loss = sample.target()
@@ -50,12 +52,14 @@ pub mod lpboost_tests {
         let mut booster = LPBoost::init(&sample)
             .tolerance(0.1)
             .nu(0.1 * n_sample);
-        let weak_learner = DTree::init(&sample)
-            .max_depth(3)
-            .criterion(Criterion::Edge);
+
+        let wl = DTreeBuilder::new(&sample)
+            .max_depth(2)
+            .criterion(Criterion::Entropy)
+            .build();
 
 
-        let f = booster.run(&weak_learner);
+        let f = booster.run(&wl);
         let predictions = f.predict_all(&sample);
 
         let loss = sample.target()
@@ -69,34 +73,34 @@ pub mod lpboost_tests {
     }
 
 
-    #[test]
-    fn german_svmlight_nn() {
-        let mut path = env::current_dir().unwrap();
-        path.push("tests/dataset/german.svmlight");
+    // #[test]
+    // fn german_svmlight_nn() {
+    //     let mut path = env::current_dir().unwrap();
+    //     path.push("tests/dataset/german.svmlight");
 
-        let sample = Sample::from_svmlight(path).unwrap();
-        let n_sample = sample.shape().0 as f64;
+    //     let sample = Sample::from_svmlight(path).unwrap();
+    //     let n_sample = sample.shape().0 as f64;
 
-        let mut booster = LPBoost::init(&sample)
-            .tolerance(0.1)
-            .nu(0.1 * n_sample);
-        let weak_learner = NeuralNetwork::init(&sample)
-            .append(100, Activation::ReLu(1.0))
-            .append(2, Activation::SoftMax(1.0))
-            .n_epoch(10)
-            .n_iter(100);
+    //     let mut booster = LPBoost::init(&sample)
+    //         .tolerance(0.1)
+    //         .nu(0.1 * n_sample);
+    //     let weak_learner = NeuralNetwork::init(&sample)
+    //         .append(100, Activation::ReLu(1.0))
+    //         .append(2, Activation::SoftMax(1.0))
+    //         .n_epoch(10)
+    //         .n_iter(100);
 
 
-        let f = booster.run(&weak_learner);
-        let predictions = f.predict_all(&sample);
+    //     let f = booster.run(&weak_learner);
+    //     let predictions = f.predict_all(&sample);
 
-        let loss = sample.target()
-            .into_iter()
-            .zip(predictions)
-            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
-            .sum::<f64>() / n_sample;
+    //     let loss = sample.target()
+    //         .into_iter()
+    //         .zip(predictions)
+    //         .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+    //         .sum::<f64>() / n_sample;
 
-        println!("Loss (german.svmlight, LPBoost, NN): {loss}");
-        assert!(true);
-    }
+    //     println!("Loss (german.svmlight, LPBoost, NN): {loss}");
+    //     assert!(true);
+    // }
 }

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 /// The number of bins set as default.
 pub const DEFAULT_NBIN: usize = 255;
+/// The maxmial depth set as default.
 pub const DEFAULT_MAX_DEPTH: usize = 2;
 
 
