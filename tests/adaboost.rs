@@ -25,6 +25,7 @@ pub mod adaboost_tests {
             .max_depth(2)
             .criterion(Criterion::Entropy)
             .build();
+        println!("{wl}");
 
 
         let f = booster.run(&wl);
@@ -39,7 +40,7 @@ pub mod adaboost_tests {
             .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
             .sum::<f64>() / m as f64;
 
-        println!("Loss (german.csv, AdaBoost, DTree): {loss}");
+        println!("Training Loss: {loss}");
         assert!(true);
     }
 }

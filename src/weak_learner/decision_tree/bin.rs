@@ -1,4 +1,5 @@
 use rayon::prelude::*;
+use std::fmt;
 use std::ops::Range;
 use std::cmp::Ordering;
 
@@ -45,6 +46,16 @@ impl Bin {
 pub struct Bins(Vec<Bin>);
 
 impl Bins {
+    /// Returns the number of bins.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+
+    /// Returns whether the bins are empty or not.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
     /// Cut the given `Feature` into `n_bins` bins.
     /// This method naively cut the given slice with same width.
     #[inline(always)]
@@ -405,3 +416,64 @@ impl Bins {
 // 
 //     dst.push((value, count));
 // }
+
+
+const PRINT_BIN_SIZE: usize = 3;
+
+impl fmt::Display for Bins {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bins = &self.0;
+        let n_bins = bins.len();
+        if n_bins > PRINT_BIN_SIZE {
+            let head = bins[..2].iter()
+                .map(|bin| format!("{bin}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let tail = bins.last()
+                .map(|bin| format!("{bin}"))
+                .unwrap();
+            write!(f, "{head}, ..., {tail}")
+        } else {
+            let line = bins.iter()
+                .map(|bin| format!("{}", bin))
+                .collect::<Vec<_>>()
+                .join(", ");
+            write!(f, "{line}")
+        }
+    }
+}
+
+impl fmt::Display for Bin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let start = if self.0.start == f64::MIN {
+            String::from("-Inf")
+        } else {
+            let start = self.0.start;
+            let sgn = if start > 0.0 {
+                '+'
+            } else if start < 0.0 {
+                '-'
+            } else {
+                ' '
+            };
+            let start = start.abs();
+            format!("{sgn}{start: >.2}")
+        };
+        let end = if self.0.end == f64::MAX {
+            String::from("+Inf")
+        } else {
+            let end = self.0.end;
+            let sgn = if end > 0.0 {
+                '+'
+            } else if end < 0.0 {
+                '-'
+            } else {
+                ' '
+            };
+            let end = end.abs();
+            format!("{sgn}{end: >.2}")
+        };
+
+        write!(f, "[{start}, {end})")
+    }
+}
