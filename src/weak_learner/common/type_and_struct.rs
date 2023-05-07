@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use std::{ops, cmp};
+use std::{fmt, cmp, ops};
 use std::collections::HashMap;
 
 
@@ -98,6 +98,14 @@ impl cmp::PartialOrd<Self> for LossValue {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub(crate) struct Depth(usize);
+
+
+impl fmt::Display for Depth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let depth = self.0;
+        write!(f, "{depth}")
+    }
+}
 
 
 impl From<usize> for Depth {

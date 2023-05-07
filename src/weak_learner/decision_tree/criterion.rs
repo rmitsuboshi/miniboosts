@@ -5,6 +5,7 @@ use rayon::prelude::*;
 
 use serde::{Serialize, Deserialize};
 
+use std::fmt;
 use std::cmp::Ordering;
 use std::ops::{Mul, Add};
 use std::collections::HashMap;
@@ -164,6 +165,19 @@ pub enum Criterion {
     Gini,
     // /// Twoing rule.
     // Twoing,
+}
+
+
+impl fmt::Display for Criterion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Entropy => "Entropy",
+            Self::Edge => "Edge (Weighted accuracy)",
+            Self::Gini => "Gini index",
+        };
+
+        write!(f, "{name}")
+    }
 }
 
 

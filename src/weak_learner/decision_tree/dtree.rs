@@ -17,6 +17,7 @@ use super::{
 };
 
 
+use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -377,4 +378,46 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
     let confidence = Confidence::from(confidence);
     let loss = LossValue::from(loss);
     (confidence, loss)
+}
+
+
+impl fmt::Display for DTree<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "\
+            ----------\n\
+            # Decision Tree Weak Learner\n\n\
+            - Max depth: {}\n\
+            - Splitting criterion: {}\n\
+            - Bins:\
+            ",
+            self.max_depth,
+            self.criterion,
+        )?;
+
+
+        let width = self.bins.keys()
+            .map(|key| key.len())
+            .max()
+            .expect("Tried to print bins, but no features are found");
+        let max_bin_width = self.bins.values()
+            .map(|bin| bin.len().ilog10() as usize)
+            .max()
+            .expect("Tried to print bins, but no features are found")
+            + 1;
+        for (feat_name, feat_bins) in self.bins.iter() {
+            let n_bins = feat_bins.len();
+            writeln!(
+                f,
+                "\
+                \t* [{feat_name: <width$} | \
+                {n_bins: >max_bin_width$} bins]:  \
+                {feat_bins}\
+                "
+            )?;
+        }
+
+        write!(f, "----------")
+    }
 }
