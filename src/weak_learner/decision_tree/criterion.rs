@@ -11,11 +11,10 @@ use std::ops::{Mul, Add};
 use std::collections::HashMap;
 
 use crate::Sample;
+use super::bin::*;
 use crate::weak_learner::common::{
     type_and_struct::*,
 };
-
-use super::bin::*;
 
 
 /// Edge

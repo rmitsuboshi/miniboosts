@@ -2,6 +2,7 @@ use rayon::prelude::*;
 
 
 use crate::{Sample, WeakLearner};
+use super::bin::*;
 
 
 use crate::weak_learner::common::{
@@ -9,7 +10,6 @@ use crate::weak_learner::common::{
     split_rule::*,
 };
 use super::{
-    bin::*,
     node::*,
     criterion::*,
     train_node::*,
@@ -71,20 +71,6 @@ impl<'a> DTree<'a> {
         Self { bins, criterion, max_depth, }
     }
 
-    // /// Initialize [`DTree`](DTree).
-    // #[inline]
-    // pub fn init(sample: &'a Sample) -> Self {
-    //     let criterion = Criterion::Entropy;
-    //     let n_sample = sample.shape().0;
-    //     let depth = ((n_sample as f64).log2() + 1.0).ceil() as usize;
-
-    //     Self {
-    //         sample,
-    //         criterion,
-    //         max_depth: Depth::from(depth),
-    //     }
-    // }
-
 
     /// Specify the maximal depth of the tree.
     /// Default maximal depth is `log2` of number of training examples.
@@ -108,7 +94,7 @@ impl<'a> DTree<'a> {
 
     /// Construct a full binary tree
     /// that perfectly classify the given examples.
-#[inline]
+    #[inline]
     fn full_tree(
         &self,
         sample: &'a Sample,
@@ -226,88 +212,6 @@ impl<'a> WeakLearner for DTree<'a> {
 }
 
 
-
-// /// Construct a full binary tree
-// /// that perfectly classify the given examples.
-// #[inline]
-// fn full_tree<'a>(
-//     bins_map: &HashMap<&'a str, Bins>,
-//     sample: &Sample,
-//     dist: &[f64],
-//     indices: Vec<usize>,
-//     criterion: Criterion,
-//     depth: Depth,
-// ) -> Rc<RefCell<TrainNode>>
-// {
-// 
-//     let total_weight = indices.par_iter()
-//         .copied()
-//         .map(|i| dist[i])
-//         .sum::<f64>();
-// 
-// 
-//     // Compute the best confidence that minimizes the training error
-//     // on this node.
-//     let (conf, loss) = confidence_and_loss(sample, dist, &indices[..]);
-// 
-// 
-//     // If sum of `dist` over `train` is zero, construct a leaf node.
-//     if loss == 0.0 {
-//         return TrainNode::leaf(conf, total_weight, loss);
-//     }
-// 
-// 
-//     // Find the best pair of feature name and threshold
-//     // based on the `criterion`.
-//     let (feature, threshold) = criterion.best_split(
-//         bins_map, sample, dist, &indices[..]
-//     );
-// 
-// 
-//     // Construct the splitting rule
-//     // from the best feature and threshold.
-//     let rule = Splitter::new(feature, Threshold::from(threshold));
-// 
-// 
-//     // Split the train data for left/right childrens
-//     let mut lindices = Vec::new();
-//     let mut rindices = Vec::new();
-//     for i in indices.into_iter() {
-//         match rule.split(sample, i) {
-//             LR::Left  => { lindices.push(i); },
-//             LR::Right => { rindices.push(i); },
-//         }
-//     }
-// 
-// 
-//     // If the split has no meaning, construct a leaf node.
-//     if lindices.is_empty() || rindices.is_empty() {
-//         return TrainNode::leaf(conf, total_weight, loss);
-//     }
-// 
-// 
-//     // Grow the tree.
-//     let ltree; // Left child
-//     let rtree; // Right child
-// 
-//     if depth <= 1 {
-//         // If `depth == 1`,
-//         // the childs from this node must be leaves.
-//         ltree = construct_leaf(sample, dist, lindices);
-//         rtree = construct_leaf(sample, dist, rindices);
-//     } else {
-//         // If `depth > 1`,
-//         // the childs from this node might be branches.
-//         let depth = depth - 1;
-//         ltree = full_tree(bins_map, sample, dist, lindices, criterion, depth);
-//         rtree = full_tree(bins_map, sample, dist, rindices, criterion, depth);
-//     }
-// 
-// 
-//     TrainNode::branch(rule, ltree, rtree, conf, total_weight, loss)
-// }
-
-
 #[inline]
 fn construct_leaf(
     sample: &Sample,
@@ -412,7 +316,7 @@ impl fmt::Display for DTree<'_> {
                 f,
                 "\
                 \t* [{feat_name: <width$} | \
-                {n_bins: >max_bin_width$} bins]:  \
+                {n_bins: >max_bin_width$} bins]  \
                 {feat_bins}\
                 "
             )?;
