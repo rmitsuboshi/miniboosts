@@ -32,3 +32,34 @@ If you want to implement your own weak learner,
 you must implement `WeakLearner` trait.
 
 See the doc string for further information.
+
+
+### Directory structure
+
+```txt
+./
+├─ core.rs                    Defines `WeakLearner` trait
+│
+├─ decision_tree
+│  ├ bin.rs                           Defines Feature binning for decision tree
+│  ├ builder.rs                       Defines a struct that constructs a decision tree weak learner
+│  ├ criterion.rs                     Defines splitting criterion
+│  ├ decision_tree_algorithm.rs       Defines decision tree weak learner
+│  ├ decision_tree_weak_learner.rs    Defines decision tree classifier
+│  ├ node.rs                          Defines the inner representation of `DecisionTreeClassifier`
+│  └ train_node.rs                    Defines a node struct for training
+├─ regression_tree
+│  ├ bin.rs                           Defines Feature binning for regression tree
+│  ├ builder.rs                       Defines a struct that constructs a regression tree weak learner
+│  ├ loss.rs                          Defines loss functions
+│  ├ regression_tree_algorithm.rs     Defines regression tree weak learner
+│  ├ regression_tree_weak_learner.rs  Defines regression tree classifier
+│  ├ node.rs                          Defines the inner representation of `RegressionTreeClassifier`
+│  └ train_node.rs                    Defines a node struct for training
+└─ neural_network
+   ├ activation.rs                    Defines activation functions
+   ├ layer.rs                         Defines layers in neural networks.
+   ├ nn_hypothesis.rs                 Defines neural network hypotheses
+   ├ nn_loss.rs                       Defines loss functions
+   └ nn_weak_learner.rs               Defines neural network weak learner
+```

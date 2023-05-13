@@ -65,11 +65,11 @@ See `cargo doc -F extended --open` for details.
 
 
 ### Weak Learners
-|`WEAK LEARNERS`                                                                     |
-| :---                                                                               |
-| [DTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)   |
-| [RTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree) |
-| NeuralNetwork (Experimental) |
+|`WEAK LEARNERS`                                                                               |
+| :---                                                                                         |
+| [Decision Tree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)     |
+| [Regression Tree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree) |
+| NeuralNetwork (Experimental)                                                                 |
 
 
 ## Future work
@@ -133,11 +133,11 @@ fn main() {
         .tolerance(tol); // Set the tolerance parameter.
 
 
-    // Construct `DTree` Weak Learner from `DTreeBuilder`.
-    let weak_learner = DTreeBuilder::new(&sample)
+    // Construct `DecisionTree` Weak Learner from `DecisionTreeBuilder`.
+    let weak_learner = DecisionTreeBuilder::new(&sample)
         .max_depth(3) // Specify the max depth (default is 2)
         .criterion(Criterion::Edge) // Choose the split criterion
-        .build(); // Build `DTree`.
+        .build(); // Build `DecisionTree`.
 
 
     // Run boosting algorithm
@@ -224,7 +224,7 @@ fn main() {
 
 
     let booster = LPBoost::init(&train);
-    let weak_learner = DTreeBuilder::new(&train)
+    let weak_learner = DecisionTreeBuilder::new(&train)
         .max_depth(2)
         .criterion(Criterion::Entropy)
         .build();

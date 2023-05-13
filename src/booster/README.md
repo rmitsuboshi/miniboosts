@@ -37,32 +37,29 @@ See the doc string for further information.
 
 ```txt
 ./
-├─ core.rs         Defines Booster trait
+├─ core.rs                    Defines Booster trait
 │
 ├─ adaboost
-│  └ adaboost.rs    Defines AdaBoost
+│  └ adaboost_algorithm.rs    Defines AdaBoost
 ├─ adaboostv
-│  └ adaboostv.rs   Defines AdaBoost*
+│  └ adaboostv_algorithm.rs   Defines AdaBoost*
 ├─ cerlpboost
-│  └ cerlpboost.rs  Defines Corrective ERLPBoost
+│  └ cerlpboost_algorithm.rs  Defines Corrective ERLPBoost
 ├─ erlpboost
-│  ├ qp_model.rs    Implements the sub-problem (QP) for ERLPBoost
-│  └ erlpboost.rs   Defines ERLPBoost
+│  ├ qp_model.rs              Implements the sub-problem (QP) for ERLPBoost
+│  └ erlpboost_algorithm.rs   Defines ERLPBoost
 ├─ gradient_boost
-│  └ gbm.rs         Defines Gradient Boosting Machine
+│  └ gbm.rs                   Defines Gradient Boosting Machine
 ├─ lpboost
-│  ├ lp_model.rs    Implements the sub-problem (LP) for LPBoost
-│  └ lpboost.rs     Defines LPBoost
+│  ├ lp_model.rs              Implements the sub-problem (LP) for LPBoost
+│  └ lpboost_algorithm.rs     Defines LPBoost
 ├─ mlpboost
-│  ├ dist.rs        Implements a function that returns a distribution on examples
-│  ├ options.rs     Implements some optional behavors for MLPBoost
-│  ├ utils.rs       Implements some utility function
-│  ├ lp_model.rs    Implements the sub-problem (LP) for MLPBoost
-│  └ mlpboost.rs    Defines MLPBoost
+│  ├ lp_model.rs              Implements the sub-problem (LP) for MLPBoost
+│  └ mlpboost_algorithm.rs    Defines MLPBoost
 ├─ smoothboost
-│  └ smoothboost.rs Defines SmoothBoost
+│  └ smoothboost_algorithm.rs Defines SmoothBoost
 ├─ softboost
-│  └ softboost.rs   Defines SoftBoost
+│  └ softboost_algorithm.rs   Defines SoftBoost
 └─ totalboost
-   └ totalboost.rs  Defines TotalBoost
+   └ totalboost_algorithm.rs  Defines TotalBoost
 ```
