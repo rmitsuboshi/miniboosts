@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
-use std::cell::{Ref, RefMut, RefCell};
 use std::mem;
 
 use polars::prelude::*;
@@ -16,7 +15,7 @@ use super::feature_struct::*;
 pub struct Sample {
     pub(super) name_to_index: HashMap<String, usize>,
     pub(super) features: Vec<Feature>,
-    pub(super) target: RefCell<Vec<f64>>,
+    pub(super) target: Vec<f64>,
     pub(super) n_sample: usize,
     pub(super) n_feature: usize,
 }
@@ -35,7 +34,6 @@ impl Sample {
             .into_iter()
             .collect::<Option<Vec<_>>>()
             .unwrap();
-        let target = RefCell::new(target);
 
         let features = data.get_columns()
             .into_par_iter()
@@ -117,7 +115,6 @@ impl Sample {
 
         let n_feature = features.len();
         let target = Vec::with_capacity(0);
-        let target = RefCell::new(target);
 
         let name_to_index = features.iter()
             .enumerate()
@@ -133,15 +130,8 @@ impl Sample {
 
 
     /// Returns a slice of type `f64`.
-    pub fn target(&self) -> Ref<'_, [f64]> {
-        Ref::map(self.target.borrow(), |x| &x[..])
-    }
-
-
-    /// Returns a mutable slice of type `f64`.
-    /// This method is required to modify the target values.
-    pub fn target_mut(&self) -> RefMut<'_, [f64]> {
-        RefMut::map(self.target.borrow_mut(), |x| &mut x[..])
+    pub fn target(&self) -> &[f64] {
+        &self.target[..]
     }
 
 
@@ -161,7 +151,7 @@ impl Sample {
 
 
         let target = self.features.remove(pos).into_target();
-        self.target = RefCell::new(target);
+        self.target = target;
         self.n_feature -= 1;
 
 
@@ -220,7 +210,6 @@ impl Sample {
             n_sample += 1;
         }
 
-        let target = RefCell::new(target);
         let n_feature = features.len();
 
 
@@ -310,7 +299,7 @@ impl Sample {
         let x = self.features.iter()
             .map(|feat| feat[idx])
             .collect::<Vec<f64>>();
-        let y = self.target.borrow()[idx];
+        let y = self.target[idx];
 
         (x, y)
     }
@@ -318,9 +307,8 @@ impl Sample {
 
     fn target_is_specified(&self) {
         let n_sample = self.shape().0;
-        let y = self.target();
 
-        if n_sample != y.len() {
+        if n_sample != self.target.len() {
             panic!(
                 "The target class is not specified.\n\
                  Use `Sample::set_target(\"Column Name\")`."
@@ -337,8 +325,7 @@ impl Sample {
 
 
         // Check whether the target values can be converted into integers.
-        let y = self.target();
-        let non_integers = y.iter()
+        let non_integers = self.target.iter()
             .filter(|yi| !yi.trunc().eq(yi))
             .collect::<Vec<_>>();
         if !non_integers.is_empty() {
@@ -354,7 +341,7 @@ impl Sample {
 
 
         // Check whether the target values takes exactly 2 kinds.
-        let set = y.iter()
+        let set = self.target.iter()
             .copied()
             .map(|yi| yi as i32)
             .collect::<HashSet<_>>();

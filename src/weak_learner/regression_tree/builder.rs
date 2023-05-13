@@ -1,7 +1,7 @@
-use crate::{Sample, DecisionTree};
-use crate::weak_learner::common::type_and_struct::*;
+use crate::{Sample, RegressionTree};
 use super::bin::*;
-use super::criterion::*;
+use super::loss::*;
+
 use std::collections::HashMap;
 
 
@@ -9,29 +9,38 @@ use std::collections::HashMap;
 pub const DEFAULT_NBIN: usize = 255;
 /// The maxmial depth set as default.
 pub const DEFAULT_MAX_DEPTH: usize = 2;
+/// Default L2-regularization parameter
+pub const DEFAULT_LAMBDA_L2: f64 = 0.01;
 
 
-/// A struct that builds `DecisionTree`.
-/// `DecisionTreeBuilder` constructs a weak-learner 
+/// A struct that builds `RegressionTree`.
+/// `RegressionTreeBuilder` constructs a weak-learner 
 /// that produces decision-tree classifiers.
 #[derive(Clone)]
-pub struct DecisionTreeBuilder<'a> {
+pub struct RegressionTreeBuilder<'a> {
     sample: &'a Sample,
     /// Number of bins per feature.
     n_bins: HashMap<&'a str, usize>,
 
-    max_depth: Depth,
-    criterion: Criterion,
+
+    max_depth: usize,
+
+
+    /// L2 regularization for the leaf values.
+    lambda_l2: f64,
+
+    /// Loss function
+    loss: LossType,
 }
 
 
-impl<'a> DecisionTreeBuilder<'a> {
-    /// Construct a new instance of `DecisionTreeBuilder`.
-    /// By default, `DecisionTreeBuilder` sets the parameters as follows;
+impl<'a> RegressionTreeBuilder<'a> {
+    /// Construct a new instance of `RegressionTreeBuilder`.
+    /// By default, 
+    /// `RegressionTreeBuilder` sets the parameters as follows;
     /// ```text
     /// n_bins: DEFAULT_NBIN == 255,
     /// max_depth: DEFAULT_MAX_DEPTH == 2,
-    /// criterion: Criterion::Entropy,
     /// ```
     pub fn new(sample: &'a Sample) -> Self {
         let n_bins = sample.features()
@@ -42,10 +51,27 @@ impl<'a> DecisionTreeBuilder<'a> {
                 (feat.name(), n_bin)
             })
             .collect();
-        let max_depth = Depth::from(DEFAULT_MAX_DEPTH);
-        let criterion = Criterion::Entropy;
+        let max_depth = DEFAULT_MAX_DEPTH;
 
-        Self { sample, n_bins, max_depth, criterion, }
+        let lambda_l2 = DEFAULT_LAMBDA_L2;
+
+        let loss = LossType::L2;
+
+        Self { sample, n_bins, max_depth, loss, lambda_l2, }
+    }
+
+
+    /// Specify the loss type. Default is `LossType::L2`.
+    pub fn loss(mut self, loss: LossType) -> Self {
+        self.loss = loss;
+        self
+    }
+
+
+    /// Set the L2-regularization parameter.
+    pub fn lambda_l2(mut self, lambda_l2: f64) -> Self {
+        self.lambda_l2 = lambda_l2;
+        self
     }
 
 
@@ -53,18 +79,8 @@ impl<'a> DecisionTreeBuilder<'a> {
     /// Default maximal depth is `2`.
     pub fn max_depth(mut self, depth: usize) -> Self {
         assert!(depth > 0);
-        self.max_depth = Depth::from(depth);
+        self.max_depth = depth;
 
-        self
-    }
-
-
-    /// Set criterion for node splitting.
-    /// Default value is `Criterion::Entropy`.
-    /// See [`Criterion`](Criterion).
-    #[inline]
-    pub fn criterion(mut self, criterion: Criterion) -> Self {
-        self.criterion = criterion;
         self
     }
 
@@ -83,9 +99,9 @@ impl<'a> DecisionTreeBuilder<'a> {
     }
 
 
-    /// Build a `DecisionTree`.
+    /// Build a `RegressionTree`.
     /// This method consumes `self`.
-    pub fn build(self) -> DecisionTree<'a> {
+    pub fn build(self) -> RegressionTree<'a> {
         let bins = self.sample.features()
             .iter()
             .map(|feature| {
@@ -96,11 +112,13 @@ impl<'a> DecisionTreeBuilder<'a> {
             })
             .collect::<HashMap<_, _>>();
 
-        let dtree = DecisionTree::from_components(
-            bins, self.criterion, self.max_depth
+
+        let n_sample = self.sample.shape().0;
+        let regression_tree = RegressionTree::from_components(
+            bins, n_sample, self.max_depth, self.lambda_l2, self.loss,
         );
 
 
-        dtree
+        regression_tree
     }
 }

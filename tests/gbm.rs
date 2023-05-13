@@ -11,7 +11,7 @@ pub mod gbm_boston {
         let mut path = env::current_dir().unwrap();
         path.push("tests/dataset/boston_housing.csv");
 
-        let mut sample = Sample::from_csv(path, true)
+        let sample = Sample::from_csv(path, true)
             .unwrap()
             .set_target("MEDV");
 
@@ -19,11 +19,13 @@ pub mod gbm_boston {
         let n_sample = sample.shape().0 as f64;
 
         let mut gbm = GBM::init(&sample)
-            .loss(GBMLoss::L1);
-        let tree = RTree::init(&sample)
-            .max_depth(2)
-            .loss_type(LossType::L1);
+            .loss(GBMLoss::L2);
+        let tree = RegressionTreeBuilder::new(&sample)
+            .max_depth(3)
+            .loss(LossType::L2)
+            .build();
 
+        println!("{tree}");
 
         let f = gbm.run(&tree);
         let predictions = f.predict_all(&sample);
@@ -35,15 +37,25 @@ pub mod gbm_boston {
             .zip(&predictions[..])
             .map(|(t, p)| (t - p).abs())
             .sum::<f64>() / n_sample;
-        println!("L1-Loss (boston_housing.csv, GBM, RTree): {loss}");
+        println!("L1-Loss (boston_housing.csv, GBM, RegressionTree): {loss}");
 
-        let loss = target.into_iter()
+        let loss = target.iter()
             .copied()
             .zip(&predictions[..])
             .map(|(t, p)| (t - p).powi(2))
             .sum::<f64>() / n_sample;
 
-        println!("L2-Loss (boston_housing.csv, GBM, RTree): {loss}");
+        println!("L2-Loss (boston_housing.csv, GBM, RegressionTree): {loss}");
+
+        let mean = target.iter().sum::<f64>() / n_sample;
+        let loss = target.iter()
+            .copied()
+            .map(|y| (y - mean).powi(2))
+            .sum::<f64>()
+            / n_sample;
+
+        println!("Loss (mean prediction): {loss}");
+
         assert!(true);
     }
 }

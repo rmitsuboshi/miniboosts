@@ -1,24 +1,25 @@
-//! Defines the decision tree classifier.
-use crate::{Classifier, Sample};
+use serde::{
+    Serialize,
+    Deserialize,
+};
 
-
+use crate::{Sample, Regressor};
 use super::node::*;
-use serde::{Serialize, Deserialize};
 
 use std::path::Path;
 use std::fs::File;
 use std::io::prelude::*;
 
 
-/// Decision tree classifier.
+/// Regression Tree regressor.
 /// This struct is just a wrapper of `Node`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DTreeClassifier {
-    root: Node
+pub struct RegressionTreeRegressor {
+    root: Node,
 }
 
 
-impl From<Node> for DTreeClassifier {
+impl From<Node> for RegressionTreeRegressor {
     #[inline]
     fn from(root: Node) -> Self {
         Self { root }
@@ -26,21 +27,22 @@ impl From<Node> for DTreeClassifier {
 }
 
 
-impl Classifier for DTreeClassifier {
-    fn confidence(&self, sample: &Sample, row: usize) -> f64 {
-        self.root.confidence(sample, row)
+impl Regressor for RegressionTreeRegressor {
+    fn predict(&self, sample: &Sample, row: usize) -> f64 {
+        self.root.predict(sample, row)
     }
 }
 
 
-impl DTreeClassifier {
-    /// Write the current decision tree to dot file.
+
+impl RegressionTreeRegressor {
+    /// Write the current regression tree to dot file.
     #[inline]
     pub fn to_dot_file<P>(&self, path: P) -> std::io::Result<()>
         where P: AsRef<Path>
     {
         let mut f = File::create(path)?;
-        f.write_all(b"graph DecisionTree {")?;
+        f.write_all(b"graph RegressionTree {")?;
 
 
         let info = self.root.to_dot_info(0).0;
@@ -54,3 +56,4 @@ impl DTreeClassifier {
         Ok(())
     }
 }
+

@@ -1,4 +1,5 @@
 //! Provides [`GBM`](GBM) by Friedman, 2001.
+use rayon::prelude::*;
 
 use crate::{
     common::loss_functions::*,
@@ -78,14 +79,6 @@ pub struct GBM<'a, F> {
     sample: &'a Sample,
 
 
-    // Original labels
-    original_target: Vec<f64>,
-
-    // Distribution on examples.
-    // Since GBM does not maintain a distribution over examples,
-    // we use all-one vector.
-    ones: Vec<f64>,
-
     // Tolerance parameter
     tolerance: f64,
 
@@ -107,6 +100,10 @@ pub struct GBM<'a, F> {
     // GBM terminates in eary step 
     // if the training set is linearly separable.
     terminated: usize,
+
+
+    // A prediction vector at a state.
+    predictions: Vec<f64>,
 }
 
 
@@ -119,24 +116,22 @@ impl<'a, F> GBM<'a, F>
     pub fn init(sample: &'a Sample) -> Self {
 
         let n_sample = sample.shape().0;
-        let original_target = sample.target().to_vec();
-
+        let predictions = vec![0.0; n_sample];
 
         Self {
             sample,
-            original_target,
             tolerance: 0.0,
 
             weights: Vec::new(),
             hypotheses: Vec::new(),
-
-            ones: vec![1.0; n_sample],
 
             loss: GBMLoss::L2,
 
             max_iter: 100,
 
             terminated: usize::MAX,
+
+            predictions,
         }
     }
 }
@@ -184,14 +179,9 @@ impl<F> Booster<F> for GBM<'_, F>
         self.weights = Vec::with_capacity(self.max_iter);
         self.hypotheses = Vec::with_capacity(self.max_iter);
 
-        if self.original_target.is_empty() {
-            self.original_target = self.sample.target().to_vec();
-        }
-
-        self.ones = vec![1.0; n_sample];
-
 
         self.terminated = self.max_iter;
+        self.predictions = vec![0.0; n_sample];
     }
 
 
@@ -208,13 +198,12 @@ impl<F> Booster<F> for GBM<'_, F>
 
 
         // Get a new hypothesis
-        let h = weak_learner.produce(self.sample, &self.ones[..]);
+        let h = weak_learner.produce(self.sample, &self.predictions[..]);
 
         let predictions = h.predict_all(self.sample);
-        let coef = {
-            let target = self.sample.target();
-            self.loss.best_coefficient(&target[..], &predictions[..])
-        };
+        let coef = self.loss.best_coefficient(
+            &self.sample.target(), &predictions[..]
+        );
 
         // If the best coefficient is zero,
         // the newly-attained hypothesis `h` do nothing.
@@ -224,17 +213,14 @@ impl<F> Booster<F> for GBM<'_, F>
             return ControlFlow::Break(iteration);
         }
 
-        // Update the residual vector
-        self.sample.target_mut()
-            .iter_mut()
-            .zip(predictions)
-            .for_each(|(r, p)| {
-                *r -= coef * p;
-            });
-
 
         self.weights.push(coef);
         self.hypotheses.push(h);
+
+
+        self.predictions.par_iter_mut()
+            .zip(predictions)
+            .for_each(|(p, q)| { *p += coef * q; });
 
         ControlFlow::Continue(())
     }
@@ -246,12 +232,6 @@ impl<F> Booster<F> for GBM<'_, F>
     ) -> CombinedHypothesis<F>
         where W: WeakLearner<Hypothesis = F>
     {
-        // Back the original label to `Sample`.
-        self.sample.target_mut()
-            .iter_mut()
-            .zip(self.original_target.iter().copied())
-            .for_each(|(y, orig)| { *y = orig; });
-
         CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
