@@ -1,4 +1,4 @@
-use crate::{Sample, DTree};
+use crate::{Sample, DecisionTree};
 use crate::weak_learner::common::type_and_struct::*;
 use super::bin::*;
 use super::criterion::*;
@@ -11,11 +11,11 @@ pub const DEFAULT_NBIN: usize = 255;
 pub const DEFAULT_MAX_DEPTH: usize = 2;
 
 
-/// A struct that builds `DTree`.
-/// `DTreeBuilder` constructs a weak-learner 
+/// A struct that builds `DecisionTree`.
+/// `DecisionTreeBuilder` constructs a weak-learner 
 /// that produces decision-tree classifiers.
 #[derive(Clone)]
-pub struct DTreeBuilder<'a> {
+pub struct DecisionTreeBuilder<'a> {
     sample: &'a Sample,
     /// Number of bins per feature.
     n_bins: HashMap<&'a str, usize>,
@@ -25,9 +25,9 @@ pub struct DTreeBuilder<'a> {
 }
 
 
-impl<'a> DTreeBuilder<'a> {
-    /// Construct a new instance of `DTreeBuilder`.
-    /// By default, `DTreeBuilder` sets the parameters as follows;
+impl<'a> DecisionTreeBuilder<'a> {
+    /// Construct a new instance of `DecisionTreeBuilder`.
+    /// By default, `DecisionTreeBuilder` sets the parameters as follows;
     /// ```text
     /// n_bins: DEFAULT_NBIN == 255,
     /// max_depth: DEFAULT_MAX_DEPTH == 2,
@@ -83,9 +83,9 @@ impl<'a> DTreeBuilder<'a> {
     }
 
 
-    /// Build a `DTree`.
+    /// Build a `DecisionTree`.
     /// This method consumes `self`.
-    pub fn build(self) -> DTree<'a> {
+    pub fn build(self) -> DecisionTree<'a> {
         let bins = self.sample.features()
             .iter()
             .map(|feature| {
@@ -96,7 +96,7 @@ impl<'a> DTreeBuilder<'a> {
             })
             .collect::<HashMap<_, _>>();
 
-        let dtree = DTree::from_components(
+        let dtree = DecisionTree::from_components(
             bins, self.criterion, self.max_depth
         );
 

@@ -40,9 +40,9 @@ pub use crate::weak_learner::{
 
 
     // Classification ---------------------------
-    DTree,
-    DTreeBuilder,
-    DTreeClassifier,
+    DecisionTree,
+    DecisionTreeBuilder,
+    DecisionTreeClassifier,
     Criterion,
 
 
@@ -55,8 +55,9 @@ pub use crate::weak_learner::{
 
 
     // Regression -------------------------------
-    RTree,
-    RTreeRegressor,
+    RegressionTree,
+    RegressionTreeBuilder,
+    RegressionTreeRegressor,
     LossType,
 };
 

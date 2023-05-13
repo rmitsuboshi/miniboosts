@@ -13,7 +13,7 @@ use super::{
     node::*,
     criterion::*,
     train_node::*,
-    dtree_classifier::DTreeClassifier,
+    decision_tree_classifier::DecisionTreeClassifier,
 };
 
 
@@ -23,12 +23,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 
-/// `DTree` is the factory that
-/// generates a `DTreeClassifier` for a given distribution over examples.
+/// `DecisionTree` is the factory that
+/// generates a `DecisionTreeClassifier` for a given distribution over examples.
 /// 
 /// See also:
-/// - [`DTree::max_depth`](DTree::max_depth)
-/// - [`DTree::criterion`](DTree::criterion)
+/// - [`DecisionTree::max_depth`](DecisionTree::max_depth)
+/// - [`DecisionTree::criterion`](DecisionTree::criterion)
 /// - [`Criterion`](Criterion)
 /// 
 /// # Example
@@ -47,20 +47,20 @@ use std::collections::HashMap;
 /// // In this example,
 /// // the output hypothesis is at most depth 2.
 /// // Further, this example uses `Criterion::Edge` for splitting rule.
-/// let weak_learner = DTree::init(&sample)
+/// let weak_learner = DecisionTree::init(&sample)
 ///     .max_depth(2)
 ///     .criterion(Criterion::Edge);
 /// ```
-pub struct DTree<'a> {
+pub struct DecisionTree<'a> {
     bins: HashMap<&'a str, Bins>,
     criterion: Criterion,
     max_depth: Depth,
 }
 
 
-impl<'a> DTree<'a> {
-    /// Initialize [`DTree`](DTree).
-    /// This method is called only via `DTreeBuilder::build()`.
+impl<'a> DecisionTree<'a> {
+    /// Initialize [`DecisionTree`](DecisionTree).
+    /// This method is called only via `DecisionTreeBuilder::build()`.
     #[inline]
     pub(crate) fn from_components(
         bins: HashMap<&'a str, Bins>,
@@ -174,8 +174,8 @@ impl<'a> DTree<'a> {
 }
 
 
-impl<'a> WeakLearner for DTree<'a> {
-    type Hypothesis = DTreeClassifier;
+impl<'a> WeakLearner for DecisionTree<'a> {
+    type Hypothesis = DecisionTreeClassifier;
     /// This method computes as follows;
     /// 1. construct a `TrainNode` which contains some information
     ///     to grow a tree (e.g., impurity, total distribution mass, etc.)
@@ -207,7 +207,7 @@ impl<'a> WeakLearner for DTree<'a> {
         );
 
 
-        DTreeClassifier::from(root)
+        DecisionTreeClassifier::from(root)
     }
 }
 
@@ -285,7 +285,7 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
 }
 
 
-impl fmt::Display for DTree<'_> {
+impl fmt::Display for DecisionTree<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,

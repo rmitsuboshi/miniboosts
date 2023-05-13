@@ -1,4 +1,3 @@
-
 /// This trait defines the loss functions.
 pub trait LossFunction {
     /// Loss value for a single point.
@@ -74,20 +73,20 @@ impl LossFunction for GBMLoss {
                     .zip(target)
                     .map(|(p, y)| 2.0 * (p - y) / n_sample)
                     .collect()
-            }
+            },
         }
     }
 
 
     fn best_coefficient(
         &self, 
-        residuals: &[f64],
+        targets: &[f64],
         predictions: &[f64],
     ) -> f64
     {
         match self {
             Self::L1 => {
-                let mut items = residuals.iter()
+                let mut items = targets.iter()
                     .zip(predictions)
                     .filter_map(|(&r, &p)| 
                         if p == 0.0 { None } else { Some((p.abs(), r / p)) }
@@ -97,12 +96,12 @@ impl LossFunction for GBMLoss {
                 weighted_median(&mut items[..])
             },
             Self::L2 => {
-                let r_sum = residuals.iter().sum::<f64>();
+                let y_sum = targets.iter().sum::<f64>();
                 let p_sum = predictions.iter().sum::<f64>();
 
-                assert!(p_sum != 0.0);
+                assert_ne!(p_sum, 0.0);
 
-                r_sum / p_sum
+                y_sum / p_sum
             },
         }
     }

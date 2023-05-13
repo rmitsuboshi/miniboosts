@@ -27,9 +27,9 @@ pub use self::core::WeakLearner;
 
 pub use self::decision_tree::{
     Criterion,
-    DTree,
-    DTreeBuilder,
-    DTreeClassifier,
+    DecisionTree,
+    DecisionTreeBuilder,
+    DecisionTreeClassifier,
 };
 
 // pub use self::naive_bayes::{
@@ -40,8 +40,9 @@ pub use self::decision_tree::{
 
 pub use self::regression_tree::{
     LossType,
-    RTree,
-    RTreeRegressor,
+    RegressionTree,
+    RegressionTreeBuilder,
+    RegressionTreeRegressor,
 };
 
 
