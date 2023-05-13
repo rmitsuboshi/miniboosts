@@ -29,22 +29,22 @@ use std::ops::ControlFlow;
 /// for running [`SoftBoost`](SoftBoost).  
 /// See also:
 /// - [`SoftBoost::nu`]
-/// - [`DTree`]
-/// - [`DTreeClassifier`]
+/// - [`DecisionTree`]
+/// - [`DecisionTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
-/// - [`DTree::max_depth`]
-/// - [`DTree::criterion`]
+/// - [`DecisionTree::max_depth`]
+/// - [`DecisionTree::criterion`]
 /// - [`DataFrame`]
 /// - [`Series`]
 /// - [`DataFrame::shape`]
 /// - [`CsvReader`]
 /// 
 /// [`SoftBoost::nu`]: SoftBoost::nu
-/// [`DTree`]: crate::weak_learner::DTree
-/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`DecisionTree`]: crate::weak_learner::DecisionTree
+/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`DTree::max_depth`]: crate::weak_learner::DTree::max_depth
-/// [`DTree::criterion`]: crate::weak_learner::DTree::criterion
+/// [`DecisionTree::max_depth`]: crate::weak_learner::DecisionTree::max_depth
+/// [`DecisionTree::criterion`]: crate::weak_learner::DecisionTree::criterion
 /// [`DataFrame`]: polars::prelude::DataFrame
 /// [`Series`]: polars::prelude::Series
 /// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
@@ -86,7 +86,7 @@ use std::ops::ControlFlow;
 ///     .criterion(Criterion::Edge);
 /// 
 /// // Run `SoftBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
 /// let predictions: Vec<i64> = f.predict_all(&data);
