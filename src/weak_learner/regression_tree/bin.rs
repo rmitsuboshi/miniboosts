@@ -63,12 +63,6 @@ impl Bins {
     }
 
 
-    /// Returns whether the bins are empty or not.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-
     /// Cut the given `Feature` into `n_bins` bins.
     /// This method naively cut the given slice with same width.
     #[inline(always)]

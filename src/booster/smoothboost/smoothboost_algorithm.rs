@@ -33,14 +33,14 @@ use std::ops::ControlFlow;
 /// See also:
 /// - [`SmoothBoost::tolerance`]
 /// - [`SmoothBoost::gamma`]
-/// - [`DTree`]
-/// - [`DTreeClassifier`]
+/// - [`DecisionTree`]
+/// - [`DecisionTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
 /// 
 /// [`SmoothBoost::tolerance`]: SmoothBoost::tolerance
 /// [`SmoothBoost::gamma`]: SmoothBoost::gamma
-/// [`DTree`]: crate::weak_learner::DTree
-/// [`DTreeClassifier`]: crate::weak_learner::DTreeClassifier
+/// [`DecisionTree`]: crate::weak_learner::DecisionTree
+/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
 /// 
 /// 
@@ -72,7 +72,7 @@ use std::ops::ControlFlow;
 ///     .criterion(Criterion::Edge);
 /// 
 /// // Run `SmoothBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DTreeClassifier> = booster.run(&weak_learner);
+/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
 /// let predictions: Vec<i64> = f.predict_all(&sample);
