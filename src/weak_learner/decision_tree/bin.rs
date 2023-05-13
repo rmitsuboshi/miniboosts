@@ -36,8 +36,8 @@ impl Bin {
 
     /// Check whether the given `item` is conteined by `self.`
     #[inline(always)]
-    pub fn contains(&self, item: f64) -> bool {
-        self.0.contains(&item)
+    pub fn contains(&self, item: &f64) -> bool {
+        self.0.contains(item)
     }
 }
 
@@ -216,7 +216,7 @@ impl Bins {
 
 
             let pos = self.0.binary_search_by(|range| {
-                    if range.0.contains(&xi) {
+                    if range.contains(&xi) {
                         return Ordering::Equal;
                     }
                     range.0.start.partial_cmp(&xi).unwrap()

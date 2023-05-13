@@ -195,7 +195,7 @@ impl Criterion {
         match self {
             Criterion::Entropy => {
                 sample.features()
-                    .iter()
+                    .par_iter()
                     .map(|feature| {
                         let name = feature.name();
                         let bin = bins_map.get(name).unwrap();
@@ -210,7 +210,7 @@ impl Criterion {
             },
             Criterion::Edge => {
                 sample.features()
-                    .iter()
+                    .par_iter()
                     .map(|feature| {
                         let name = feature.name();
                         let bin = bins_map.get(name).unwrap();
@@ -225,7 +225,7 @@ impl Criterion {
             },
             Criterion::Gini => {
                 sample.features()
-                    .iter()
+                    .par_iter()
                     .map(|feature| {
                         let name = feature.name();
                         let bin = bins_map.get(name).unwrap();
