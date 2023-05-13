@@ -1,9 +1,7 @@
 use crate::{Sample, DTree};
 use crate::weak_learner::common::type_and_struct::*;
-use super::{
-    bin::*,
-    criterion::*,
-};
+use super::bin::*;
+use super::criterion::*;
 use std::collections::HashMap;
 
 

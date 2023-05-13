@@ -432,7 +432,7 @@ impl fmt::Display for Bins {
             let tail = bins.last()
                 .map(|bin| format!("{bin}"))
                 .unwrap();
-            write!(f, "{head}, ..., {tail}")
+            write!(f, "{head},      ...     , {tail}")
         } else {
             let line = bins.iter()
                 .map(|bin| format!("{}", bin))
