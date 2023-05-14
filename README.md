@@ -34,9 +34,11 @@ but three main issues exist.
 
 MiniBoosts is a crate to address the above issues.
 This crate provides:
-Two main traits, named Booster and WeakLearner,
-Some famous boosting algorithms, including AdaBoost, LPBoost, ERLPBoost, etc.
-Some weak learners, including Decision-Tree, Regression-Tree, etc.
+- Two main traits, named Booster and WeakLearner,
+    Some famous boosting algorithms,
+    including AdaBoost, LPBoost, ERLPBoost, etc.
+- Some weak learners, including Decision-Tree, Regression-Tree, etc.
+
 Also, one can implement a new Booster or Weak Learner 
 by implementing the above traits.
 
