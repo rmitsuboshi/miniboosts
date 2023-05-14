@@ -52,22 +52,6 @@ impl<'a> RegressionTree<'a> {
     }
 
 
-    /// Set the maximum depth of the resulting tree.
-    #[inline]
-    pub fn max_depth(mut self, depth: usize) -> Self {
-        self.max_depth = depth;
-        self
-    }
-
-
-    /// Set the loss type.
-    #[inline]
-    pub fn loss_type(mut self, loss: LossType) -> Self {
-        self.loss_type = loss;
-        self
-    }
-
-
     #[inline]
     fn full_tree(
         &self,
@@ -115,24 +99,8 @@ impl<'a> RegressionTree<'a> {
         }
 
         // -----
-        // At this point, `max_depth >= 1` is guaranteed
+        // At this point, `max_depth > 1` is guaranteed
         // so that one can grow the tree.
-
-        // grow the tree.
-        // let ltree; // Left child
-        // let rtree; // Right child
-        // if max_depth <= 1 {
-        //     // If `depth <= 1`,
-        //     // the childs from this node must be leaves.
-        //     ltree = construct_leaf(target, gh, lindices, self.loss_type);
-        //     rtree = construct_leaf(target, gh, rindices, self.loss_type);
-        // } else {
-        //     // If `depth > 1`,
-        //     // the childs from this node might be branches.
-        //     let d = max_depth - 1;
-        //     ltree = self.full_tree(sample, gh, lindices, max_depth-1);
-        //     rtree = self.full_tree(sample, gh, rindices, max_depth-1);
-        // }
         let ltree = self.full_tree(sample, gh, lindices, max_depth-1);
         let rtree = self.full_tree(sample, gh, rindices, max_depth-1);
 
