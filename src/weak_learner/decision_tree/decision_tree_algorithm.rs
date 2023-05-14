@@ -72,26 +72,6 @@ impl<'a> DecisionTree<'a> {
     }
 
 
-    /// Specify the maximal depth of the tree.
-    /// Default maximal depth is `log2` of number of training examples.
-    pub fn max_depth(mut self, depth: usize) -> Self {
-        assert!(depth > 0);
-        self.max_depth = Depth::from(depth);
-
-        self
-    }
-
-
-    /// Set criterion for node splitting.
-    /// Default value is `Criterion::Entropy`.
-    /// See [`Criterion`](Criterion).
-    #[inline]
-    pub fn criterion(mut self, criterion: Criterion) -> Self {
-        self.criterion = criterion;
-        self
-    }
-
-
     /// Construct a full binary tree
     /// that perfectly classify the given examples.
     #[inline]
@@ -117,7 +97,7 @@ impl<'a> DecisionTree<'a> {
 
 
         // If sum of `dist` over `train` is zero, construct a leaf node.
-        if loss == 0.0 {
+        if loss == 0.0 || depth <= 1 {
             return TrainNode::leaf(conf, total_weight, loss);
         }
 
@@ -150,23 +130,11 @@ impl<'a> DecisionTree<'a> {
             return TrainNode::leaf(conf, total_weight, loss);
         }
 
-
-        // Grow the tree.
-        let ltree; // Left child
-        let rtree; // Right child
-
-        if depth <= 1 {
-            // If `depth == 1`,
-            // the childs from this node must be leaves.
-            ltree = construct_leaf(sample, dist, lindices);
-            rtree = construct_leaf(sample, dist, rindices);
-        } else {
-            // If `depth > 1`,
-            // the childs from this node might be branches.
-            let depth = depth - 1;
-            ltree = self.full_tree(sample, dist, lindices, criterion, depth);
-            rtree = self.full_tree(sample, dist, rindices, criterion, depth);
-        }
+        // At this point, `depth > 1` is guaranteed so that
+        // one can grow the tree.
+        let depth = depth - 1;
+        let ltree = self.full_tree(sample, dist, lindices, criterion, depth);
+        let rtree = self.full_tree(sample, dist, rindices, criterion, depth);
 
 
         TrainNode::branch(rule, ltree, rtree, conf, total_weight, loss)
@@ -210,29 +178,6 @@ impl<'a> WeakLearner for DecisionTree<'a> {
         DecisionTreeClassifier::from(root)
     }
 }
-
-
-#[inline]
-fn construct_leaf(
-    sample: &Sample,
-    dist: &[f64],
-    indices: Vec<usize>
-) -> Rc<RefCell<TrainNode>>
-{
-    // Compute the best confidence that minimizes the training error
-    // on this node.
-    let (conf, loss) = confidence_and_loss(sample, dist, &indices[..]);
-
-
-    let total_weight = indices.iter()
-            .copied()
-            .map(|i| dist[i])
-            .sum::<f64>();
-
-
-    TrainNode::leaf(conf, total_weight, loss)
-}
-
 
 
 /// This function returns a tuple `(c, l)` where

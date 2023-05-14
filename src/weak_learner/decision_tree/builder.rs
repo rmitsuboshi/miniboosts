@@ -52,7 +52,7 @@ impl<'a> DecisionTreeBuilder<'a> {
     /// Specify the maximal depth of the tree.
     /// Default maximal depth is `2`.
     pub fn max_depth(mut self, depth: usize) -> Self {
-        assert!(depth > 0);
+        assert!(depth > 0, "Tree must have positive depth");
         self.max_depth = Depth::from(depth);
 
         self
