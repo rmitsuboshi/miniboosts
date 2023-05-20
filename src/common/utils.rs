@@ -3,7 +3,6 @@
 use rayon::prelude::*;
 use crate::{Sample, Classifier};
 
-
 /// Returns the edge of a single hypothesis for the given distribution
 #[inline(always)]
 pub(crate) fn edge_of_hypothesis<H>(
@@ -161,6 +160,7 @@ pub(crate) fn project_log_distribution_to_capped_simplex<I>(
     let log_nu = nu.ln();
 
     let mut ix_with_logsum = ix.into_iter().zip(logsums).enumerate();
+
 
     while let Some((i, (i_sorted, logsum))) = ix_with_logsum.next() {
         let log_xi = (1.0 - ub * i as f64).ln() - logsum;
