@@ -67,10 +67,10 @@ See `cargo doc -F extended --open` for details.
 
 
 ### Weak Learners
-|`WEAK LEARNERS`                                                                               |
+|`WEAK LEARNER`                                                                                |
 | :---                                                                                         |
-| [Decision Tree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)     |
-| [Regression Tree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree) |
+| [DecisionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)      |
+| [RegressionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)  |
 | NeuralNetwork (Experimental)                                                                 |
 
 
@@ -138,7 +138,7 @@ fn main() {
     // Construct `DecisionTree` Weak Learner from `DecisionTreeBuilder`.
     let weak_learner = DecisionTreeBuilder::new(&sample)
         .max_depth(3) // Specify the max depth (default is 2)
-        .criterion(Criterion::Edge) // Choose the split criterion
+        .criterion(Criterion::Twoing) // Choose the split criterion
         .build(); // Build `DecisionTree`.
 
 
@@ -209,7 +209,8 @@ fn zero_one_loss<H>(sample: &Sample, f: &CombinedHypothesis<H>) -> f64
 fn main() {
     // Read the training data
     let path = "/path/to/train/data.csv";
-    let train = Sample::from_csv(path, true)
+    let has_header = true;
+    let train = Sample::from_csv(path, has_header)
         .unwrap()
         .set_target("class");
 
@@ -220,7 +221,8 @@ fn main() {
 
     // Read the test data
     let path = "/path/to/test/data.csv";
-    let test = Sample::from_csv(path, true)
+    let has_header = true;
+    let test = Sample::from_csv(path, has_header)
         .unwrap()
         .set_target("class");
 
