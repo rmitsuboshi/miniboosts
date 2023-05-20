@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use std::fmt;
 use std::cmp::Ordering;
 use std::ops::{Mul, Add};
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 
 use crate::Sample;
 use super::bin::*;
@@ -17,21 +17,23 @@ use crate::weak_learner::common::{
 };
 
 
-/// Edge
+
+/// Score for a splitting.
+/// This is just a wrapper for `f64`.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(super) struct Edge(f64);
+pub(self) struct Score(f64);
 
 
-impl From<f64> for Edge {
+impl From<f64> for Score {
     #[inline(always)]
-    fn from(edge: f64) -> Self {
-        Edge(edge)
+    fn from(score: f64) -> Self {
+        Self(score)
     }
 }
 
 
-impl PartialEq for Edge {
+impl PartialEq for Score {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
@@ -39,7 +41,7 @@ impl PartialEq for Edge {
 }
 
 
-impl PartialOrd for Edge {
+impl PartialOrd for Score {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.0.partial_cmp(&other.0)
@@ -47,37 +49,7 @@ impl PartialOrd for Edge {
 }
 
 
-/// Gini
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(super) struct Gini(f64);
-
-
-impl From<f64> for Gini {
-    #[inline(always)]
-    fn from(gini: f64) -> Self {
-        Self(gini)
-    }
-}
-
-
-impl PartialEq for Gini {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
-
-
-impl PartialOrd for Gini {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-}
-
-
-impl Mul for Gini {
+impl Mul for Score {
     type Output = Self;
     #[inline]
     fn mul(self, other: Self) -> Self::Output {
@@ -86,7 +58,7 @@ impl Mul for Gini {
 }
 
 
-impl Add for Gini {
+impl Add for Score {
     type Output = Self;
     #[inline]
     fn add(self, other: Self) -> Self::Output {
@@ -94,60 +66,6 @@ impl Add for Gini {
     }
 }
 
-
-
-/// Entropic Impurity
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(super) struct EntropicImpurity(f64);
-
-
-impl From<f64> for EntropicImpurity {
-    #[inline(always)]
-    fn from(impurity: f64) -> Self {
-        EntropicImpurity(impurity)
-    }
-}
-
-
-impl PartialEq for EntropicImpurity {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
-
-
-impl PartialOrd for EntropicImpurity {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-}
-
-
-impl Mul for EntropicImpurity {
-    type Output = Self;
-    #[inline]
-    fn mul(self, other: Self) -> Self::Output {
-        Self(self.0 * other.0)
-    }
-}
-
-
-impl Add for EntropicImpurity {
-    type Output = Self;
-    #[inline]
-    fn add(self, other: Self) -> Self::Output {
-        Self(self.0 + other.0)
-    }
-}
-
-
-// TODO
-//      Add other criterions.
-//      E.g., Gini criterion, Twoing criterion (page 38 of CART)
-// * `Criterion::Gini` is the gini-index,
 
 /// Splitting criteria for growing decision tree.
 /// * `Criterion::Edge` maximizes the edge (weighted training accuracy)
@@ -162,8 +80,8 @@ pub enum Criterion {
     Edge,
     /// Gini index.
     Gini,
-    // /// Twoing rule.
-    // Twoing,
+    /// Twoing rule.
+    Twoing,
 }
 
 
@@ -173,6 +91,7 @@ impl fmt::Display for Criterion {
             Self::Entropy => "Entropy",
             Self::Edge => "Edge (Weighted accuracy)",
             Self::Gini => "Gini index",
+            Self::Twoing => "Twoing Rule",
         };
 
         write!(f, "{name}")
@@ -206,7 +125,7 @@ impl Criterion {
                     })
                     .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature that decreases the entropic impurity")
+                    .expect("No feature minimizes entropic impurity")
             },
             Criterion::Edge => {
                 sample.features()
@@ -221,7 +140,7 @@ impl Criterion {
                     })
                     .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature with max edge")
+                    .expect("No feature maximizes edge")
             },
             Criterion::Gini => {
                 sample.features()
@@ -236,7 +155,22 @@ impl Criterion {
                     })
                     .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                     .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature that minimizes Gini impurity")
+                    .expect("No feature minimizes Gini impurity")
+            },
+            Criterion::Twoing => {
+                sample.features()
+                    .par_iter()
+                    .map(|feature| {
+                        let name = feature.name();
+                        let bin = bins_map.get(name).unwrap();
+                        let pack = bin.pack(idx, feature, target, dist);
+                        let (threshold, score) = split_by_twoing(pack);
+
+                        (score, name, threshold)
+                    })
+                    .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                    .map(|(_, name, threshold)| (name, threshold))
+                    .expect("No feature maximizes Twoing rule")
             },
         }
     }
@@ -244,7 +178,7 @@ impl Criterion {
 
 
 fn split_by_entropy(pack: Vec<(Bin, LabelToWeight)>)
-    -> (f64, EntropicImpurity)
+    -> (f64, Score)
 {
     let weight_sum = pack.iter()
         .map(|(_, mp)| mp.values().sum::<f64>())
@@ -289,12 +223,12 @@ fn split_by_entropy(pack: Vec<(Bin, LabelToWeight)>)
             best_threshold = bin.0.end;
         }
     }
-    let best_score = EntropicImpurity::from(best_score);
+    let best_score = Score::from(best_score);
     (best_threshold, best_score)
 }
 
 
-fn split_by_edge(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Edge) {
+fn split_by_edge(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
     // Compute the edge of the hypothesis that predicts `+1`
     // for all instances.
     let mut edge = pack.iter()
@@ -320,12 +254,12 @@ fn split_by_edge(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Edge) {
             best_threshold = bin.0.end;
         }
     }
-    let best_edge = Edge::from(best_edge);
+    let best_edge = Score::from(best_edge);
     (best_threshold, best_edge)
 }
 
 
-fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Gini) {
+fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
     let weight_sum = pack.iter()
         .map(|(_, mp)| mp.values().sum::<f64>())
         .sum::<f64>();
@@ -355,6 +289,9 @@ fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Gini) {
             let entry = right_weight.get_mut(&y).unwrap();
             *entry -= w;
             right_weight_sum -= w;
+
+
+            if *entry <= 0.0 { right_weight.remove(&y); }
         }
         let lp = left_weight_sum / weight_sum;
         let rp = (1.0 - lp).max(0.0);
@@ -369,7 +306,49 @@ fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Gini) {
             best_threshold = bin.0.end;
         }
     }
-    let best_score = Gini::from(best_score);
+    let best_score = Score::from(best_score);
+    (best_threshold, best_score)
+}
+
+
+fn split_by_twoing(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
+    let mut left_weight = LabelToWeight::new();
+    let mut right_weight = LabelToWeight::new();
+
+    let mut labels = HashSet::new();
+    for (_, mp) in pack.iter() {
+        for (y, w) in mp.iter() {
+            let entry = right_weight.entry(*y).or_insert(0.0);
+            *entry += w;
+
+            labels.insert(*y);
+        }
+    }
+
+    let mut best_score = 0.0;
+    let mut best_threshold = f64::MIN;
+
+    for (bin, map) in pack {
+        // Move the weights in a `pack` from right to left.
+        for (y, w) in map {
+            let entry = left_weight.entry(y).or_insert(0.0);
+            *entry += w;
+            let entry = right_weight.get_mut(&y).unwrap();
+            *entry -= w;
+
+            if *entry <= 0.0 { right_weight.remove(&y); }
+        }
+
+
+        let score = twoing_score(&labels, &left_weight, &right_weight);
+
+
+        if score > best_score {
+            best_score = score;
+            best_threshold = bin.0.end;
+        }
+    }
+    let best_score = Score::from(best_score);
     (best_threshold, best_score)
 }
 
@@ -400,4 +379,32 @@ pub(self) fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
         .sum::<f64>();
 
     (1.0 - correct).max(0.0)
+}
+
+
+/// Returns the gini-impurity of the given map.
+#[inline(always)]
+pub(self) fn twoing_score(
+    labels: &HashSet<i32>,
+    left: &HashMap<i32, f64>,
+    right: &HashMap<i32, f64>,
+) -> f64
+{
+    let pl = left.values().sum::<f64>();
+    let pr = right.values().sum::<f64>();
+    let pt = pl + pr;
+
+    if pl == 0.0 || pr == 0.0 { return 0.0; }
+    assert!(pt > 0.0);
+
+    let mut score = 0.0;
+    for y in labels {
+        let l = left.get(y).unwrap_or(&0.0);
+        let r = right.get(y).unwrap_or(&0.0);
+
+        score += ((l / pl) - (r / pr)).abs();
+    }
+    score = score.powi(2) * pl * pr / (2.0 * pt).powi(2);
+
+    score
 }
