@@ -98,13 +98,13 @@ You can see the document by `cargo doc --open` command.
 You need to write the following line to `Cargo.toml`.
 
 ```TOML
-miniboosts = { git = "https://github.com/rmitsuboshi/miniboosts" }
+miniboosts = { version = "0.2.2" }
 ```
 
 If you want to use `extended` features, such as `LPBoost`, specify the option:
 
 ```TOML
-miniboosts = { git = "https://github.com/rmitsuboshi/miniboosts", features = ["extended"] }
+miniboosts = { version = "0.2.2", features = ["extended"] }
 ```
 
 
