@@ -41,8 +41,6 @@
 //! - [`DecisionTree`]
 //! - [`DecisionTreeClassifier`]
 //! - [`CombinedHypothesis<F>`]
-//! - [`DecisionTree::max_depth`]
-//! - [`DecisionTree::criterion`]
 //! - [`DataFrame`]
 //! - [`Series`]
 //! - [`DataFrame::shape`]
@@ -54,8 +52,6 @@
 //! [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 //! [`NeuralNetwork`]: crate::weak_learner::NeuralNetwork
 //! [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-//! [`DecisionTree::max_depth`]: crate::weak_learner::DecisionTree::max_depth
-//! [`DecisionTree::criterion`]: crate::weak_learner::DecisionTree::criterion
 //! [`DataFrame`]: polars::prelude::DataFrame
 //! [`Series`]: polars::prelude::Series
 //! [`DataFrame::shape`]: polars::prelude::DataFrame::shape
@@ -91,15 +87,16 @@
 //!     .nu(0.1 * n_sample);
 //! 
 //! // Set the weak learner with setting parameters.
-//! let weak_learner = DecisionTree::init(&sample)
+//! let weak_learner = DecisionTreeBuilder::new(&train)
 //!     .max_depth(2)
-//!     .criterion(Criterion::Edge);
+//!     .criterion(Criterion::Entropy)
+//!     .build();
 //! 
 //! // Run `LPBoost` and obtain the resulting hypothesis `f`.
-//! let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+//! let f = booster.run(&weak_learner);
 //! 
 //! // Get the predictions on the training set.
-//! let predictions: Vec<i64> = f.predict_all(&data);
+//! let predictions = f.predict_all(&data);
 //! 
 //! // Calculate the training loss.
 //! let target = sample.target();
@@ -119,6 +116,7 @@ pub mod weak_learner;
 pub mod prelude;
 
 pub mod research;
+// pub mod pywriter;
 
 
 // Export the struct that represents batch sample

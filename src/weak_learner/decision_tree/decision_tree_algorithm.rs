@@ -27,8 +27,6 @@ use std::collections::HashMap;
 /// generates a `DecisionTreeClassifier` for a given distribution over examples.
 /// 
 /// See also:
-/// - [`DecisionTree::max_depth`](DecisionTree::max_depth)
-/// - [`DecisionTree::criterion`](DecisionTree::criterion)
 /// - [`Criterion`](Criterion)
 /// 
 /// # Example

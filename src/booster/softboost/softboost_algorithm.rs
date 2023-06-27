@@ -32,8 +32,6 @@ use std::ops::ControlFlow;
 /// - [`DecisionTree`]
 /// - [`DecisionTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
-/// - [`DecisionTree::max_depth`]
-/// - [`DecisionTree::criterion`]
 /// - [`DataFrame`]
 /// - [`Series`]
 /// - [`DataFrame::shape`]
@@ -43,8 +41,6 @@ use std::ops::ControlFlow;
 /// [`DecisionTree`]: crate::weak_learner::DecisionTree
 /// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`DecisionTree::max_depth`]: crate::weak_learner::DecisionTree::max_depth
-/// [`DecisionTree::criterion`]: crate::weak_learner::DecisionTree::criterion
 /// [`DataFrame`]: polars::prelude::DataFrame
 /// [`Series`]: polars::prelude::Series
 /// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
