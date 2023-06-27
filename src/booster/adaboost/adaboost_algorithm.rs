@@ -16,10 +16,19 @@ use crate::{
 use std::ops::ControlFlow;
 
 
-/// Defines `AdaBoost`.
+/// The AdaBoost algorithm proposed by Robert E. Schapire and Yoav Freund.
+/// 
 /// This struct is based on the book: 
 /// [Boosting: Foundations and Algorithms](https://direct.mit.edu/books/oa-monograph/5342/BoostingFoundations-and-Algorithms)
 /// by Robert E. Schapire and Yoav Freund.
+/// 
+/// AdaBoost is a boosting algorithm for binary classification 
+/// that minimizes exponential loss.
+/// 
+/// As some paper proved, AdaBoost **approximately** maximizes the hard margin.
+/// 
+/// [`AdaBoostV`](crate::booster::AdaBoostV), 
+/// a successor of AdaBoost, maximizes the hard margin.
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -41,7 +50,7 @@ use std::ops::ControlFlow;
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
 /// let has_header = true;
-/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
 ///     .set_target("class");
 /// 
@@ -55,15 +64,16 @@ use std::ops::ControlFlow;
 ///     .tolerance(0.01);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let weak_learner = DecisionTreeBuilder::new(&train)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `AdaBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&sample);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Get the number of training examples.
 /// let n_sample = sample.shape().0 as f64;
@@ -113,7 +123,7 @@ pub struct AdaBoost<'a, F> {
 
 
 impl<'a, F> AdaBoost<'a, F> {
-    /// Initialize the `AdaBoost`.
+    /// Initializes `AdaBoost`.
     /// This method sets some parameters `AdaBoost` holds.
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
@@ -148,7 +158,7 @@ impl<'a, F> AdaBoost<'a, F> {
     }
 
 
-    /// Force quits after `it` iterations.
+    /// Force quits after at most `it` iterations.
     /// Note that if `it` is smaller than the iteration bound
     /// for AdaBoost, the returned hypothesis has no guarantee.
     pub fn force_quit_at(mut self, it: usize) -> Self {
@@ -158,6 +168,7 @@ impl<'a, F> AdaBoost<'a, F> {
 
 
     /// Set the tolerance parameter.
+    /// `AdaBoost` terminates after this tolerance is achieved.
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
         self
@@ -208,7 +219,7 @@ impl<'a, F> AdaBoost<'a, F> {
 
 
 
-        // Update self.dist
+        // Update distribution over training examples.
         self.dist.par_iter_mut()
             .for_each(|d| *d = (*d - normalizer).exp());
 
