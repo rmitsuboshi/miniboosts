@@ -28,9 +28,14 @@ use std::ops::ControlFlow;
 
 
 
-/// MLPBoost. This code is based on this paler: 
-/// [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831)
-/// by Ryotaro Mitsuboshi, Kohei Hatano, and Eiji Takimoto.
+/// The MLPBoost algorithm, shorthand of Modified LPBoost algorithm,
+/// proposed in the following paper:
+/// 
+/// [Ryotaro Mitsuboshi, Kohei Hatano, and Eiji Takimoto - Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831)
+/// 
+/// MLPBoost is an abstraction of soft-margin boosting algorithms
+/// in terms of Frank-Wolfe algorithm.
+/// 
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -53,7 +58,7 @@ use std::ops::ControlFlow;
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
 /// let has_header = true;
-/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
 ///     .set_target("class");
 /// 
@@ -71,21 +76,22 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = sample.shape().0` is 
 /// // the number of training examples in `sample`.
-/// let booster = MLPBoost::init(&sample)
+/// let mut booster = MLPBoost::init(&sample)
 ///     .tolerance(0.01)
 ///     .frank_wolfe(FWType::ShortStep)
 ///     .nu(0.1 * n_sample);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let weak_learner = DecisionTreeBuilder::new(&train)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `MLPBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&sample);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
 /// let target = sample.target();
@@ -142,22 +148,24 @@ pub struct MLPBoost<'a, F> {
 
 
 impl<'a, F> MLPBoost<'a, F> {
-    /// Initialize the `MLPBoost`.
+    /// Construct a new instance of `MLPBoost`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
 
-        let uni = 0.5 / n_sample as f64;
-        let eta = 2.0 * (n_sample as f64).ln() / uni;
+        let half_tolerance = 0.005;
         let nu  = 1.0;
+        let eta = (n_sample as f64 / nu).ln() / half_tolerance;
 
         let primary = FrankWolfe::new(eta, nu, FWType::ShortStep);
 
         MLPBoost {
             sample,
 
-            half_tolerance: uni,
+            half_tolerance,
             n_sample,
             nu,
             eta,
@@ -177,7 +185,9 @@ impl<'a, F> MLPBoost<'a, F> {
 
 
     /// This method updates the capping parameter.
-    /// This parameter must be in `[1, sample_size]`.
+    /// This parameter must be in `[1, # of training examples]`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn nu(mut self, nu: f64) -> Self {
         assert!(1.0 <= nu && nu <= self.n_sample as f64);
         self.nu = nu;
@@ -187,8 +197,10 @@ impl<'a, F> MLPBoost<'a, F> {
     }
 
 
-    /// Update the Frank-Wolfe rule.
-    /// See [`FWType`](FWType)
+    /// Set the Frank-Wolfe rule.
+    /// See [`FWType`](FWType).
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn frank_wolfe(mut self, fw_type: FWType) -> Self {
         self.primary.fw_type(fw_type);
         self
@@ -196,6 +208,8 @@ impl<'a, F> MLPBoost<'a, F> {
 
 
     /// Set the tolerance parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.half_tolerance = tolerance / 2.0;
@@ -204,6 +218,8 @@ impl<'a, F> MLPBoost<'a, F> {
 
 
     /// Set the regularization parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     fn eta(&mut self) {
         let ln_m = (self.n_sample as f64 / self.nu).ln();
@@ -213,6 +229,8 @@ impl<'a, F> MLPBoost<'a, F> {
 
 
     /// Initialize the LP solver.
+    /// 
+    /// Time complexity: `O( # of training examples )`.
     fn init_solver(&mut self) {
         // `ub` is the upper-bound of distribution for each example.
         let ub = 1.0 / self.nu;
@@ -226,6 +244,8 @@ impl<'a, F> MLPBoost<'a, F> {
     /// Initialize all parameters.
     /// The methods `self.tolerance(..)`, `self.eta(..)`, and
     /// `self.init_solver(..)` are accessed only via this method.
+    /// 
+    /// Time complexity: `O( # of training examples )`.
     fn init_params(&mut self) {
         // Set the regularization parameter.
         self.eta();
@@ -237,6 +257,8 @@ impl<'a, F> MLPBoost<'a, F> {
 
     /// Returns the maximum iterations 
     /// to obtain the solution with accuracy `self.half_tolerance`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn max_loop(&self) -> usize {
         let ln_m = (self.n_sample as f64 / self.nu).ln();
         (8.0_f64 * ln_m / self.half_tolerance.powi(2)).ceil() as usize
@@ -245,6 +267,8 @@ impl<'a, F> MLPBoost<'a, F> {
 
     /// Returns the terminated iteration.
     /// This method returns `0` before the boosting step.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn terminated(&self) -> usize {
         self.terminated
     }
@@ -273,6 +297,8 @@ impl<F> MLPBoost<'_, F>
     /// min [ d^T Aw + sum_i [ di ln( di ) ] ]
     /// s.t. sum_i di = 1, 0 <= di <= 1 / self.nu, for all i <= m.
     /// ```
+    /// 
+    /// Time complexity: `O( # of training examples )`.
     fn objval(&self, weights: &[f64]) -> f64 {
 
         let dist = utils::exp_distribution(
@@ -293,6 +319,8 @@ impl<F> MLPBoost<'_, F>
     /// by comparing the smoothed objective value.
     /// Since MLPBoost maximizes `-f*`,
     /// this method picks the one that yields the better value.
+    /// 
+    /// Time complexity: `O( # of training examples )`.
     fn better_weight(&mut self, w1: Vec<f64>, w2: Vec<f64>)
     {
         let v1 = self.objval(&w1[..]);

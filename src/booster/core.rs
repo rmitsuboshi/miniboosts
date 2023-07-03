@@ -9,10 +9,25 @@ use std::ops::ControlFlow;
 
 
 /// The trait [`Booster`](Booster) defines the standard framework of Boosting.
+/// Here, the **standard framework** is defined as
+/// a repeated game between **Booster** and **Weak Learner**
+/// of the following form:
 /// 
-/// You need to implement [`Booster::preprocess`](Booster::preprocess),
-/// [`Booster::boost`](Booster::boost), 
-/// and [`Booster::postprocess`](Booster::postprocess)
+/// In each round `t = 1, 2, ...`,
+/// 1. Booster chooses a probability distribution over
+///    training instances.
+/// 2. Weak Learner chooses a hypothesis that achieves 
+///    some **accuracy** with respect to the distribution.
+/// 
+/// After sufficient rounds, Booster outputs a combined hypothesis
+/// with high accuracy for any probability distribution on training examples.
+/// 
+/// You need to implement 
+/// 
+/// - [`Booster::preprocess`](Booster::preprocess),
+/// - [`Booster::boost`](Booster::boost), and
+/// - [`Booster::postprocess`](Booster::postprocess)
+/// 
 /// to write a new boosting algorithm.
 pub trait Booster<F> {
     /// A main function that runs boosting algorithm.
@@ -34,7 +49,7 @@ pub trait Booster<F> {
 
     /// Pre-processing for `self`.
     /// As you can see in [`Booster::run`](Booster::run),
-    /// This method is called before the boosting process.
+    /// this method is called before the boosting process.
     fn preprocess<W>(
         &mut self,
         weak_learner: &W,

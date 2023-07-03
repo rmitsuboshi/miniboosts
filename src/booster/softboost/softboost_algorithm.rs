@@ -19,10 +19,8 @@ use std::ops::ControlFlow;
 
 
 
-/// `SoftBoost`.
-/// This algorithm is based on this paper: 
-/// [Boosting Algorithms for Maximizing the Soft Margin](https://papers.nips.cc/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) 
-/// by Gunnar Rätsch, Manfred K. Warmuth, and Laren A. Glocer.
+/// The SoftBoost algorithm proposed in the following paper:
+/// [Gunnar Rätsch, Manfred K. Warmuth, and Laren A. Glocer - Boosting Algorithms for Maximizing the Soft Margin](https://papers.nips.cc/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) 
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -32,37 +30,29 @@ use std::ops::ControlFlow;
 /// - [`DecisionTree`]
 /// - [`DecisionTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
-/// - [`DataFrame`]
-/// - [`Series`]
-/// - [`DataFrame::shape`]
-/// - [`CsvReader`]
 /// 
 /// [`SoftBoost::nu`]: SoftBoost::nu
 /// [`DecisionTree`]: crate::weak_learner::DecisionTree
 /// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`DataFrame`]: polars::prelude::DataFrame
-/// [`Series`]: polars::prelude::Series
-/// [`DataFrame::shape`]: polars::prelude::DataFrame::shape
-/// [`CsvReader`]: polars::prelude::CsvReader
 /// 
 /// 
 /// ```no_run
-/// use polars::prelude::*;
 /// use miniboosts::prelude::*;
 /// 
-/// // Read the training data from the CSV file.
-/// let mut data = CsvReader::from_path(path_to_csv_file)
+/// // Read the training sample from the CSV file.
+/// // We use the column named `class` as the label.
+/// let has_header = true;
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
-///     .has_header(true)
-///     .finish()
-///     .unwrap();
-/// 
-/// // Split the column corresponding to labels.
-/// let target = data.drop_in_place(class_column_name).unwrap();
+///     .set_target("class");
 /// 
 /// // Get the number of training examples.
-/// let n_sample = data.shape().0 as f64;
+/// let n_sample = sample.shape().0 as f64;
+/// 
+/// // Set the upper-bound parameter of outliers in `sample`.
+/// // Here we assume that the outliers are at most 1% of `sample`.
+/// let nu = 0.1 * n_sample;
 /// 
 /// // Initialize `SoftBoost` and set the tolerance parameter as `0.01`.
 /// // This means `booster` returns a hypothesis 
@@ -72,34 +62,31 @@ use std::ops::ControlFlow;
 /// // SoftBoost calls `SoftBoost::nu` to set the capping parameter 
 /// // as `0.1 * n_sample`, which means that, 
 /// // at most, `0.1 * n_sample` examples are regarded as outliers.
-/// let booster = SoftBoost::init(&data, &target)
+/// let booster = SoftBoost::init(&sample)
 ///     .tolerance(0.01)
-///     .nu(0.1 * n_sample);
+///     .nu(nu);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&data, &target)
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `SoftBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&data);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
-/// let training_loss = target.i64()
-///     .unwrap()
-///     .into_iter()
+/// let target = sample.target();
+/// let training_loss = target.into_iter()
 ///     .zip(predictions)
-///     .map(|(true_label, prediction) {
-///         let true_label = true_label.unwrap();
-///         if true_label == prediction { 0.0 } else { 1.0 }
-///     })
+///     .map(|(&y, fx) if y as i64 == fx { 0.0 } else { 1.0 })
 ///     .sum::<f64>()
 ///     / n_sample;
-///
-///
+/// 
+/// 
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct SoftBoost<'a, F> {
@@ -174,6 +161,8 @@ impl<'a, F> SoftBoost<'a, F>
 
 
     /// Set the capping parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn nu(mut self, nu: f64) -> Self {
         let n_sample = self.sample.shape().0 as f64;
@@ -185,6 +174,8 @@ impl<'a, F> SoftBoost<'a, F>
 
 
     /// Set the tolerance parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
@@ -195,6 +186,8 @@ impl<'a, F> SoftBoost<'a, F>
     /// `max_loop` returns the maximum iteration
     /// of the Adaboost to find a combined hypothesis
     /// that has error at most `tolerance`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn max_loop(&mut self) -> usize {
 
         let n_sample = self.sample.shape().0 as f64;
@@ -206,7 +199,9 @@ impl<'a, F> SoftBoost<'a, F>
     }
 
 
-    /// Returns a optimal value of the optimization problem LPBoost solves
+    /// Returns a optimal value of the optimization problem LPBoost solves.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn opt_val(&self) -> f64 {
         self.gamma_hat
     }

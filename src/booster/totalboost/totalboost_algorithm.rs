@@ -18,10 +18,9 @@ use crate::{
 use std::ops::ControlFlow;
 
 
-/// `TotalBoost`.
-/// This algorithm is originally invented in this paper:
-/// [Totally corrective boosting algorithms that maximize the margin](https://dl.acm.org/doi/10.1145/1143844.1143970)
-/// by Manfred K. Warmuth, Jun Liao, and Gunnar Rätsch.
+/// The TotalBoost algorithm proposed in the following paper:
+/// [Manfred K. Warmuth, Jun Liao, and Gunnar Rätsch - Totally corrective boosting algorithms that maximize the margin](https://dl.acm.org/doi/10.1145/1143844.1143970)
+/// 
 /// `TotalBoost` is a special case of [`SoftBoost`].
 /// That is, 
 /// `TotalBoost` restricts [`SoftBoost::nu`] as `1.0`.  
@@ -48,7 +47,7 @@ use std::ops::ControlFlow;
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
 /// let has_header = true;
-/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
 ///     .set_target("class");
 /// 
@@ -62,19 +61,20 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = sample.shape().0` is 
 /// // the number of training examples in `sample`.
-/// let booster = LPBoost::init(&sample)
+/// let mut booster = LPBoost::init(&sample)
 ///     .tolerance(0.01);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `LPBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&sample);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
 /// let target = sample.target();
@@ -95,7 +95,9 @@ pub struct TotalBoost<'a, F> {
 impl<'a, F> TotalBoost<'a, F>
     where F: Classifier,
 {
-    /// initialize the `TotalBoost`.
+    /// Construct a new instance of `TotalBoost`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
         let softboost = SoftBoost::init(sample)
             .nu(1.0);
@@ -104,13 +106,17 @@ impl<'a, F> TotalBoost<'a, F>
     }
 
 
-    /// Returns a optimal value of the optimization problem LPBoost solves
+    /// Returns a optimal value of the optimization problem TotalBoost solves.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn opt_val(&self) -> f64 {
         self.softboost.opt_val()
     }
 
 
     /// Set the tolerance parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn tolerance(mut self, tol: f64) -> Self {
         self.softboost = self.softboost.tolerance(tol);
         self

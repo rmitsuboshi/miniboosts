@@ -1,7 +1,10 @@
 //! This file provides some common functions
 //! such as edge calculation.
 use rayon::prelude::*;
+
+
 use crate::{Sample, Classifier};
+use crate::common::checker;
 
 /// Returns the edge of a single hypothesis for the given distribution
 #[inline(always)]
@@ -125,6 +128,44 @@ pub(crate) fn exp_distribution_from_margins<I>(
 
 
 #[inline(always)]
+pub(crate) fn project_distribution_to_capped_simplex<I>(
+    nu: f64,
+    iter: I,
+) -> Vec<f64>
+    where I: Iterator<Item = f64>,
+{
+    let mut dist: Vec<_> = iter.collect();
+    let n_sample = dist.len();
+
+    // Construct a vector of indices sorted in descending order of `dist`.
+    let mut ix = (0..n_sample).collect::<Vec<usize>>();
+    ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
+
+    let mut sum = dist.iter().sum::<f64>();
+
+    let ub = 1.0 / nu;
+
+
+    let mut ix = ix.into_iter().enumerate();
+    for (k, i) in ix.by_ref() {
+        let xi = (1.0 - ub * k as f64) / sum;
+        if xi * dist[i] <= ub {
+            dist[i] = xi * dist[i];
+            for (_, j) in ix {
+                dist[j] = xi * dist[j];
+            }
+            break;
+        }
+        sum -= dist[i];
+        dist[i] = ub;
+    }
+
+    checker::check_capped_simplex_condition(&dist, nu);
+    dist
+}
+
+
+#[inline(always)]
 pub(crate) fn project_log_distribution_to_capped_simplex<I>(
     nu: f64,
     iter: I,
@@ -162,7 +203,7 @@ pub(crate) fn project_log_distribution_to_capped_simplex<I>(
     let mut ix_with_logsum = ix.into_iter().zip(logsums).enumerate();
 
 
-    while let Some((i, (i_sorted, logsum))) = ix_with_logsum.next() {
+    for (i, (i_sorted, logsum)) in ix_with_logsum.by_ref() {
         let log_xi = (1.0 - ub * i as f64).ln() - logsum;
         // TODO replace this line by `get_unchecked`
         let d = dist[i_sorted];
@@ -178,6 +219,7 @@ pub(crate) fn project_log_distribution_to_capped_simplex<I>(
 
         dist[i_sorted] = ub;
     }
+    checker::check_capped_simplex_condition(&dist, nu);
     dist
 }
 
@@ -218,7 +260,7 @@ pub(crate) fn normalize(items: &mut [f64]) {
         .map(|it| it.abs())
         .sum::<f64>();
 
-    assert_ne!(z, 0.0);
+    assert_ne!(z, 0.0, "{items:?}");
 
     items.par_iter_mut()
         .for_each(|item| { *item /= z; });

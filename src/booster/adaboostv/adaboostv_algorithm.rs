@@ -23,8 +23,13 @@ use std::ops::ControlFlow;
 
 /// Defines `AdaBoostV`.
 /// This struct is based on the paper: 
-/// [Efficient Margin Maximizing with Boosting](https://www.jmlr.org/papers/v6/ratsch05a.html)
-/// by Gunnar Rätsch and Manfred K. Warmuth.
+/// `AdaBoostV`, also known as `AdaBoost_{\nu}^\star`, is a boosting algorithm
+/// in the following paper:
+/// 
+/// [Gunnar Rätsch and Manfred K. Warmuth - Efficient Margin Maximizing with Boosting](https://www.jmlr.org/papers/v6/ratsch05a.html)
+/// 
+/// `AdaBoostV` aims to maximize the hard-margin 
+/// for linearly separable training instances.
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -33,6 +38,7 @@ use std::ops::ControlFlow;
 /// - [`DecisionTree`]
 /// - [`DecisionTreeClassifier`]
 /// - [`CombinedHypothesis<F>`]
+/// - [`Sample`]
 /// 
 /// [`DecisionTree`]: crate::weak_learner::DecisionTree
 /// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
@@ -45,7 +51,7 @@ use std::ops::ControlFlow;
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
 /// let has_header = true;
-/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
 ///     .set_target("class");
 /// 
@@ -55,19 +61,20 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = sample.shape().0` is 
 /// // the number of training examples in `sample`.
-/// let booster = AdaBoostV::init(&sample)
+/// let mut booster = AdaBoostV::init(&sample)
 ///     .tolerance(0.01);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `AdaBoostV` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&sample);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Get the number of training examples.
 /// let n_sample = sample.shape().0 as f64;
@@ -84,29 +91,29 @@ use std::ops::ControlFlow;
 /// println!("Training Loss is: {training_loss}");
 /// ```
 pub struct AdaBoostV<'a, F> {
-    // Training sample
+    /// Training sample
     sample: &'a Sample,
 
-    // Tolerance parameter
+    /// Tolerance parameter
     tolerance: f64,
 
     rho: f64,
 
     gamma: f64,
 
-    // Distribution on sample.
+    /// Distribution on sample.
     dist: Vec<f64>,
 
-    // Weights on hypotheses in `hypotheses`
+    /// Weights on hypotheses in `hypotheses`
     weights: Vec<f64>,
 
-    // Hypohteses obtained by the weak-learner.
+    /// Hypohteses obtained by the weak-learner.
     hypotheses: Vec<F>,
 
     max_iter: usize,
 
-    // Optional. If this value is `Some(it)`,
-    // the algorithm terminates after `it` iterations.
+    /// Optional. If this value is `Some(iteration)`,
+    /// the algorithm terminates after `iteration` iterations.
     force_quit_at: Option<usize>,
 
     terminated: usize,
@@ -114,23 +121,21 @@ pub struct AdaBoostV<'a, F> {
 
 
 impl<'a, F> AdaBoostV<'a, F> {
-    /// Initialize the `AdaBoostV<'a, F>`.
+    /// Constructs a new instance of `AdaBoostV`.
+    /// 
+    /// Time complexity: `O(1)`.
+    #[inline]
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
-        assert!(n_sample != 0);
-
-
-        let uni = 1.0 / n_sample as f64;
-        let dist = vec![uni; n_sample];
-
+        let default_tolerance = 1.0 / n_sample as f64;
         Self {
             sample,
 
-            tolerance: uni,
-            rho:       1.0,
-            gamma:     1.0,
-            dist,
+            tolerance: default_tolerance,
+            rho: 1.0,
+            gamma: 1.0,
 
+            dist: Vec::new(),
             weights: Vec::new(),
             hypotheses: Vec::new(),
 
@@ -143,6 +148,10 @@ impl<'a, F> AdaBoostV<'a, F> {
 
 
     /// Set the tolerance parameter.
+    /// `AdaBoostV` terminates immediately
+    /// after reaching the specified `tolerance`.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
@@ -157,25 +166,37 @@ impl<'a, F> AdaBoostV<'a, F> {
     /// After the `self.max_loop()` iterations,
     /// `AdaBoostV` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline]
     pub fn max_loop(&self) -> usize {
-        let m = self.dist.len();
+        let n_sample = self.sample.shape().0 as f64;
 
-        (2.0 * (m as f64).ln() / self.tolerance.powi(2)) as usize
+        (2.0 * n_sample.ln() / self.tolerance.powi(2)) as usize
     }
 
 
-    /// Force quits after `it` iterations.
-    /// Note that if `it` is smaller than the iteration bound
-    /// for AdaBoost, the returned hypothesis has no guarantee.
-    pub fn force_quit_at(mut self, it: usize) -> Self {
-        self.force_quit_at = Some(it);
+    /// Force quits after `iteration` iterations.
+    /// Note that if `iteration` is smaller than the iteration bound
+    /// for AdaBoostV, 
+    /// the returned hypothesis has no guarantee about the margin.
+    /// 
+    /// Time complexity: `O(1)`.
+    pub fn force_quit_at(mut self, iteration: usize) -> Self {
+        self.force_quit_at = Some(iteration);
         self
     }
 
 
     /// Returns a weight on the new hypothesis.
-    /// `update_params` also updates `self.dist`
+    /// `update_params` also updates `self.dist`.
+    /// 
+    /// `AdaBoostV` uses exponential update,
+    /// which is numerically unstable so that I adopt a logarithmic computation.
+    /// 
+    /// Time complexity: `O( m ln(m) )`,
+    /// where `m` is the number of training examples.
+    /// The additional `ln(m)` term comes from the numerical stabilization.
     #[inline]
     fn update_params(&mut self, margins: Vec<f64>, edge: f64)
         -> f64
