@@ -13,10 +13,19 @@ use crate::{
 use std::ops::ControlFlow;
 
 
-/// Defines `GBM`.
-/// This struct is based on the book: 
-/// [Greedy Function Approximation: A Gradient Boosting Machine](https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full)
-/// by Jerome H. Friedman, 2001.
+/// The Gradient Boosting Machine proposed in the following paper:
+/// 
+/// [Jerome H. Friedman, 2001 - Greedy Function Approximation: A Gradient Boosting Machine](https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full)
+/// 
+/// Gradient Boosting Machine, GBM for shorthand, is a boosting algorithm
+/// that minimizes the training loss.
+/// GBM regards the boosting protocol as the gradient descent 
+/// over some functional space
+/// (One can see GBM as coordinate descent algorithm,
+/// where each coordinate corresponds to some function in that space).
+/// 
+/// **Note.** Currently, I only implements GBM for regression.
+/// 
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -25,8 +34,8 @@ use std::ops::ControlFlow;
 /// - [`Regressor`]
 /// - [`CombinedHypothesis<F>`]
 /// 
-/// [`RTree`]: crate::weak_learner::RTree
-/// [`RTreeRegressor`]: crate::weak_learner::RTreeRegressor
+/// [`RegressionTree`]: crate::weak_learner::RegressionTree
+/// [`RegressionTreeRegressor`]: crate::weak_learner::RegressionTreeRegressor
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
 /// 
 /// 
@@ -50,22 +59,24 @@ use std::ops::ControlFlow;
 ///     .loss(GBMLoss::L1);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = RTree::init(&sample)
-///     .max_depth(1)
-///     .loss_type(LossType::L1);
+/// let weak_learner = RegressionTreeBuilder::new(&sample)
+///     .max_depth(2)
+///     .loss(LossType::L1)
+///     .build();
 /// 
 /// // Run `GBM` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<RTreeRegressor> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<f64> = f.predict_all(&data);
+/// let predictions = f.predict_all(&data);
 /// 
 /// // Get the number of training examples.
 /// let n_sample = data.shape().0 as f64;
 /// 
 /// // Calculate the L1-training loss.
 /// let target = sample.target();
-/// let training_loss = target.into_iter()
+/// let training_loss = sample.target()
+///     .into_iter()
 ///     .zip(predictions)
 ///     .map(|(y, fx) (y - fx).abs())
 ///     .sum::<f64>()

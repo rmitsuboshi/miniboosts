@@ -23,10 +23,19 @@ use crate::{
 
 use std::ops::ControlFlow;
 
-/// Corrective ERLPBoost struct.  
-/// This algorithm is based on this paper:
-/// [On the equivalence of weak learnability and linear separability: new relaxations and efficient boosting algorithms](https://link.springer.com/article/10.1007/s10994-010-5173-z)
-/// by Shai Shalev-Shwartz and Yoram Singer.
+/// The Corrective ERLPBoost algorithm, proposed in the following paper:
+/// 
+/// [Shai Shalev-Shwartz and Yoram Singer - On the equivalence of weak learnability and linear separability: new relaxations and efficient boosting algorithms](https://link.springer.com/article/10.1007/s10994-010-5173-z)
+/// 
+/// Corrective ERLPBoost aims to optimize soft-margin 
+/// without using LP/QP solver.
+/// ## Strength
+/// - Running time per round is 
+///   the fastest among soft-margin boosting algorithms.
+/// - The iteration bound is the same as the one to ERLPBoost.
+/// ## Weakness
+/// - Empirically, the number of rounds tend to huge compared to
+///   totally corrective algorithms such as [`ERLPBoost`] and [`LPBoost`].
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -41,7 +50,8 @@ use std::ops::ControlFlow;
 /// [`DecisionTree`]: crate::weak_learner::DecisionTree
 /// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 /// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// 
+/// [`LPBoost`]: crate::prelude::LPBoost
+/// [`ERLPBoost`]: crate::prelude::ERLPBoost
 /// 
 /// ```no_run
 /// use miniboosts::prelude::*;
@@ -49,7 +59,7 @@ use std::ops::ControlFlow;
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
 /// let has_header = true;
-/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
 ///     .set_target("class");
 /// 
@@ -67,20 +77,21 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = sample.shape().0` is 
 /// // the number of training examples in `sample`.
-/// let booster = CERLPBoost::init(&sample)
+/// let mut booster = CERLPBoost::init(&sample)
 ///     .tolerance(0.01)
 ///     .nu(0.1 * n_sample);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `CERLPBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&sample);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
 /// let target = sample.target();
@@ -113,15 +124,15 @@ pub struct CERLPBoost<'a, F> {
 }
 
 impl<'a, F> CERLPBoost<'a, F> {
-    /// Initialize the `CERLPBoost`.
+    /// Construct a new instance of `CERLPBoost`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
 
-        // Set uni as an uniform weight
-        let uni = 1.0 / n_sample as f64;
 
         // Set tolerance, sub_tolerance
-        let half_tolerance = uni;
+        let half_tolerance = 0.005;
 
         // Set regularization parameter
         let nu = 1.0;
@@ -132,7 +143,7 @@ impl<'a, F> CERLPBoost<'a, F> {
         Self {
             sample,
 
-            dist: vec![uni; n_sample],
+            dist: Vec::new(),
             half_tolerance,
             eta,
             nu: 1.0,
@@ -148,6 +159,8 @@ impl<'a, F> CERLPBoost<'a, F> {
 
 
     /// This method updates the capping parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn nu(mut self, nu: f64) -> Self {
         let n_sample = self.dist.len();
         checker::check_nu(nu, n_sample);
@@ -161,6 +174,8 @@ impl<'a, F> CERLPBoost<'a, F> {
 
 
     /// Update tolerance parameter `half_tolerance`.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.half_tolerance = tolerance / 2.0;
@@ -169,8 +184,9 @@ impl<'a, F> CERLPBoost<'a, F> {
 
 
     /// Update regularization parameter.
-    /// (the regularization parameter on
-    ///  `self.tolerance` and `self.nu`.)
+    /// (the regularization parameter on `self.tolerance` and `self.nu`.)
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     fn regularization_param(&mut self) {
         let m = self.dist.len() as f64;
@@ -183,6 +199,8 @@ impl<'a, F> CERLPBoost<'a, F> {
 
     /// returns the maximum iteration of the CERLPBoost
     /// to find a combined hypothesis that has error at most `tolerance`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn max_loop(&mut self) -> usize {
 
         let m = self.dist.len() as f64;
@@ -205,50 +223,6 @@ impl<F> CERLPBoost<'_, F>
             &self.weights[..], &self.hypotheses[..],
         );
     }
-
-    // /// Update the weights on hypotheses
-    // fn update_clf_weight_mut(&mut self, new_h: F, gap_vec: Vec<f64>)
-    // {
-    //     // Numerator
-    //     let numer = gap_vec.iter()
-    //         .zip(self.dist.iter())
-    //         .fold(0.0, |acc, (&v, &d)| acc + v * d);
-
-    //     let squared_inf_norm = gap_vec.into_iter()
-    //         .fold(f64::MIN, |acc, v| acc.max(v.abs()))
-    //         .powi(2);
-
-    //     // Denominator
-    //     let denom = self.eta * squared_inf_norm;
-
-    //     // Name the weight on new hypothesis as `weight`
-    //     let weight = 0.0_f64.max(1.0_f64.min(numer / denom));
-
-    //     let mut already_exist = false;
-    //     let iter = self.weights.iter_mut().zip(&self.hypotheses[..]);
-    //     for (w, h) in iter {
-    //         if *h == new_h {
-    //             already_exist = true;
-    //             *w += weight;
-    //         } else {
-    //             *w *= 1.0 - weight;
-    //         }
-    //     }
-    //     // for (clf, w) in self.classifiers.iter_mut() {
-    //     //     if *clf == new_clf {
-    //     //         already_exist = true;
-    //     //         *w += weight;
-    //     //     } else {
-    //     //         *w *= 1.0 - weight;
-    //     //     }
-    //     // }
-
-    //     if !already_exist {
-    //         // self.classifiers.push((new_clf, weight));
-    //         self.weights.push(weight);
-    //         self.hypotheses.push(new_h);
-    //     }
-    // }
 }
 
 impl<F> Booster<F> for CERLPBoost<'_, F>

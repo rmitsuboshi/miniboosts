@@ -21,9 +21,20 @@ use std::cell::RefCell;
 use std::ops::ControlFlow;
 
 
-/// LPBoost struct.  
-/// LPBoost is originally invented in this paper: [Linear Programming Boosting via Column Generation](https://www.researchgate.net/publication/220343627_Linear_Programming_Boosting_via_Column_Generation) by Ayhan Demiriz, Kristin P. Bennett, and John Shawe-Taylor.
-/// The code is based on this paper: [Boosting algorithms for Maximizing the Soft Margin](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf) by Manfred K. Warmuth, Karen Glocer, and Gunnar Rätsch.
+/// The LPBoost algorithm proposed in the following paper:
+/// 
+/// [Ayhan Demiriz, Kristin P. Bennett, and John Shawe-Taylor - Linear Programming Boosting via Column Generation](https://www.researchgate.net/publication/220343627_Linear_Programming_Boosting_via_Column_Generation)
+/// 
+/// The code is based on the following paper:
+/// 
+/// [Manfred K. Warmuth, Karen Glocer, and Gunnar Rätsch - Boosting algorithms for Maximizing the Soft Margin](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf)
+/// 
+/// LPBoost aims to optimize soft-margin,
+/// which is the hard-margin excluding some outliers.
+/// One can give the ratio of outliers as a parameter.
+/// 
+/// LPBoost works very fast in practice, but for the worst case,
+/// it takes `Ω( # of training examples )` iterations.
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -64,20 +75,21 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = sample.shape().0` is 
 /// // the number of training examples in `sample`.
-/// let booster = LPBoost::init(&sample)
+/// let mut booster = LPBoost::init(&sample)
 ///     .tolerance(0.01)
 ///     .nu(0.1 * n_sample);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `LPBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&sample);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
 /// let target = sample.target();
@@ -127,20 +139,22 @@ pub struct LPBoost<'a, F> {
 impl<'a, F> LPBoost<'a, F>
     where F: Classifier
 {
-    /// Initialize the `LPBoost`.
+    /// Constructs a new instance of `LPBoost`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
 
 
         let uni = 1.0 / n_sample as f64;
-        LPBoost {
+        Self {
             sample,
 
-            dist:      vec![uni; n_sample],
+            dist: Vec::new(),
             gamma_hat: 1.0,
             tolerance: uni,
             n_sample,
-            nu:        1.0,
+            nu: 1.0,
             lp_model: None,
 
             hypotheses: Vec::new(),
@@ -153,7 +167,9 @@ impl<'a, F> LPBoost<'a, F>
 
 
     /// This method updates the capping parameter.
-    /// This parameter must be in `[1, n_sample]`.
+    /// This parameter must be in `[1, # of training examples]`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn nu(mut self, nu: f64) -> Self {
         checker::check_nu(nu, self.n_sample);
         self.nu = nu;
@@ -178,7 +194,9 @@ impl<'a, F> LPBoost<'a, F>
     /// Set the tolerance parameter.
     /// LPBoost guarantees the `tolerance`-approximate solution to
     /// the soft margin optimization.  
-    /// Default value is `1.0 / sample_size`.
+    /// Default value is `0.01`.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
@@ -188,6 +206,8 @@ impl<'a, F> LPBoost<'a, F>
 
     /// Returns the terminated iteration.
     /// This method returns `usize::MAX` before the boosting step.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn terminated(&self) -> usize {
         self.terminated
@@ -196,7 +216,9 @@ impl<'a, F> LPBoost<'a, F>
 
     /// This method updates `self.dist` and `self.gamma_hat`
     /// by solving a linear program
-    /// over the hypotheses obtained in past steps.
+    /// over the hypotheses obtained in past rounds.
+    /// 
+    /// Time complexity depends on the LP solver.
     #[inline(always)]
     fn update_distribution_mut(&self, h: &F) -> f64
     {

@@ -60,11 +60,11 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = sample.shape().0` is 
 /// // the number of training examples in `sample`.
-/// let booster = AdaBoost::init(&sample)
+/// let mut booster = AdaBoost::init(&sample)
 ///     .tolerance(0.01);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTreeBuilder::new(&train)
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
 ///     .criterion(Criterion::Entropy)
 ///     .build();
@@ -123,16 +123,17 @@ pub struct AdaBoost<'a, F> {
 
 
 impl<'a, F> AdaBoost<'a, F> {
-    /// Initializes `AdaBoost`.
-    /// This method sets some parameters `AdaBoost` holds.
+    /// Constructs a new instance of `AdaBoostV`.
+    /// 
+    /// Time complexity: `O(1)`.
+    #[inline]
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
 
-        let uni = 1.0 / n_sample as f64;
-        AdaBoost {
+        Self {
             sample,
 
-            dist: vec![uni; n_sample],
+            dist: Vec::new(),
             tolerance: 1.0 / (n_sample as f64 + 1.0),
 
             weights: Vec::new(),
@@ -151,6 +152,8 @@ impl<'a, F> AdaBoost<'a, F> {
     /// After the `self.max_loop()` iterations,
     /// `AdaBoost` guarantees zero training error in terms of zero-one loss
     /// if the training examples are linearly separable.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn max_loop(&self) -> usize {
         let n_sample = self.sample.shape().0 as f64;
 
@@ -161,6 +164,8 @@ impl<'a, F> AdaBoost<'a, F> {
     /// Force quits after at most `it` iterations.
     /// Note that if `it` is smaller than the iteration bound
     /// for AdaBoost, the returned hypothesis has no guarantee.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn force_quit_at(mut self, it: usize) -> Self {
         self.force_quit_at = Some(it);
         self
@@ -168,7 +173,10 @@ impl<'a, F> AdaBoost<'a, F> {
 
 
     /// Set the tolerance parameter.
-    /// `AdaBoost` terminates after this tolerance is achieved.
+    /// `AdaBoostV` terminates immediately
+    /// after reaching the specified `tolerance`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.tolerance = tolerance;
         self
@@ -176,7 +184,14 @@ impl<'a, F> AdaBoost<'a, F> {
 
 
     /// Returns a weight on the new hypothesis.
-    /// `update_params` also updates `self.dist`
+    /// `update_params` also updates `self.dist`.
+    /// 
+    /// `AdaBoost` uses exponential update,
+    /// which is numerically unstable so that I adopt a logarithmic computation.
+    /// 
+    /// Time complexity: `O( m ln(m) )`,
+    /// where `m` is the number of training examples.
+    /// The additional `ln(m)` term comes from the numerical stabilization.
     #[inline]
     fn update_params(
         &mut self,

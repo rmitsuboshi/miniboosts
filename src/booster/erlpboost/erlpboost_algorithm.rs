@@ -22,8 +22,19 @@ use std::ops::ControlFlow;
 
 
 
-/// ERLPBoost struct. 
-/// This code is based on this paper: [Entropy Regularized LPBoost](https://link.springer.com/chapter/10.1007/978-3-540-87987-9_23) by Manfred K. Warmuth, Karen A. Glocer, and S. V. N. Vishwanathan.
+/// The ERLPBoost algorithm proposed in the following paper: 
+/// 
+/// [Manfred K. Warmuth, Karen A. Glocer, and S. V. N. Vishwanathan - Entropy Regularized LPBoost](https://link.springer.com/chapter/10.1007/978-3-540-87987-9_23)
+/// 
+/// ERLPBoost aims to optimize the soft-margin.
+/// The main difference between ERLPBoost 
+/// and [LPBoost](crate::prelude::LPBoost) is that
+/// ERLPBoost guaranteed to find an approximate solution in polynomial time.
+/// More precisely, given a tolerance parameter `epsilon > 0` and
+/// the number of outliers `nu * m <- [1, m]`
+/// (`m` is the number of training examples),
+/// ERLPBoost terminates in `O( ln(m / (nu * m)) / (epsilon ^ 2) )` iterations,
+/// while LPBoost terminates after `Ω( m )` iterations for the worst case.
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -46,7 +57,7 @@ use std::ops::ControlFlow;
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
 /// let has_header = true;
-/// let mut sample = Sample::from_csv(path_to_csv_file, has_header)
+/// let sample = Sample::from_csv(path_to_csv_file, has_header)
 ///     .unwrap()
 ///     .set_target("class");
 /// 
@@ -64,20 +75,21 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = sample.shape().0` is 
 /// // the number of training examples in `sample`.
-/// let booster = ERLPBoost::init(&sample)
+/// let mut booster = ERLPBoost::init(&sample)
 ///     .tolerance(0.01)
 ///     .nu(0.1 * n_sample);
 /// 
 /// // Set the weak learner with setting parameters.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
 /// 
 /// // Run `ERLPBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
-/// let predictions: Vec<i64> = f.predict_all(&sample);
+/// let predictions = f.predict_all(&sample);
 /// 
 /// // Calculate the training loss.
 /// let target = sample.target();
@@ -125,24 +137,19 @@ pub struct ERLPBoost<'a, F> {
 
 
 impl<'a, F> ERLPBoost<'a, F> {
-    /// Initialize the `ERLPBoost`.
-    /// Use `data` for argument.
-    /// This method does not care 
-    /// whether the label is included in `data` or not.
+    /// Constructs a new instance of `ERLPBoost`.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
         assert!(n_sample != 0);
-
-
-        // Set uni as an uniform weight
-        let uni = 1.0 / n_sample as f64;
 
         // Compute $\ln(n_sample)$ in advance
         let ln_n_sample = (n_sample as f64).ln();
 
 
         // Set tolerance
-        let half_tolerance = uni / 2.0;
+        let half_tolerance = 0.005;
 
 
         // Set regularization parameter
@@ -156,7 +163,7 @@ impl<'a, F> ERLPBoost<'a, F> {
         ERLPBoost {
             sample,
 
-            dist: vec![uni; n_sample],
+            dist: Vec::new(),
             gamma_hat,
             gamma_star,
             eta,
@@ -190,6 +197,8 @@ impl<'a, F> ERLPBoost<'a, F> {
 
 
     /// Updates the capping parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     pub fn nu(mut self, nu: f64) -> Self {
         assert!(1.0 <= nu && nu <= self.n_sample as f64);
         self.nu = nu;
@@ -201,6 +210,8 @@ impl<'a, F> ERLPBoost<'a, F> {
 
     /// Returns the break iteration.
     /// This method returns `0` before the `.run()` call.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn terminated(&self) -> usize {
         self.terminated
@@ -208,6 +219,8 @@ impl<'a, F> ERLPBoost<'a, F> {
 
 
     /// Set the tolerance parameter.
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.half_tolerance = tolerance / 2.0;
@@ -216,6 +229,8 @@ impl<'a, F> ERLPBoost<'a, F> {
 
 
     /// Setter method of `self.eta`
+    /// 
+    /// Time complexity: `O(1)`.
     #[inline(always)]
     fn regularization_param(&mut self) {
         let ln_n_sample = (self.n_sample as f64 / self.nu).ln();
@@ -228,6 +243,8 @@ impl<'a, F> ERLPBoost<'a, F> {
     /// `max_loop` returns the maximum iteration
     /// of the Adaboost to find a combined hypothesis
     /// that has error at most `tolerance`.
+    /// 
+    /// Time complexity: `O(1)`.
     fn max_loop(&mut self) -> usize {
         let n_sample = self.n_sample as f64;
 
@@ -250,6 +267,8 @@ impl<F> ERLPBoost<'_, F>
 {
     /// Update `self.gamma_hat`.
     /// `self.gamma_hat` holds the minimum value of the objective value.
+    /// 
+    /// Time complexity: `O(m)`, where `m` is the number of training examples.
     #[inline]
     fn update_gamma_hat_mut(&mut self, h: &F)
     {
@@ -264,6 +283,9 @@ impl<F> ERLPBoost<'_, F>
 
     /// Update `self.gamma_star`.
     /// `self.gamma_star` holds the current optimal value.
+    /// 
+    /// Time complexity: `O(t)`, where `t` is the number of hypotheses
+    /// attained by the current iteration.
     fn update_gamma_star_mut(&mut self)
     {
         let max_edge = self.hypotheses.iter()
