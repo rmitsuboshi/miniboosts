@@ -6,9 +6,12 @@ use rayon::prelude::*;
 use crate::{Sample, Classifier};
 use crate::common::checker;
 
-/// Returns the edge of a single hypothesis for the given distribution
+/// Returns the edge of a single hypothesis for the given distribution.
+/// Here `edge` is the weighted training loss.
+/// 
+/// Time complexity: `O(m)`, where `m` is the number of training examples.
 #[inline(always)]
-pub(crate) fn edge_of_hypothesis<H>(
+pub fn edge_of_hypothesis<H>(
     sample: &Sample,
     dist: &[f64],
     h: &H
@@ -24,9 +27,11 @@ pub(crate) fn edge_of_hypothesis<H>(
 
 
 /// Returns the margin vector of a single hypothesis
-/// for the given distribution
+/// for the given distribution.
+/// 
+/// Time complexity: `O(m)`, where `m` is the number of training examples.
 #[inline(always)]
-pub(crate) fn margins_of_hypothesis<H>(sample: &Sample, h: &H)
+pub fn margins_of_hypothesis<H>(sample: &Sample, h: &H)
     -> Vec<f64>
     where H: Classifier,
 {
@@ -39,9 +44,13 @@ pub(crate) fn margins_of_hypothesis<H>(sample: &Sample, h: &H)
 }
 
 
-/// Returns the edge of a weighted hypothesis for the given distribution
+/// Returns the edge of a weighted hypothesis for the given distribution.
+/// 
+/// Time complexity: `O(m * n)`, where
+/// - `m` is the number of training examples and
+/// - `n` is the number of hypotheses.
 #[inline(always)]
-pub(crate) fn edge_of_weighted_hypothesis<H>(
+pub fn edge_of_weighted_hypothesis<H>(
     sample: &Sample,
     dist: &[f64],
     weights: &[f64],
@@ -58,9 +67,13 @@ pub(crate) fn edge_of_weighted_hypothesis<H>(
 
 
 /// Returns the margin vector of a weighted hypothesis
-/// for the given distribution
+/// for the given distribution.
+/// 
+/// Time complexity: `O(m * n)`, where
+/// - `m` is the number of training examples and
+/// - `n` is the number of hypotheses.
 #[inline(always)]
-pub(crate) fn margins_of_weighted_hypothesis<H>(
+pub fn margins_of_weighted_hypothesis<H>(
     sample: &Sample,
     weights: &[f64],
     hypotheses: &[H],
@@ -83,8 +96,19 @@ pub(crate) fn margins_of_weighted_hypothesis<H>(
 }
 
 
+/// Computes the logarithm of 
+/// the exponential distribution for the given combined hypothesis.
+/// The `i` th element of the output vector `d` satisfies:
+/// ```txt
+/// d[i] = - eta * yi * sum ( w[h] * h(xi) ),
+/// ```
+/// where `(xi, yi)` is the `i`-th training example.
+/// 
+/// Time complexity: `O(m * n)`, where
+/// - `m` is the number of training examples and
+/// - `n` is the number of hypotheses.
 #[inline(always)]
-pub(crate) fn log_exp_distribution<H>(
+pub fn log_exp_distribution<H>(
     eta: f64,
     sample: &Sample,
     weights: &[f64],
@@ -98,8 +122,19 @@ pub(crate) fn log_exp_distribution<H>(
 }
 
 
+/// Computes the logarithm of 
+/// the exponential distribution for the given combined hypothesis.
+/// The `i` th element of the output vector `d` satisfies:
+/// ```txt
+/// d[i] ∝ exp( - eta * yi * sum ( w[h] * h(xi) ) ),
+/// ```
+/// where `(xi, yi)` is the `i`-th training example.
+/// 
+/// Time complexity: `O(m * n)`, where
+/// - `m` is the number of training examples and
+/// - `n` is the number of hypotheses.
 #[inline(always)]
-pub(crate) fn exp_distribution<H>(
+pub fn exp_distribution<H>(
     eta: f64,
     nu: f64,
     sample: &Sample,
@@ -114,8 +149,13 @@ pub(crate) fn exp_distribution<H>(
 }
 
 
+/// Computes the exponential distribution from the given parameters
+/// `eta` and `nu` and an iterator `margins`.
+/// 
+/// Computational complexity: `O(m log(m))`, 
+/// where `m` is the number of training examples.
 #[inline(always)]
-pub(crate) fn exp_distribution_from_margins<I>(
+pub fn exp_distribution_from_margins<I>(
     eta: f64,
     nu: f64,
     margins: I,
@@ -127,8 +167,17 @@ pub(crate) fn exp_distribution_from_margins<I>(
 }
 
 
+/// Projects the given distribution onto the capped simplex.
+/// Capped simplex with parameter `ν (nu)` is defined as
+/// 
+/// ```txt
+/// Δ_{m, ν} := { d ∈ [0, 1/ν]^m | sum( d[i] ) = 1 }
+/// ```
+/// 
+/// That is, each coordinate takes at most `1/ν`.
+/// Specifying `ν = 1` yields the no-capped simplex.
 #[inline(always)]
-pub(crate) fn project_distribution_to_capped_simplex<I>(
+pub fn project_distribution_to_capped_simplex<I>(
     nu: f64,
     iter: I,
 ) -> Vec<f64>
@@ -165,8 +214,17 @@ pub(crate) fn project_distribution_to_capped_simplex<I>(
 }
 
 
+/// Projects the given logarithmic distribution onto the capped simplex.
+/// Capped simplex with parameter `ν (nu)` is defined as
+/// 
+/// ```txt
+/// Δ_{m, ν} := { d ∈ [0, 1/ν]^m | sum( d[i] ) = 1 }
+/// ```
+/// 
+/// That is, each coordinate takes at most `1/ν`.
+/// Specifying `ν = 1` yields the no-capped simplex.
 #[inline(always)]
-pub(crate) fn project_log_distribution_to_capped_simplex<I>(
+pub fn project_log_distribution_to_capped_simplex<I>(
     nu: f64,
     iter: I,
 ) -> Vec<f64>
@@ -226,7 +284,7 @@ pub(crate) fn project_log_distribution_to_capped_simplex<I>(
 
 /// Compute the relative entropy from the uniform distribution.
 #[inline(always)]
-pub(crate) fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
+pub fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
     let n_dim = dist.len() as f64;
     let e = entropy(dist);
 
@@ -236,7 +294,7 @@ pub(crate) fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
 
 /// Compute the entropy of the given distribution.
 #[inline(always)]
-pub(crate) fn entropy(dist: &[f64]) -> f64 {
+pub fn entropy(dist: &[f64]) -> f64 {
     dist.iter()
         .copied()
         .map(|d| if d == 0.0 { 0.0 } else { d * d.ln() })
@@ -246,7 +304,7 @@ pub(crate) fn entropy(dist: &[f64]) -> f64 {
 
 /// Compute the inner-product of the given two slices.
 #[inline(always)]
-pub(crate) fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
+pub fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
     v1.into_par_iter()
         .zip(v2)
         .map(|(a, b)| a * b)
@@ -254,8 +312,9 @@ pub(crate) fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
 }
 
 
+/// Normalizes the given slice.
 #[inline(always)]
-pub(crate) fn normalize(items: &mut [f64]) {
+pub fn normalize(items: &mut [f64]) {
     let z = items.iter()
         .map(|it| it.abs())
         .sum::<f64>();
@@ -267,8 +326,9 @@ pub(crate) fn normalize(items: &mut [f64]) {
 }
 
 
+/// Computes the Hadamard product of given two matrices.
 #[inline(always)]
-pub(crate) fn hadamard_product(mut m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>)
+pub fn hadamard_product(mut m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>)
     -> Vec<Vec<f64>>
 {
     assert_eq!(m1.len(), m2.len());
