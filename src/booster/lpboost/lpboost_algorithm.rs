@@ -66,7 +66,7 @@ use std::ops::ControlFlow;
 /// let n_sample = sample.shape().0 as f64;
 /// 
 /// // Set the upper-bound parameter of outliers in `sample`.
-/// // Here we assume that the outliers are at most 1% of `sample`.
+/// // Here we assume that the outliers are at most 10% of `sample`.
 /// let nu = 0.1 * n_sample;
 /// 
 /// // Initialize `LPBoost` and set the tolerance parameter as `0.01`.
