@@ -11,6 +11,16 @@ use super::feature_struct::*;
 
 
 /// Struct `Sample` holds a batch sample with dense/sparse format.
+/// # Example
+/// The following code reads a CSV file and sets the column of name `"class"`
+/// as the target values.
+/// ```no_run
+/// let path = "/path/to/dataset.csv";
+/// let has_header = true;
+/// let sample = Sample::from_csv(path, has_header)
+///     .unwrap()
+///     .set_target("class");
+/// ```
 #[derive(Debug)]
 pub struct Sample {
     pub(super) name_to_index: HashMap<String, usize>,
@@ -22,8 +32,8 @@ pub struct Sample {
 
 
 impl Sample {
-    /// Convert `polars::DataFrame` and `polars::Series` into `Sample`.
-    /// This method takes the ownership for the given pair
+    /// Convert [`DataFrame`](DataFrame) and [`Series`](Series) into `Sample`.
+    /// This method takes the ownership of the given pair of 
     /// `data` and `target`.
     pub fn from_dataframe(data: DataFrame, target: Series)
         -> io::Result<Self>
@@ -55,6 +65,14 @@ impl Sample {
 
 
     /// Read a CSV format file to `Sample` type.
+    /// This method returns `Err` if the file does not exist.
+    /// 
+    /// If the CSV file does not header row,
+    /// this method assigns a default name for each column:
+    /// `Feat. [0]`, `Feat. [1]`, ..., `Feat. [n]`.
+    /// 
+    /// Do not forget to call [`Sample::set_target`](Sample::set_target) to
+    /// assign the class label.
     pub fn from_csv<P>(file: P, mut has_header: bool) -> io::Result<Self>
         where P: AsRef<Path>,
     {
@@ -129,13 +147,13 @@ impl Sample {
     }
 
 
-    /// Returns a slice of type `f64`.
+    /// Returns the slice of target values.
     pub fn target(&self) -> &[f64] {
         &self.target[..]
     }
 
 
-    /// Returns a slice of type `Feature`.
+    /// Returns a slice of the features.
     pub fn features(&self) -> &[Feature] {
         &self.features[..]
     }
@@ -164,7 +182,7 @@ impl Sample {
     }
 
 
-    /// Read a SVMLight format file to `Sample` type.
+    /// Read a SVMLight format file to `Sample`.
     /// 
     /// Each line of SVMLight format file has the following form:
     /// ```txt
@@ -193,7 +211,11 @@ impl Sample {
             let line = line?;
             let mut words = line.split_whitespace();
             // The first word corresponds to the target value.
-            let y = words.next().unwrap().trim().parse::<f64>().unwrap();
+            let y = words.next()
+                .unwrap()
+                .trim()
+                .parse::<f64>()
+                .expect("Failed to parse the target value.");
             target.push(y);
 
             for word in words {
@@ -383,8 +405,16 @@ impl Sample {
 /// `index:value`, where `index: usize` and `value: f64`.
 pub(self) fn index_and_feature(word: &str) -> (usize, f64) {
     let mut i_x = word.split(':');
-    let i = i_x.next().unwrap().trim().parse::<usize>().unwrap();
-    let x = i_x.next().unwrap().trim().parse::<f64>().unwrap();
+    let i = i_x.next()
+        .unwrap()
+        .trim()
+        .parse::<usize>()
+        .expect("Failed to parse an index.");
+    let x = i_x.next()
+        .unwrap()
+        .trim()
+        .parse::<f64>()
+        .expect("Failed to parse a feature value.");
 
     (i, x)
 }

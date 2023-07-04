@@ -25,7 +25,7 @@ pub enum FWType {
     /// Adopt the best step size on the descent direction.
     LineSearch,
 
-    /// Pairwise strategy, 
+    /// The Blended-Pairwise strategy, 
     /// See [this paper](https://proceedings.mlr.press/v162/tsuji22a). 
     BlendedPairwise,
 }

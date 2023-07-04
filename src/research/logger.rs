@@ -15,7 +15,7 @@ const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 
 
 /// Struct `Logger` provides a generic function that
-/// logs objective value, train / test loss value
+/// logs objective value, train/test loss value, and running time
 /// for each step of boosting.
 pub struct Logger<'a, B, W, F, G> {
     booster: B,
