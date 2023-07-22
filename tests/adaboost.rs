@@ -21,7 +21,7 @@ pub mod adaboost_tests {
             .tolerance(0.01)
             .force_quit_at(100);
 
-        let wl = DTreeBuilder::new(&sample)
+        let wl = DecisionTreeBuilder::new(&sample)
             .max_depth(2)
             .criterion(Criterion::Entropy)
             .build();

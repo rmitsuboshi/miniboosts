@@ -23,8 +23,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 
-/// `DecisionTree` is the factory that
-/// generates a `DecisionTreeClassifier` for a given distribution over examples.
+/// `DecisionTree` is the factory that generates
+/// a `DecisionTreeClassifier` for a given distribution over examples.
 /// 
 /// See also:
 /// - [`Criterion`](Criterion)
@@ -45,9 +45,21 @@ use std::collections::HashMap;
 /// // In this example,
 /// // the output hypothesis is at most depth 2.
 /// // Further, this example uses `Criterion::Edge` for splitting rule.
-/// let weak_learner = DecisionTree::init(&sample)
+/// let tree = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .criterion(Criterion::Edge);
+///     .criterion(Criterion::Entropy)
+///     .build();
+/// 
+/// let predictions = tree.predict_all(&sample);
+/// let n_sample = sample.shape().0;
+/// 
+/// let loss = sample.target()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(ty, py)| if ty as f64 == py { 0.0 } else { 1.0 })
+///     .sum::<f64>()
+///     / n_sample as f64;
+/// println!("loss (train) is: {loss}");
 /// ```
 pub struct DecisionTree<'a> {
     bins: HashMap<&'a str, Bins>,
@@ -60,7 +72,7 @@ impl<'a> DecisionTree<'a> {
     /// Initialize [`DecisionTree`](DecisionTree).
     /// This method is called only via `DecisionTreeBuilder::build()`.
     #[inline]
-    pub(crate) fn from_components(
+    pub(super) fn from_components(
         bins: HashMap<&'a str, Bins>,
         criterion: Criterion,
         max_depth: Depth,
@@ -70,8 +82,7 @@ impl<'a> DecisionTree<'a> {
     }
 
 
-    /// Construct a full binary tree
-    /// that perfectly classify the given examples.
+    /// Construct a full binary tree of depth `depth`.
     #[inline]
     fn full_tree(
         &self,
@@ -217,9 +228,9 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
 
     // `label` takes value in `{-1, +1}`.
     let confidence = if total > 0.0 {
-        label as f64 * (2.0 * (p / total) - 1.0)
+        (label as f64 * (2.0 * (p / total) - 1.0)).clamp(-1.0, 1.0)
     } else {
-        label as f64
+        (label as f64).clamp(-1.0, 1.0)
     };
 
     let confidence = Confidence::from(confidence);
