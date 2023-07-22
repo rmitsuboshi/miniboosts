@@ -7,6 +7,7 @@ img/csv
 img/example/target
 
 tests/dataset
+tests/output
 
 # Added by cargo
 #

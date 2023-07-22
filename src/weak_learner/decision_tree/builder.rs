@@ -12,8 +12,18 @@ pub const DEFAULT_MAX_DEPTH: usize = 2;
 
 
 /// A struct that builds `DecisionTree`.
-/// `DecisionTreeBuilder` constructs a weak-learner 
-/// that produces decision-tree classifiers.
+/// `DecisionTreeBuilder` keeps parameters for constructing `DecisionTree`.
+/// 
+/// # Example
+/// 
+/// ```no_run
+/// use miniboosts::prelude::*;
+/// 
+/// let weak_learner = DecisionTreeBuilder::new(&sample)
+///     .max_depth(2)
+///     .criterion(Criterion::Entropy)
+///     .build();
+/// ```
 #[derive(Clone)]
 pub struct DecisionTreeBuilder<'a> {
     sample: &'a Sample,
@@ -59,9 +69,9 @@ impl<'a> DecisionTreeBuilder<'a> {
     }
 
 
-    /// Set criterion for node splitting.
+    /// Set the node splitting rule.
     /// Default value is `Criterion::Entropy`.
-    /// See [`Criterion`](Criterion).
+    /// See [`Criterion`](Criterion) for other rules.
     #[inline]
     pub fn criterion(mut self, criterion: Criterion) -> Self {
         self.criterion = criterion;
@@ -70,6 +80,7 @@ impl<'a> DecisionTreeBuilder<'a> {
 
 
     /// Set the number of bins to a feature named `name`.
+    /// By default, each feature is binned in `255` bins.
     pub fn set_nbins<T>(&mut self, name: T, n_bins: usize)
         where T: AsRef<str>
     {

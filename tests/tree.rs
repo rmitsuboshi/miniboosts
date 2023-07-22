@@ -39,7 +39,7 @@ fn from_raw_representation() {
     let sample = Sample::from_dataframe(df, target).unwrap();
 
 
-    let dtree = DTreeBuilder::new(&sample)
+    let dtree = DecisionTreeBuilder::new(&sample)
         .criterion(Criterion::Entropy)
         .build();
     let dist = vec![1.0/7.0; 7];
@@ -64,7 +64,7 @@ fn from_lightsvm() {
     sample.replace_names(["x", "y"]);
     println!("{sample:?}");
 
-    let dtree = DTreeBuilder::new(&sample)
+    let dtree = DecisionTreeBuilder::new(&sample)
         .criterion(Criterion::Entropy)
         .build();
     let dist = vec![1.0/7.0; 7];
@@ -77,4 +77,24 @@ fn from_lightsvm() {
         .map(|(p, y)| if p != *y as i64 { 1.0 } else { 0.0 })
         .sum::<f64>();
     println!("LOSS (SVMLight): {loss}");
+}
+
+
+#[test]
+fn from_csv() {
+    let mut path = std::env::current_dir().unwrap();
+    path.push("tests/dataset/boston_housing.csv");
+
+    let sample = Sample::from_csv(path, true)
+        .unwrap()
+        .set_target("MEDV");
+    let n_sample = sample.shape().0;
+    let tree = RegressionTreeBuilder::new(&sample)
+        .loss(LossType::L2)
+        .max_depth(5)
+        .build();
+    let dist = vec![1.0/n_sample as f64; n_sample];
+    let f = tree.produce(&sample, &dist[..]);
+    println!("{f:?}");
+    f.to_dot_file("tests/output/result.dot").unwrap();
 }

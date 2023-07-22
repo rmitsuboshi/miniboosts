@@ -14,8 +14,19 @@ pub const DEFAULT_LAMBDA_L2: f64 = 0.01;
 
 
 /// A struct that builds `RegressionTree`.
-/// `RegressionTreeBuilder` constructs a weak-learner 
-/// that produces decision-tree classifiers.
+/// `RegressionTreeBuilder` keeps parameters for constructing `RegressionTree`.
+/// 
+/// # Example
+/// 
+/// ```no_run
+/// use miniboosts::prelude::*;
+/// 
+/// let weak_learner = RegressionTreeBuilder::new(&sample)
+///     .max_depth(2)
+///     .loss(LossType::L1)
+///     .lambda_l2(0.1)
+///     .build();
+/// ```
 #[derive(Clone)]
 pub struct RegressionTreeBuilder<'a> {
     sample: &'a Sample,

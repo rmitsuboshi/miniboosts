@@ -20,7 +20,41 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 
-/// This struct produces a regression tree for the given distribution.
+/// `RegressionTree` is the factory that generates
+/// a `RegressionTreeClassifier` for a given distribution over examples.
+/// 
+/// # Example
+/// ```no_run
+/// use miniboosts::prelude::*;
+/// 
+/// // Read the training data from the CSV file.
+/// let file = "/path/to/data/file.csv";
+/// let has_header = true;
+/// let sample = Sample::from_csv(file, has_header)
+///     .unwrap()
+///     .set_target("class");
+/// 
+/// 
+/// // Get an instance of decision tree weak learner.
+/// // In this example,
+/// // the output hypothesis is at most depth 2.
+/// // Further, this example uses `Criterion::Edge` for splitting rule.
+/// let tree = RegressionTreeBuilder::new(&sample)
+///     .max_depth(2)
+///     .loss(LossType::L2)
+///     .build();
+/// 
+/// let predictions = tree.predict_all(&sample);
+/// let n_sample = sample.shape().0;
+/// 
+/// let loss = sample.target()
+///     .into_iter()
+///     .zip(predictions)
+///     .map(|(ty, py)| (ty as f64 - py).powi(2))
+///     .sum::<f64>()
+///     / n_sample as f64;
+/// println!("loss (train) is: {loss}");
+/// ```
 pub struct RegressionTree<'a> {
     bins: HashMap<&'a str, Bins>,
     // The maximal depth of the output trees
