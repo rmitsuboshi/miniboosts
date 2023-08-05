@@ -55,13 +55,10 @@ use std::ops::ControlFlow;
 /// // Get the number of training examples.
 /// let n_sample = sample.shape().0 as f64;
 /// 
-/// // Initialize `LPBoost` and set the tolerance parameter as `0.01`.
+/// // Initialize `TotalBoost` and set the tolerance parameter as `0.01`.
 /// // This means `booster` returns a hypothesis whose training error is
 /// // less than `0.01` if the traing examples are linearly separable.
-/// // Note that the default tolerance parameter is set as `1 / n_sample`,
-/// // where `n_sample = sample.shape().0` is 
-/// // the number of training examples in `sample`.
-/// let mut booster = LPBoost::init(&sample)
+/// let mut booster = TotalBoost::init(&sample)
 ///     .tolerance(0.01);
 /// 
 /// // Set the weak learner with setting parameters.
@@ -70,7 +67,7 @@ use std::ops::ControlFlow;
 ///     .criterion(Criterion::Entropy)
 ///     .build();
 /// 
-/// // Run `LPBoost` and obtain the resulting hypothesis `f`.
+/// // Run `TotalBoost` and obtain the resulting hypothesis `f`.
 /// let f = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
@@ -103,14 +100,6 @@ impl<'a, F> TotalBoost<'a, F>
             .nu(1.0);
 
         TotalBoost { softboost }
-    }
-
-
-    /// Returns a optimal value of the optimization problem TotalBoost solves.
-    /// 
-    /// Time complexity: `O(1)`.
-    pub fn opt_val(&self) -> f64 {
-        self.softboost.opt_val()
     }
 
 
