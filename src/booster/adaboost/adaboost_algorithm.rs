@@ -57,9 +57,6 @@ use std::ops::ControlFlow;
 /// // Initialize `AdaBoost` and set the tolerance parameter as `0.01`.
 /// // This means `booster` returns a hypothesis whose training error is
 /// // less than `0.01` if the traing examples are linearly separable.
-/// // Note that the default tolerance parameter is set as `1 / n_sample`,
-/// // where `n_sample = sample.shape().0` is 
-/// // the number of training examples in `sample`.
 /// let mut booster = AdaBoost::init(&sample)
 ///     .tolerance(0.01);
 /// 

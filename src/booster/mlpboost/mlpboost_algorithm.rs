@@ -162,7 +162,7 @@ impl<'a, F> MLPBoost<'a, F> {
 
         let primary = FrankWolfe::new(eta, nu, FWType::ShortStep);
 
-        MLPBoost {
+        Self {
             sample,
 
             half_tolerance,

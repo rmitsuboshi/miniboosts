@@ -197,14 +197,6 @@ impl<'a, F> SoftBoost<'a, F>
 
         max_iter.ceil() as usize
     }
-
-
-    /// Returns a optimal value of the optimization problem LPBoost solves.
-    /// 
-    /// Time complexity: `O(1)`.
-    pub fn opt_val(&self) -> f64 {
-        self.gamma_hat
-    }
 }
 
 
