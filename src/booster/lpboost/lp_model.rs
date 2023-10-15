@@ -19,34 +19,39 @@ impl LPModel {
     /// - `size`: Number of variables (Number of examples).
     /// - `upper_bound`: Capping parameter. `[1, size]`.
     pub(super) fn init(size: usize, upper_bound: f64) -> Self {
-        let mut env = Env::new("").unwrap();
-        env.set(param::OutputFlag, 0).unwrap();
+        let mut env = Env::new("")
+            .expect("Failed to construct a new `Env` for LPBoost");
+        env.set(param::OutputFlag, 0)
+            .expect("Failed to set `param::OutputFlag` to `0`");
 
-        let mut model = Model::with_env("MLPBoost", env).unwrap();
+        let mut model = Model::with_env("LPBoost", env)
+            .expect("Failed to construct a new model for `MLPBoost`");
 
 
         // Set GRBVars
         let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
-            .unwrap();
+            .expect("Failed to add a new variable `gamma`");
 
         let dist = (0..size).map(|i| {
                 let name = format!("d[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0_f64..upper_bound)
-                    .unwrap()
-            }).collect::<Vec<Var>>();
+            }).collect::<Result<Vec<_>, _>>()
+            .expect("Failed to add new variables `d[..]`");
 
 
         // Set a constraint
         model.add_constr("sum_is_1", c!(dist.iter().grb_sum() == 1.0))
-            .unwrap();
+            .expect("Failed to set the constraint `sum( d[..] ) = 1.0`");
 
 
         // Set objective function
-        model.set_objective(gamma, Minimize).unwrap();
+        model.set_objective(gamma, Minimize)
+            .expect("Failed to set the LP objective `gamma`");
 
 
         // Update the model
-        model.update().unwrap();
+        model.update()
+            .expect("Failed to update the model after setting the objective");
 
 
         Self {
@@ -85,26 +90,27 @@ impl LPModel {
 
         self.constrs.push(
             self.model.add_constr(&name, c!(edge <= self.gamma))
-                .unwrap()
+                .expect("Failed to add a new constraint `edge <= gamma`")
         );
 
 
         self.model.update()
-            .unwrap();
+            .expect("Failed to update the model after adding a new constraint");
 
 
         self.model.optimize()
-            .unwrap();
+            .expect("Failed to optimize the problem");
 
 
-        let status = self.model.status().unwrap();
+        let status = self.model.status()
+            .expect("Failed to get the model status");
         if status != Status::Optimal {
             panic!("Status is {status:?}. Something wrong.");
         }
 
 
         self.model.get_obj_attr(attr::X, &self.gamma)
-            .unwrap()
+            .expect("Failed to get the dual solution `gamma`")
     }
 
     /// Returns the distribution over examples.
@@ -112,8 +118,9 @@ impl LPModel {
         -> Vec<f64>
     {
         self.dist.iter()
-            .map(|d| self.model.get_obj_attr(attr::X, d).unwrap())
-            .collect::<Vec<_>>()
+            .map(|d| self.model.get_obj_attr(attr::X, d))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Failed to get the solution `d[..]`")
     }
 
 
@@ -121,7 +128,7 @@ impl LPModel {
     pub(super) fn weight(&self) -> impl Iterator<Item=f64> + '_
     {
         self.constrs[0..].iter()
-            .map(|c| self.model.get_obj_attr(attr::Pi, c).unwrap().abs())
+            .map(|c| self.model.get_obj_attr(attr::Pi, c).map(f64::abs).unwrap())
     }
 }
 
