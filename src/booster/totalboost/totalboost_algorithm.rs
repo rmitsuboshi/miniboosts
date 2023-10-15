@@ -48,7 +48,7 @@ use std::ops::ControlFlow;
 /// // We use the column named `class` as the label.
 /// let has_header = true;
 /// let sample = Sample::from_csv(path_to_csv_file, has_header)
-///     .unwrap()
+///     .expect("Failed to read the training sample")
 ///     .set_target("class");
 /// 
 /// 
