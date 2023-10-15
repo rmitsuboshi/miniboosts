@@ -44,7 +44,7 @@ use std::ops::ControlFlow;
 /// // We use the column named `class` as the label.
 /// let has_header = true;
 /// let sample = Sample::from_csv(path_to_csv_file, has_header)
-///     .unwrap()
+///     .expect("Failed to read the training sample")
 ///     .set_target("class");
 /// 
 /// // Get the number of training examples.
@@ -123,9 +123,10 @@ impl<'a, F> SoftBoost<'a, F>
         let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
-        let mut env = Env::new("").unwrap();
-
-        env.set(param::OutputFlag, 0).unwrap();
+        let mut env = Env::new("")
+            .expect("Failed to construct a new `Env` for LPBoost");
+        env.set(param::OutputFlag, 0)
+            .expect("Failed to set `param::OutputFlag` to `0`");
 
         // Set uni as an uniform weight
         let uni = 1.0 / n_sample as f64;
@@ -216,12 +217,12 @@ impl<F> SoftBoost<'_, F>
         // Initialize GRBVars
         let wt_vec = (0..n_hypotheses).map(|i| {
                 let name = format!("w[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0_f64..).unwrap()
-            }).collect::<Vec<_>>();
+                add_ctsvar!(model, name: &name, bounds: 0_f64..)
+            }).collect::<Result<Vec<_>, _>>()?;
         let xi_vec = (0..n_sample).map(|i| {
                 let name = format!("xi[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0_f64..).unwrap()
-            }).collect::<Vec<_>>();
+                add_ctsvar!(model, name: &name, bounds: 0_f64..)
+            }).collect::<Result<Vec<_>, _>>()?;
         let rho = add_ctsvar!(model, name: "rho", bounds: ..)?;
 
 
@@ -265,8 +266,8 @@ impl<F> SoftBoost<'_, F>
 
         // Assign weights over the hypotheses
         let weights = wt_vec.into_iter()
-            .map(|w| model.get_obj_attr(attr::X, &w).unwrap())
-            .collect::<Vec<_>>();
+            .map(|w| model.get_obj_attr(attr::X, &w))
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(weights)
     }
@@ -277,7 +278,11 @@ impl<F> SoftBoost<'_, F>
     fn update_params_mut(&mut self) -> Option<()> {
         loop {
             // Initialize GRBModel
-            let mut model = Model::with_env("", &self.env).unwrap();
+            let mut model = Model::with_env("SoftBoost", &self.env)
+                .expect(
+                    "Failed to construct a new model for `SoftBoost` \
+                    or `TotalBoost`"
+                );
 
 
             // Set variables that are used in the optimization problem
@@ -291,10 +296,14 @@ impl<F> SoftBoost<'_, F>
                     let ub = cap - d;
                     let name = format!("delta[{i}]");
                     add_ctsvar!(model, name: &name, bounds: lb..ub)
-                        .unwrap()
                 })
-                .collect::<Vec<Var>>();
-            model.update().unwrap();
+                .collect::<Result<Vec<_>, _>>()
+                .expect("Failed to add the Gurobi variables `delta[..]`");
+            model.update()
+                .expect(
+                    "Failed to update the model \
+                    after adding the variables `delta[..]`"
+                );
 
 
             // Set constraints
@@ -314,14 +323,20 @@ impl<F> SoftBoost<'_, F>
                     let name = format!("h[{j}]");
                     model.add_constr(
                         &name, c!(expr <= self.gamma_hat - self.tolerance)
-                    ).unwrap();
+                    ).expect(
+                        "Failed to add the new constraint \
+                        `edge <= gamma_hat - tolerance`"
+                    );
                 });
 
 
-            model.add_constr(
-                "zero_sum", c!(vars.iter().grb_sum() == 0.0)
-            ).unwrap();
-            model.update().unwrap();
+            model.add_constr("zero_sum", c!(vars.iter().grb_sum() == 0.0))
+                .expect("Failed to add the constraint `sum( delta[..] ) = 0.0`");
+            model.update()
+                .expect(
+                    "Failed to update the model \
+                    after adding the constraint `sum( delta[..] ) = 0.0"
+                );
 
 
             // Set objective function
@@ -334,16 +349,20 @@ impl<F> SoftBoost<'_, F>
                 })
                 .grb_sum();
 
-            model.set_objective(objective, Minimize).unwrap();
-            model.update().unwrap();
+            model.set_objective(objective, Minimize)
+                .expect("Failed to set the objective function");
+            model.update()
+                .expect("Failed to update the model after setting the objective");
 
 
             // Optimize
-            model.optimize().unwrap();
+            model.optimize()
+                .expect("Failed to solve the SoftBoost QP");
 
 
             // Check the status
-            let status = model.status().unwrap();
+            let status = model.status()
+                .expect("Failed to get the model status");
 
             // If the status is `Status::Infeasible`,
             // it implies that a `tolerance`-optimality
@@ -364,7 +383,8 @@ impl<F> SoftBoost<'_, F>
             // Check the stopping criterion
             let mut l2 = 0.0;
             for (v, d) in vars.iter().zip(self.dist.iter_mut()) {
-                let val = model.get_obj_attr(attr::X, v).unwrap();
+                let val = model.get_obj_attr(attr::X, v)
+                    .expect("Failed to get the optimal solution `delta`");
                 *d += val;
                 l2 += val * val;
             }
@@ -458,7 +478,8 @@ impl<F> Booster<F> for SoftBoost<'_, F>
     {
         // Set the weights on the hypotheses
         // by solving a linear program
-        self.weights = self.set_weights().unwrap();
+        self.weights = self.set_weights()
+            .expect("Failed to solve the LP");
         CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
@@ -469,7 +490,8 @@ impl<H> Research<H> for SoftBoost<'_, H>
     where H: Classifier + Clone,
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
-        let weights = self.set_weights().unwrap();
+        let weights = self.set_weights()
+            .expect("Failed to solve the LP");
         CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
