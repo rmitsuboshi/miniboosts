@@ -58,7 +58,7 @@ use std::ops::ControlFlow;
 /// // We use the column named `class` as the label.
 /// let has_header = true;
 /// let sample = Sample::from_csv(path_to_csv_file, has_header)
-///     .unwrap()
+///     .expect("Failed to read the training sample")
 ///     .set_target("class");
 /// 
 /// 
@@ -220,7 +220,7 @@ impl<'a, F> LPBoost<'a, F>
     fn update_distribution_mut(&self, h: &F) -> f64
     {
         self.lp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.lp_model`")
             .borrow_mut()
             .update(self.sample, h)
     }
@@ -277,7 +277,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
 
         // Update the distribution over the training examples.
         self.dist = self.lp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.lp_model`")
             .borrow()
             .distribution();
 
@@ -292,7 +292,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
         where W: WeakLearner<Hypothesis = F>
     {
         self.weights = self.lp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.lp_model`")
             .borrow()
             .weight()
             .collect::<Vec<_>>();
@@ -307,7 +307,7 @@ impl<H> Research<H> for LPBoost<'_, H>
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
         let weights = self.lp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.lp_model`")
             .borrow()
             .weight()
             .collect::<Vec<_>>();
