@@ -59,7 +59,7 @@ use std::ops::ControlFlow;
 /// // We use the column named `class` as the label.
 /// let has_header = true;
 /// let sample = Sample::from_csv(path_to_csv_file, has_header)
-///     .unwrap()
+///     .expect("Failed to read the training sample")
 ///     .set_target("class");
 /// 
 /// 
@@ -279,7 +279,7 @@ impl<F> MLPBoost<'_, F>
 {
     fn secondary_update(&self, opt_h: Option<&F>) -> Vec<f64> {
         self.secondary.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.secondary`")
             .borrow_mut()
             .update(self.sample, opt_h)
     }
