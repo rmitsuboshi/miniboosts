@@ -58,7 +58,7 @@ use std::ops::ControlFlow;
 /// // We use the column named `class` as the label.
 /// let has_header = true;
 /// let sample = Sample::from_csv(path_to_csv_file, has_header)
-///     .unwrap()
+///     .expect("Failed to read the training sample")
 ///     .set_target("class");
 /// 
 /// 
@@ -290,7 +290,7 @@ impl<F> ERLPBoost<'_, F>
                 utils::edge_of_hypothesis(self.sample, &self.dist, h)
             )
             .reduce(f64::max)
-            .unwrap();
+            .expect("Failed to compute the max-edge");
         let entropy = utils::entropy_from_uni_distribution(&self.dist);
         self.gamma_star = max_edge + (entropy / self.eta);
     }
@@ -307,12 +307,12 @@ impl<F> ERLPBoost<'_, F>
     fn update_distribution_mut(&mut self, clf: &F)
     {
         self.qp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.qp_model`")
             .borrow_mut()
             .update(self.sample, &mut self.dist[..], clf);
 
         self.dist = self.qp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.qp_model`")
             .borrow()
             .distribution();
     }
@@ -399,7 +399,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         where W: WeakLearner<Hypothesis = F>
     {
         self.weights = self.qp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.qp_model`")
             .borrow_mut()
             .weight()
             .collect::<Vec<_>>();
@@ -413,7 +413,7 @@ impl<H> Research<H> for ERLPBoost<'_, H>
 {
     fn current_hypothesis(&self) -> CombinedHypothesis<H> {
         let weights = self.qp_model.as_ref()
-            .unwrap()
+            .expect("Failed to call `.as_ref()` to `self.qp_model`")
             .borrow_mut()
             .weight()
             .collect::<Vec<_>>();

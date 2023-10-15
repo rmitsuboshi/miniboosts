@@ -24,30 +24,34 @@ impl QPModel {
     pub(super) fn init(eta: f64, size: usize, upper_bound: f64)
         -> Self
     {
-        let mut env = Env::new("").unwrap();
-        env.set(param::OutputFlag, 0).unwrap();
+        let mut env = Env::new("")
+            .expect("Failed to construct a new `Env` for ERLPBoost");
+        env.set(param::OutputFlag, 0)
+            .expect("Failed to set `param::OutputFlag` to `0`");
 
-        let mut model = Model::with_env("MLPBoost", env).unwrap();
+        let mut model = Model::with_env("ERLPBoost", env)
+            .expect("Failed to construct a new model for `ERLPBoost`");
 
 
         // Set GRBVars
         let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
-            .unwrap();
+            .expect("Failed to add a new variable `gamma`");
 
         let dist = (0..size).map(|i| {
                 let name = format!("d[{i}]");
                 add_ctsvar!(model, name: &name, bounds: 0_f64..upper_bound)
-                    .unwrap()
-            }).collect::<Vec<Var>>();
+            }).collect::<Result<Vec<_>, _>>()
+            .expect("Failed to add new variables `d[..]`");
 
 
         // Set a constraint
         model.add_constr("sum_is_1", c!(dist.iter().grb_sum() == 1.0))
-            .unwrap();
+            .expect("Failed to set the constraint `sum( d[..] ) = 1.0`");
 
 
         // Update the model
-        model.update().unwrap();
+        model.update()
+            .expect("Faild to update the model after the initialization");
 
 
         Self {
@@ -88,10 +92,10 @@ impl QPModel {
 
         self.constrs.push(
             self.model.add_constr(&name, c!(edge <= self.gamma))
-                .unwrap()
+                .expect("Failed to add a new constraint `edge <= gamma`")
         );
         self.model.update()
-            .unwrap();
+            .expect("Failed to update the model after adding a new constraint");
 
 
         let mut old_objval = 1e9;
@@ -111,22 +115,24 @@ impl QPModel {
             let objective = self.gamma
                 + ((1.0_f64 / self.eta) * regularizer);
             self.model.set_objective(objective, Minimize)
-                .unwrap();
+                .expect("Failed to set the objective function");
 
 
             self.model.optimize()
-                .unwrap();
+                .expect("Failed to optimize the problem");
 
 
-            let status = self.model.status().unwrap();
+            let status = self.model.status()
+                .expect("Failed to get the model status");
             if status != Status::Optimal && status != Status::SubOptimal {
-                panic!("Status ({status:?}) is not optimal.");
+                break;
             }
 
 
             // At this point, there exists an optimal solution in `vars`
             // Check the stopping criterion 
-            let objval = self.model.get_attr(attr::ObjVal).unwrap();
+            let objval = self.model.get_attr(attr::ObjVal)
+                .expect("Failed to attain the optimal value");
 
 
             let mut any_zero = false;
@@ -134,7 +140,7 @@ impl QPModel {
                 .zip(&self.dist[..])
                 .for_each(|(d, grb_d)| {
                     let g = self.model.get_obj_attr(attr::X, grb_d)
-                        .unwrap();
+                        .expect("Failed to get the optimal solution");
                     any_zero |= g == 0.0;
                     *d = g;
                 });
@@ -153,8 +159,9 @@ impl QPModel {
         -> Vec<f64>
     {
         self.dist.iter()
-            .map(|d| self.model.get_obj_attr(attr::X, d).unwrap())
-            .collect::<Vec<_>>()
+            .map(|d| self.model.get_obj_attr(attr::X, d))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Failed to get the optimal solutions `d[..]`")
     }
 
 
@@ -163,16 +170,18 @@ impl QPModel {
     {
         let objective = self.gamma;
         self.model.set_objective(objective, Minimize)
-            .unwrap();
+            .expect("Failed to set the LP objective `gamma`");
 
         self.model.update()
-            .unwrap();
+            .expect(
+                "Failed to update the model after setting the LP objective"
+            );
 
         self.model.optimize()
-            .unwrap();
+            .expect("Failed to solve the LP");
 
         let status = self.model.status()
-            .unwrap();
+            .expect("Failed to get the model status");
 
         if status != Status::Optimal {
             panic!("Cannot solve the primal problem. Status: {status:?}");
@@ -180,7 +189,11 @@ impl QPModel {
 
 
         self.constrs[0..].iter()
-            .map(|c| self.model.get_obj_attr(attr::Pi, c).unwrap().abs())
+            .map(|c|
+                self.model.get_obj_attr(attr::Pi, c)
+                    .map(f64::abs)
+                    .unwrap()
+            )
     }
 }
 
