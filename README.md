@@ -71,7 +71,8 @@ See `cargo doc -F extended --open` for details.
 | :---                                                                                         |
 | [DecisionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)      |
 | [RegressionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)  |
-| NeuralNetwork (Experimental)                                                                 |
+| GaussianNB (Gaussian Naive Bayes)                                                            |
+| NeuralNetwork (Neural Network, Experimental)                                                 |
 
 
 ## Future work
@@ -119,15 +120,15 @@ fn main() {
     let file = "/path/to/input/data.csv";
 
     // Read a CSV file
-    // The column named `class` is corresponds to the labels (targets).
+    // The column named `class` corresponds to the labels (targets).
     let has_header = true;
     let sample = Sample::from_csv(file, has_header)
         .unwrap()
         .set_target("class");
 
 
-    // Set tolerance parameter
-    let tolerance: f64 = 0.01;
+    // Set tolerance parameter as `0.01`.
+    let tol: f64 = 0.01;
 
 
     // Initialize Booster
@@ -138,11 +139,11 @@ fn main() {
     // Construct `DecisionTree` Weak Learner from `DecisionTreeBuilder`.
     let weak_learner = DecisionTreeBuilder::new(&sample)
         .max_depth(3) // Specify the max depth (default is 2)
-        .criterion(Criterion::Twoing) // Choose the split criterion
+        .criterion(Criterion::Twoing) // Choose the split rule.
         .build(); // Build `DecisionTree`.
 
 
-    // Run boosting algorithm
+    // Run the boosting algorithm
     // Each booster returns a combined hypothesis.
     let f = booster.run(&weak_learner);
 
