@@ -87,7 +87,7 @@
 //!     .nu(0.1 * n_sample);
 //! 
 //! // Set the weak learner with setting parameters.
-//! let weak_learner = DecisionTreeBuilder::new(&train)
+//! let weak_learner = DecisionTreeBuilder::new(&sample)
 //!     .max_depth(2)
 //!     .criterion(Criterion::Entropy)
 //!     .build();
@@ -187,7 +187,7 @@ pub use weak_learner::{
 
     // WLUnion,
 
-    // GaussianNB,
+    GaussianNB,
     NeuralNetwork,
     Activation,
     NNLoss,

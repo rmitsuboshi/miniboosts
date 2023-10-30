@@ -1,4 +1,3 @@
-use polars::prelude::*;
 use rayon::prelude::*;
 use serde::{
     Serialize,
@@ -6,19 +5,20 @@ use serde::{
 };
 
 use core::f64::consts::PI;
+use crate::Sample;
 
 
 pub trait Probability {
-    fn log_probability(&self, data: &DataFrame, row: usize) -> f64;
+    fn log_probability(&self, sample: &Sample, row: usize) -> f64;
 
-    fn probability(&self, data: &DataFrame, row: usize) -> f64 {
-        self.log_probability(data, row).exp()
+    fn probability(&self, sample: &Sample, row: usize) -> f64 {
+        self.log_probability(sample, row).exp()
     }
 }
 
 
 /// Gaussian density
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Gaussian {
     pub(super) means: Vec<f64>,
     pub(super) vars: Vec<f64>,
@@ -34,20 +34,18 @@ impl Gaussian {
 
 impl Probability for Gaussian {
     #[inline(always)]
-    fn log_probability(&self, data: &DataFrame, row: usize) -> f64 {
+    fn log_probability(&self, sample: &Sample, row: usize) -> f64 {
         let n_features = self.means.len() as f64;
 
         let gauss_const: f64 = n_features * (2.0_f64 * PI).ln();
 
         let non_const = self.means.par_iter()
             .zip(&self.vars[..])
-            .zip(data.get_columns())
-            .map(|((&mean, &var), column)| {
-                let column = column.f64()
-                    .expect("The data is not a dtype f64");
-                let x = column.get(row).unwrap();
+            .zip(sample.features())
+            .map(|((&mean, &var), feat)| {
+                let x = feat[row];
 
-                ((x - mean).powi(2) / var) + var.ln()
+                ((x - mean).powi(2) / var) + n_features * var.ln()
             })
             .sum::<f64>();
 
