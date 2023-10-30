@@ -153,6 +153,16 @@ impl Sample {
     }
 
 
+    /// Returns the unique target values.
+    pub fn unique_target(&self) -> Vec<f64> {
+        let mut target = self.target().to_vec();
+        target.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+
+        target.dedup();
+        target
+    }
+
+
     /// Returns a slice of the features.
     pub fn features(&self) -> &[Feature] {
         &self.features[..]
@@ -397,6 +407,83 @@ impl Sample {
 
         // At this point, all tests are passed
         // so that the sample is valid one for binary classification.
+    }
+
+
+    /// Computes the weighted mean and variance
+    /// for each feature.
+    ///
+    /// The weight vector must be a probability vector
+    /// (A vector consists of non-negative entries whose sum is `1`).
+    pub fn weighted_mean_and_variance<T>(&self, weight: T)
+        -> Vec<(f64, f64)>
+        where T: AsRef<[f64]>
+    {
+        let weight = weight.as_ref();
+        self.features()
+            .par_iter()
+            .map(|feat| feat.weighted_mean_and_variance(weight))
+            .collect()
+    }
+
+
+
+    /// Compute the weighted mean of each feature.
+    ///
+    /// The weight vector must be a probability vector
+    /// (A vector consists of non-negative entries whose sum is `1`).
+    pub fn weighted_mean<T>(&self, weight: T) -> Vec<f64>
+        where T: AsRef<[f64]>
+    {
+        let weight = weight.as_ref();
+        self.features()
+            .par_iter()
+            .map(|feat| feat.weighted_mean(weight))
+            .collect()
+    }
+
+
+    /// Compute the weighted mean of each feature
+    /// whose label (target) is `y.`
+    ///
+    /// The weight vector must be a non-negative vector.
+    pub fn weighted_mean_for_label<T>(
+        &self,
+        y: f64,
+        weight: T
+    ) -> Vec<f64>
+        where T: AsRef<[f64]>
+    {
+        let weight = weight.as_ref();
+        let target = self.target();
+        self.features()
+            .par_iter()
+            .map(|feat|
+                feat.weighted_mean_for_label(y, target, weight)
+            )
+            .collect()
+    }
+
+
+    /// Compute the weighted mean and variance of each feature
+    /// whose label (target) is `y.`
+    ///
+    /// The weight vector must be a non-negative vector.
+    pub fn weighted_mean_and_variance_for_label<T>(
+        &self,
+        y: f64,
+        weight: T
+    ) -> Vec<(f64, f64)>
+        where T: AsRef<[f64]>
+    {
+        let weight = weight.as_ref();
+        let target = self.target();
+        self.features()
+            .par_iter()
+            .map(|feat|
+                feat.weighted_mean_and_variance_for_label(y, target, weight)
+            )
+            .collect()
     }
 }
 

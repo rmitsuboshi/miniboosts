@@ -343,3 +343,17 @@ pub fn hadamard_product(mut m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>)
         });
     m1
 }
+
+
+pub(crate) fn total_weight_for_label(
+    y: f64,
+    target: &[f64],
+    weight: &[f64],
+) -> f64
+{
+    target.into_iter()
+        .copied()
+        .zip(weight)
+        .filter_map(|(t, w)| if t == y { Some(w) } else { None })
+        .sum::<f64>()
+}

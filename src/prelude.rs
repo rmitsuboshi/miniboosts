@@ -46,8 +46,10 @@ pub use crate::weak_learner::{
     Criterion,
 
 
-    // GaussianNB,
-    // NBayesClassifier,
+    GaussianNB,
+    NBayesClassifier,
+
+
     NeuralNetwork,
     NNHypothesis,
     Activation,

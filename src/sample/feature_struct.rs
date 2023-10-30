@@ -2,7 +2,10 @@ use polars::prelude::*;
 use std::ops::Index;
 use std::slice::Iter;
 
+use crate::common::{utils, checker};
+
 const BUF_SIZE: usize = 256;
+const MINIMAL_WEIGHT_SUM: f64 = 1e-100;
 
 /// Dense representation of a feature.
 #[derive(Debug)]
@@ -101,6 +104,80 @@ impl Feature {
             Self::Sparse(feat) => feat.distinct_value_count(),
         }
     }
+
+
+    /// Compute the weighted mean of the feature.
+    pub(crate) fn weighted_mean<T>(&self, weight: T) -> f64
+        where T: AsRef<[f64]>
+    {
+        let weight = weight.as_ref();
+        checker::check_capped_simplex_condition(weight, 1.0);
+
+
+        match self {
+            Self::Dense(feat) => feat.weighted_mean(weight),
+            Self::Sparse(feat) => feat.weighted_mean(weight),
+        }
+    }
+
+
+    pub(crate) fn weighted_mean_and_variance<T>(&self, weight: T)
+        -> (f64, f64)
+        where T: AsRef<[f64]>
+    {
+        let weight = weight.as_ref();
+        let mean = self.weighted_mean(weight);
+
+
+        let variance = match self {
+            Self::Dense(feat) => feat.weighted_variance(mean, weight),
+            Self::Sparse(feat) => feat.weighted_variance(mean, weight),
+        };
+        (mean, variance)
+    }
+
+
+    /// Computes the mean for this feature whose label is `y.`
+    pub(crate) fn weighted_mean_for_label<T>(
+        &self,
+        y: f64,
+        target: T,
+        weight: T
+    ) -> f64
+        where T: AsRef<[f64]>
+    {
+        let target = target.as_ref();
+        let weight = weight.as_ref();
+        match self {
+            Self::Dense(feat)
+                => feat.weighted_mean_for_label(y, target, weight),
+            Self::Sparse(feat)
+                => feat.weighted_mean_for_label(y, target, weight),
+        }
+    }
+
+
+    /// Computes the mean and variance for this feature
+    /// whose label is `y.`
+    pub(crate) fn weighted_mean_and_variance_for_label<T>(
+        &self,
+        y: f64,
+        target: T,
+        weight: T
+    ) -> (f64, f64)
+        where T: AsRef<[f64]>
+    {
+        let target = target.as_ref();
+        let weight = weight.as_ref();
+        let mean = self.weighted_mean_for_label(y, target, weight);
+        let var = match self {
+            Self::Dense(feat)
+                => feat.weighted_variance_for_label(mean, y, target, weight),
+            Self::Sparse(feat)
+                => feat.weighted_variance_for_label(mean, y, target, weight),
+        };
+        (mean, var)
+    }
 }
 
 
@@ -173,6 +250,67 @@ impl DenseFeature {
     fn distinct_value_count(&self) -> usize {
         let values = self.sample[..].to_vec();
         inner_distinct_value_count(values)
+    }
+
+
+    pub(self) fn weighted_mean(&self, weight: &[f64]) -> f64 {
+        self.sample.iter()
+            .zip(weight)
+            .map(|(f, w)| f * w)
+            .sum::<f64>()
+    }
+
+
+    pub(self) fn weighted_variance(&self, mean: f64, weight: &[f64])
+        -> f64
+    {
+        self.sample.iter()
+            .zip(weight)
+            .map(|(f, w)| w * (f - mean).powi(2))
+            .sum::<f64>()
+    }
+
+
+    /// Compute the mean of the feature whose label is `y`.
+    /// Each instance `i` is weighted by weighted by `weight[i]`
+    pub(self) fn weighted_mean_for_label(
+        &self,
+        y: f64,
+        target: &[f64],
+        weight: &[f64],
+    ) -> f64
+    {
+        let mut total_weight = utils::total_weight_for_label(y, target, weight);
+        if total_weight == 0.0 { total_weight = MINIMAL_WEIGHT_SUM; }
+        self.sample.iter()
+            .zip(target)
+            .zip(weight)
+            .map(|((f, t), w)| if *t != y { 0.0 } else { f * w })
+            .sum::<f64>()
+            / total_weight
+    }
+
+
+    /// Compute the variance of the feature whose label is `y`.
+    /// Each instance `i` is weighted by weighted by `weight[i]`
+    pub(self) fn weighted_variance_for_label(
+        &self,
+        mean: f64,
+        y: f64,
+        target: &[f64],
+        weight: &[f64],
+    ) -> f64
+    {
+        let mut total_weight = utils::total_weight_for_label(y, target, weight);
+        if total_weight == 0.0 { total_weight = MINIMAL_WEIGHT_SUM; }
+        self.sample.iter()
+            .zip(target)
+            .zip(weight)
+            .map(|((f, t), w)| {
+                if *t != y { 0.0 } else { w * (f - mean).powi(2) }
+            })
+            .sum::<f64>()
+            / total_weight
     }
 }
 
@@ -262,6 +400,89 @@ impl SparseFeature {
         }
         uniq_value_count
     }
+
+
+    pub(self) fn weighted_mean(&self, weight: &[f64]) -> f64 {
+        self.sample.iter()
+            .map(|&(i, f)| weight[i] * f)
+            .sum::<f64>()
+    }
+
+
+    pub(self) fn weighted_mean_for_label(
+        &self,
+        y: f64,
+        target: &[f64],
+        weight: &[f64],
+    ) -> f64
+    {
+        let total_weight = utils::total_weight_for_label(y, target, weight);
+        assert!(
+            total_weight > 0.0,
+            "The total weight for label {y} is zero"
+        );
+        self.sample.iter()
+            .zip(target)
+            .map(|((i, f), &t)|
+                if t == y { 0.0 } else { weight[*i] * f }
+            )
+            .sum::<f64>()
+            / total_weight
+    }
+
+
+    pub(self) fn weighted_variance(&self, mean: f64, weight: &[f64])
+        -> f64
+    {
+        let mut variance = 0.0;
+        let mut zero_weight = 0.0;
+        let mut prev = 0;
+        for &(i, f) in self.sample.iter() {
+            zero_weight += weight[prev..i].iter().sum::<f64>();
+            // while prev < i {
+            //     zero_weight += weight[prev];
+            //     prev += 1;
+            // }
+            prev = i + 1;
+            variance += weight[i] * (f - mean).powi(2);
+        }
+
+        zero_weight += weight[prev..].iter().sum::<f64>();
+
+        variance += zero_weight * mean.powi(2);
+        variance
+    }
+
+
+    pub(self) fn weighted_variance_for_label(
+        &self,
+        mean: f64,
+        y: f64,
+        target: &[f64],
+        weight: &[f64],
+    ) -> f64
+    {
+        let total_weight = utils::total_weight_for_label(y, target, weight);
+        assert!(
+            total_weight > 0.0,
+            "The total weight for label {y} is zero"
+        );
+        let mut variance = 0.0;
+        let mut zero_weight = 0.0;
+        let mut prev = 0;
+        for &(i, f) in self.sample.iter() {
+            zero_weight += weight[prev..i].iter().sum::<f64>();
+            prev = i + 1;
+            if target[i] == y {
+                variance += weight[i] * (f - mean).powi(2);
+            }
+        }
+
+        zero_weight += weight[prev..].iter().sum::<f64>();
+
+        variance += zero_weight * mean.powi(2);
+        variance / total_weight
+    }
 }
 
 
@@ -294,7 +515,7 @@ fn inner_distinct_value_count(mut src: Vec<f64>) -> usize {
         }
     }
 
-    return uniq_value_count;
+    uniq_value_count
 }
 
 

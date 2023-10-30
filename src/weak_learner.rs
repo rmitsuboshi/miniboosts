@@ -20,8 +20,8 @@ pub mod regression_tree;
 pub mod neural_network;
 
 
-// /// Defines Naive Bayes.
-// pub mod naive_bayes;
+/// Defines Naive Bayes.
+pub mod naive_bayes;
 
 pub use self::core::WeakLearner;
 
@@ -32,10 +32,10 @@ pub use self::decision_tree::{
     DecisionTreeClassifier,
 };
 
-// pub use self::naive_bayes::{
-//     GaussianNB,
-//     NBayesClassifier,
-// };
+pub use self::naive_bayes::{
+    GaussianNB,
+    NBayesClassifier,
+};
 
 
 pub use self::regression_tree::{
