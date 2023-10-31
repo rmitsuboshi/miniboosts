@@ -416,11 +416,8 @@ impl SparseFeature {
         weight: &[f64],
     ) -> f64
     {
-        let total_weight = utils::total_weight_for_label(y, target, weight);
-        assert!(
-            total_weight > 0.0,
-            "The total weight for label {y} is zero"
-        );
+        let mut total_weight = utils::total_weight_for_label(y, target, weight);
+        if total_weight == 0.0 { total_weight = MINIMAL_WEIGHT_SUM; }
         self.sample.iter()
             .zip(target)
             .map(|((i, f), &t)|
@@ -462,11 +459,9 @@ impl SparseFeature {
         weight: &[f64],
     ) -> f64
     {
-        let total_weight = utils::total_weight_for_label(y, target, weight);
-        assert!(
-            total_weight > 0.0,
-            "The total weight for label {y} is zero"
-        );
+        let mut total_weight = utils::total_weight_for_label(y, target, weight);
+        if total_weight == 0.0 { total_weight = MINIMAL_WEIGHT_SUM; }
+
         let mut variance = 0.0;
         let mut zero_weight = 0.0;
         let mut prev = 0;
