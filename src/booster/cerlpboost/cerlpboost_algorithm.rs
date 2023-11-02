@@ -159,7 +159,7 @@ impl<'a, F> CERLPBoost<'a, F> {
     /// 
     /// Time complexity: `O(1)`.
     pub fn nu(mut self, nu: f64) -> Self {
-        let n_sample = self.dist.len();
+        let (n_sample, _) = self.sample.shape();
         checker::check_nu(nu, n_sample);
         self.nu = nu;
         self.frank_wolfe.nu(self.nu);
@@ -176,6 +176,14 @@ impl<'a, F> CERLPBoost<'a, F> {
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.half_tolerance = tolerance / 2.0;
+        self
+    }
+
+
+    /// Set the Frank-Wolfe step size strategy.
+    #[inline(always)]
+    pub fn fw_type(mut self, fw_type: FWType) -> Self {
+        self.frank_wolfe.fw_type(fw_type);
         self
     }
 

@@ -28,6 +28,8 @@ impl QPModel {
             .expect("Failed to construct a new `Env` for ERLPBoost");
         env.set(param::OutputFlag, 0)
             .expect("Failed to set `param::OutputFlag` to `0`");
+        env.set(param::NumericFocus, 3)
+            .expect("Failed to set `NumericFocus` parameter to `3`");
 
         let mut model = Model::with_env("ERLPBoost", env)
             .expect("Failed to construct a new model for `ERLPBoost`");
