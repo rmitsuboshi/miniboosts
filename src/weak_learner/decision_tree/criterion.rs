@@ -333,8 +333,9 @@ fn split_by_twoing(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
         for (y, w) in map {
             let entry = left_weight.entry(y).or_insert(0.0);
             *entry += w;
-            let entry = right_weight.get_mut(&y).unwrap();
-            *entry -= w;
+            if let Some(entry) = right_weight.get_mut(&y) {
+                *entry -= w;
+            }
 
             if *entry <= 0.0 { right_weight.remove(&y); }
         }

@@ -87,8 +87,7 @@ impl FrankWolfe {
                 => self.classic(iteration, position_of_new_one, weights),
             FWType::ShortStep
                 => self.short_step(
-                    sample, dist,
-                    hypotheses, position_of_new_one, weights,
+                    sample, dist, hypotheses, position_of_new_one, weights,
                 ),
             FWType::LineSearch
                 => self.line_search(

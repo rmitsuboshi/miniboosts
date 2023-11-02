@@ -99,7 +99,7 @@ impl<'a, F> TotalBoost<'a, F>
         let softboost = SoftBoost::init(sample)
             .nu(1.0);
 
-        TotalBoost { softboost }
+        Self { softboost }
     }
 
 

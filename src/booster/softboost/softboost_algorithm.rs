@@ -18,6 +18,9 @@ use grb::prelude::*;
 use std::ops::ControlFlow;
 
 
+const NUMERIC_TOLERANCE: f64 = 1e-200;
+
+
 
 /// The SoftBoost algorithm proposed in the following paper:
 /// [Gunnar Rätsch, Manfred K. Warmuth, and Laren A. Glocer - Boosting Algorithms for Maximizing the Soft Margin](https://papers.nips.cc/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) 
@@ -127,6 +130,8 @@ impl<'a, F> SoftBoost<'a, F>
             .expect("Failed to construct a new `Env` for LPBoost");
         env.set(param::OutputFlag, 0)
             .expect("Failed to set `param::OutputFlag` to `0`");
+        env.set(param::NumericFocus, 3)
+            .expect("Failed to set `NumericFocus` parameter to `3`");
 
         // Set uni as an uniform weight
         let uni = 1.0 / n_sample as f64;
@@ -367,16 +372,21 @@ impl<F> SoftBoost<'_, F>
             // If the status is `Status::Infeasible`,
             // it implies that a `tolerance`-optimality
             // of the previous solution
-            if status == Status::Infeasible || status == Status::InfOrUnbd {
-                return None;
+            match status {
+                Status::InfOrUnbd | Status::Infeasible => { return None; },
+                Status::Numeric => { break; }
+                Status::Optimal => {}
+                _ => {
+                    panic!("Status is {status:?}. something wrong.");
+                }
             }
 
 
-            // At this point, the status is not `Status::Infeasible`.
-            // If the status is not `Status::Optimal`, something wrong.
-            if status != Status::Optimal {
-                panic!("Status is {status:?}. something wrong.");
-            }
+            // // At this point, the status is not `Status::Infeasible`.
+            // // If the status is not `Status::Optimal`, something wrong.
+            // if status != Status::Optimal {
+            //     panic!("Status is {status:?}. something wrong.");
+            // }
 
 
 
@@ -398,7 +408,10 @@ impl<F> SoftBoost<'_, F>
 
         // Current solution is an `tolerance`-approximate solution
         // if `self.dist` contains `0.0`,
-        if self.dist.iter().any(|&d| d == 0.0) {
+
+        // This code regards the number below `NUMERIC_TOLERANCE`
+        // as a zero.
+        if self.dist.iter().any(|&d| d < NUMERIC_TOLERANCE) {
             return None;
         }
 
