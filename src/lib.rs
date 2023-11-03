@@ -131,6 +131,7 @@ pub use hypothesis::{
     Classifier,
     Regressor,
     CombinedHypothesis,
+    NaiveAggregation,
 };
 
 
@@ -173,6 +174,10 @@ pub use booster::{
 pub use booster::{
     GBM,
 };
+
+
+// Export other boosting algorithms
+pub use booster::GraphSepBoost;
 
 
 // Export the `WeakLearner` trait.
