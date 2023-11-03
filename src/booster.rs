@@ -22,6 +22,7 @@ pub mod softboost;
 pub mod mlpboost;
 
 pub mod gradient_boost;
+pub mod graph_separation_boosting;
 
 
 /// Booster trait
@@ -58,7 +59,9 @@ pub use self::cerlpboost::CERLPBoost;
 #[cfg(feature="extended")]
 pub use self::mlpboost::MLPBoost;
 
+
 pub use self::gradient_boost::GBM;
+pub use self::graph_separation_boosting::GraphSepBoost;
 
 // // ------------------------------------------------
 // // Regression
