@@ -116,6 +116,7 @@ impl<'a, F> TotalBoost<'a, F>
 impl<F> Booster<F> for TotalBoost<'_, F>
     where F: Classifier + Clone,
 {
+    type Output = CombinedHypothesis<F>;
     fn preprocess<W>(
         &mut self,
         weak_learner: &W,
@@ -140,17 +141,18 @@ impl<F> Booster<F> for TotalBoost<'_, F>
     fn postprocess<W>(
         &mut self,
         weak_learner: &W,
-    ) -> CombinedHypothesis<F>
+    ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
         self.softboost.postprocess(weak_learner)
     }
 }
 
-impl<H> Research<H> for TotalBoost<'_, H>
+impl<H> Research for TotalBoost<'_, H>
     where H: Classifier + Clone,
 {
-    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+    type Output = CombinedHypothesis<H>;
+    fn current_hypothesis(&self) -> Self::Output {
         self.softboost.current_hypothesis()
     }
 }

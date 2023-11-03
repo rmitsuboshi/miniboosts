@@ -249,6 +249,7 @@ impl<'a, F> AdaBoostV<'a, F> {
 impl<F> Booster<F> for AdaBoostV<'_, F>
     where F: Classifier + Clone,
 {
+    type Output = CombinedHypothesis<F>;
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
@@ -321,7 +322,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-    ) -> CombinedHypothesis<F>
+    ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
         CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
@@ -329,10 +330,11 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
 }
 
 
-impl<H> Research<H> for AdaBoostV<'_, H>
+impl<H> Research for AdaBoostV<'_, H>
     where H: Classifier + Clone,
 {
-    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+    type Output = CombinedHypothesis<H>;
+    fn current_hypothesis(&self) -> Self::Output {
         CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }

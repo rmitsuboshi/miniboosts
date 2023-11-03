@@ -230,6 +230,7 @@ impl<'a, F> LPBoost<'a, F>
 impl<F> Booster<F> for LPBoost<'_, F>
     where F: Classifier + Clone,
 {
+    type Output = CombinedHypothesis<F>;
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
@@ -288,7 +289,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-    ) -> CombinedHypothesis<F>
+    ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
         self.weights = self.lp_model.as_ref()
@@ -302,10 +303,11 @@ impl<F> Booster<F> for LPBoost<'_, F>
 }
 
 
-impl<H> Research<H> for LPBoost<'_, H>
+impl<H> Research for LPBoost<'_, H>
     where H: Classifier + Clone,
 {
-    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+    type Output = CombinedHypothesis<H>;
+    fn current_hypothesis(&self) -> Self::Output {
         let weights = self.lp_model.as_ref()
             .expect("Failed to call `.as_ref()` to `self.lp_model`")
             .borrow()

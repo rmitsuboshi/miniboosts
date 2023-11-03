@@ -2,7 +2,7 @@ use crate::{
     Sample,
     Booster,
     WeakLearner,
-    CombinedHypothesis,
+    Classifier,
     common::ObjectiveFunction,
 };
 
@@ -42,17 +42,18 @@ impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
     }
 }
 
-impl<'a, H, B, W, F, G> Logger<'a, B, W, F, G>
-    where B: Booster<H> + Research<H>,
+impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
+    where B: Booster<H, Output=O> + Research<Output=O>,
+          O: Classifier,
           W: WeakLearner<Hypothesis = H>,
-          F: ObjectiveFunction<H>,
-          G: Fn(&Sample, &CombinedHypothesis<H>) -> f64,
+          F: ObjectiveFunction<O>,
+          G: Fn(&Sample, &O) -> f64,
 {
     /// Run the given boosting algorithm with logging.
     /// Note that this method is almost the same as `Booster::run`.
     /// This method measures running time per iteration.
     pub fn run<P: AsRef<Path>>(&mut self, filename: P)
-        -> std::io::Result<CombinedHypothesis<H>>
+        -> std::io::Result<O>
     {
         // Open file
         let mut file = File::create(filename)?;
@@ -105,9 +106,12 @@ impl<'a, H, B, W, F, G> Logger<'a, B, W, F, G>
 
 /// Implementing this trait allows you to use `Logger` to
 /// log algorithm's behavor.
-pub trait Research<H> {
+pub trait Research {
+    /// The combined hypothesis at middle stages.
+    /// In general, this type is the same as the one in `Booster`.
+    type Output;
     /// Returns the combined hypothesis at current state.
-    fn current_hypothesis(&self) -> CombinedHypothesis<H>;
+    fn current_hypothesis(&self) -> Self::Output;
 }
 
 

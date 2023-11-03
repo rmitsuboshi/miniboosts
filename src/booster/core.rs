@@ -1,9 +1,6 @@
 //! Provides `Booster` trait.
 
-use crate::{
-    WeakLearner,
-    CombinedHypothesis,
-};
+use crate::WeakLearner;
 
 use std::ops::ControlFlow;
 
@@ -29,13 +26,17 @@ use std::ops::ControlFlow;
 /// - [`Booster::postprocess`](Booster::postprocess)
 /// 
 /// to write a new boosting algorithm.
-pub trait Booster<F> {
+pub trait Booster<H> {
+    /// The final hypothesis output by a boosting algorithm.
+    /// Most algorithms return `CombinedHypothesis,`
+    /// which is a weighted majority vote of base hypotheses.
+    type Output;
     /// A main function that runs boosting algorithm.
     fn run<W>(
         &mut self,
         weak_learner: &W,
-    ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Hypothesis = F>
+    ) -> Self::Output
+        where W: WeakLearner<Hypothesis = H>
     {
         self.preprocess(weak_learner);
 
@@ -54,7 +55,7 @@ pub trait Booster<F> {
         &mut self,
         weak_learner: &W,
     )
-        where W: WeakLearner<Hypothesis = F>;
+        where W: WeakLearner<Hypothesis = H>;
 
 
     /// Boosting step per iteration.
@@ -66,15 +67,15 @@ pub trait Booster<F> {
         weak_learner: &W,
         iteration: usize,
     ) -> ControlFlow<usize>
-        where W: WeakLearner<Hypothesis = F>;
+        where W: WeakLearner<Hypothesis = H>;
 
 
     /// Post-processing.
-    /// This method returns a [`CombinedHypothesis<F>`](CombinedHypothesis).
+    /// This method returns a [`CombinedHypothesis<H>`](CombinedHypothesis).
     fn postprocess<W>(
         &mut self,
         weak_learner: &W,
-    ) -> CombinedHypothesis<F>
-        where W: WeakLearner<Hypothesis = F>;
+    ) -> Self::Output
+        where W: WeakLearner<Hypothesis = H>;
 }
 

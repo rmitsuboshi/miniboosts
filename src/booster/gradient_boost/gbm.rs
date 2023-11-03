@@ -178,6 +178,7 @@ impl<'a, F> GBM<'a, F> {
 impl<F> Booster<F> for GBM<'_, F>
     where F: Regressor + Clone,
 {
+    type Output = CombinedHypothesis<F>;
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
@@ -240,7 +241,7 @@ impl<F> Booster<F> for GBM<'_, F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-    ) -> CombinedHypothesis<F>
+    ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
         CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])

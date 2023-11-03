@@ -322,6 +322,7 @@ impl<F> ERLPBoost<'_, F>
 impl<F> Booster<F> for ERLPBoost<'_, F>
     where F: Classifier + Clone,
 {
+    type Output = CombinedHypothesis<F>;
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
@@ -395,7 +396,7 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-    ) -> CombinedHypothesis<F>
+    ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
         self.weights = self.qp_model.as_ref()
@@ -408,10 +409,11 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
     }
 }
 
-impl<H> Research<H> for ERLPBoost<'_, H>
+impl<H> Research for ERLPBoost<'_, H>
     where H: Classifier + Clone,
 {
-    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+    type Output = CombinedHypothesis<H>;
+    fn current_hypothesis(&self) -> Self::Output {
         let weights = self.qp_model.as_ref()
             .expect("Failed to call `.as_ref()` to `self.qp_model`")
             .borrow_mut()
