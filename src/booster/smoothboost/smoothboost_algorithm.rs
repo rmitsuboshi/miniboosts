@@ -222,6 +222,7 @@ impl<'a, F> SmoothBoost<'a, F> {
 impl<F> Booster<F> for SmoothBoost<'_, F>
     where F: Classifier + Clone,
 {
+    type Output = CombinedHypothesis<F>;
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
@@ -317,7 +318,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-    ) -> CombinedHypothesis<F>
+    ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
         let weight = 1.0 / self.terminated as f64;
@@ -327,10 +328,11 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 }
 
 
-impl<H> Research<H> for SmoothBoost<'_, H>
+impl<H> Research for SmoothBoost<'_, H>
     where H: Classifier + Clone,
 {
-    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+    type Output = CombinedHypothesis<H>;
+    fn current_hypothesis(&self) -> Self::Output {
         let weight = 1.0 / self.terminated as f64;
         let weights = vec![weight; self.n_sample];
         CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])

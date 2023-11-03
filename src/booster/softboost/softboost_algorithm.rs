@@ -424,6 +424,7 @@ impl<F> SoftBoost<'_, F>
 impl<F> Booster<F> for SoftBoost<'_, F>
     where F: Classifier + Clone,
 {
+    type Output = CombinedHypothesis<F>;
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
@@ -486,7 +487,7 @@ impl<F> Booster<F> for SoftBoost<'_, F>
     fn postprocess<W>(
         &mut self,
         _weak_learner: &W,
-    ) -> CombinedHypothesis<F>
+    ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
         // Set the weights on the hypotheses
@@ -499,10 +500,11 @@ impl<F> Booster<F> for SoftBoost<'_, F>
 
 
 
-impl<H> Research<H> for SoftBoost<'_, H>
+impl<H> Research for SoftBoost<'_, H>
     where H: Classifier + Clone,
 {
-    fn current_hypothesis(&self) -> CombinedHypothesis<H> {
+    type Output = CombinedHypothesis<H>;
+    fn current_hypothesis(&self) -> Self::Output {
         let weights = self.set_weights()
             .expect("Failed to solve the LP");
         CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])

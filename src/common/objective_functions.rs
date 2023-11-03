@@ -1,6 +1,5 @@
 use crate::{
     Sample,
-    CombinedHypothesis,
     Classifier,
 };
 
@@ -10,7 +9,7 @@ use super::checker;
 /// A trait that logs objective value of boosting algorithms.
 pub trait ObjectiveFunction<H> {
     /// Evaluates given combined hypothesis.
-    fn eval(&self, sample: &Sample, hypothesis: &CombinedHypothesis<H>) -> f64;
+    fn eval(&self, sample: &Sample, hypothesis: &H) -> f64;
 }
 
 
@@ -44,7 +43,7 @@ impl<H> ObjectiveFunction<H> for SoftMarginObjective
     fn eval(
         &self,
         sample: &Sample,
-        hypothesis: &CombinedHypothesis<H>,
+        hypothesis: &H,
     ) -> f64
     {
         checker::check_sample(sample);
@@ -112,7 +111,7 @@ impl<H> ObjectiveFunction<H> for HardMarginObjective
     fn eval(
         &self,
         sample: &Sample,
-        hypothesis: &CombinedHypothesis<H>
+        hypothesis: &H,
     ) -> f64
     {
         self.0.eval(sample, hypothesis)
