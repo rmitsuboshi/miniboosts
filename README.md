@@ -5,7 +5,8 @@
 ![Training loss comparison](img/training-loss.png)
 ![Soft margin objective comparison](img/soft-margin.png)
 
-**Note.** The algorithms depicted in above figure are aborted after 2 minutes,
+**Note.** 
+The algorithms depicted in above figure are aborted after 2 minutes, 
 so some algorithms cannot reach their optimal value.
 
 Some boosting algorithms use [Gurobi optimizer](https://www.gurobi.com), 
@@ -13,8 +14,8 @@ so you must acquire a license to use this library.
 If you have the license, you can use these boosting algorithms (boosters) 
 by specifying `features = ["extended"]` in `Cargo.toml`.
 
-**Note.**
-If you are trying to use the `extended` feature without a Gurobi license,
+**Note.** 
+If you are trying to use the `extended` feature without a Gurobi license, 
 the compilation fails.
 
 # Why MiniBoosts?
@@ -107,13 +108,13 @@ You can see the document by `cargo doc --open` command.
 You need to write the following line to `Cargo.toml`.
 
 ```TOML
-miniboosts = { version = "0.2.2" }
+miniboosts = { version = "0.3.0" }
 ```
 
 If you want to use `extended` features, such as `LPBoost`, specify the option:
 
 ```TOML
-miniboosts = { version = "0.2.2", features = ["extended"] }
+miniboosts = { version = "0.3.0", features = ["extended"] }
 ```
 
 
