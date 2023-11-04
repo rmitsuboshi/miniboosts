@@ -95,7 +95,7 @@ impl cmp::PartialOrd<Self> for LossValue {
 
 /// Struct `Depth` defines the maximal depth of a tree.
 /// This is just a wrapper for `usize`.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(transparent)]
 pub(crate) struct Depth(usize);
 
@@ -121,7 +121,7 @@ impl ops::Sub<usize> for Depth {
     /// The subtraction does not return a value less than or equals to 1.
     #[inline]
     fn sub(self, other: usize) -> Self::Output {
-        if self.0 <= 1 {
+        if self.0 < 1 {
             self
         } else {
             Self(self.0 - other)

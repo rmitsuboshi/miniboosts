@@ -93,7 +93,6 @@ impl<'a> DecisionTree<'a> {
         depth: Depth,
     ) -> Rc<RefCell<TrainNode>>
     {
-
         let total_weight = indices.par_iter()
             .copied()
             .map(|i| dist[i])
@@ -106,7 +105,7 @@ impl<'a> DecisionTree<'a> {
 
 
         // If sum of `dist` over `train` is zero, construct a leaf node.
-        if loss == 0.0 || depth == 0 {
+        if loss == 0.0 || depth < 1 {
             return TrainNode::leaf(conf, total_weight, loss);
         }
 
@@ -139,7 +138,7 @@ impl<'a> DecisionTree<'a> {
             return TrainNode::leaf(conf, total_weight, loss);
         }
 
-        // At this point, `depth > 1` is guaranteed so that
+        // At this point, `depth > 0` is guaranteed so that
         // one can grow the tree.
         let depth = depth - 1;
         let ltree = self.full_tree(sample, dist, lindices, criterion, depth);
@@ -165,6 +164,7 @@ impl<'a> WeakLearner for DecisionTree<'a> {
 
         let indices = (0..n_sample).filter(|&i| dist[i] > 0.0)
             .collect::<Vec<usize>>();
+        assert_ne!(indices.len(), 0);
 
         let criterion = self.criterion;
 
@@ -199,6 +199,8 @@ impl<'a> WeakLearner for DecisionTree<'a> {
 fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
     -> (Confidence<f64>, LossValue)
 {
+
+    assert_ne!(indices.len(), 0);
     let target = sample.target();
     let mut counter: HashMap<i64, f64> = HashMap::new();
 
@@ -210,7 +212,6 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
 
 
     let total = counter.values().sum::<f64>();
-
 
     // Compute the max (key, val) that has maximal p(j, t)
     let (label, p) = counter.into_par_iter()

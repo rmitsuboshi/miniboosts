@@ -270,6 +270,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
 
 
         if gamma_star >= self.gamma_hat - self.tolerance {
+            self.hypotheses.push(h);
             self.terminated = self.hypotheses.len();
             return ControlFlow::Break(iteration);
         }

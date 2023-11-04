@@ -22,7 +22,7 @@ pub mod lpboost_tests {
             .nu(1.0);
 
         let wl = DecisionTreeBuilder::new(&sample)
-            .max_depth(1)
+            .max_depth(2)
             .criterion(Criterion::Entropy)
             .build();
 
