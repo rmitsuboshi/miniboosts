@@ -5,12 +5,15 @@
 ![Training loss comparison](img/training-loss.png)
 ![Soft margin objective comparison](img/soft-margin.png)
 
+**Note.** The algorithms depicted in above figure are aborted after 2 minutes,
+so some algorithms cannot reach their optimal value.
+
 Some boosting algorithms use [Gurobi optimizer](https://www.gurobi.com), 
 so you must acquire a license to use this library. 
 If you have the license, you can use these boosting algorithms (boosters) 
 by specifying `features = ["extended"]` in `Cargo.toml`.
 
-**Note!**
+**Note.**
 If you are trying to use the `extended` feature without a Gurobi license,
 the compilation fails.
 
@@ -164,7 +167,7 @@ fn main() {
 ```
 
 
-**Note:** Currently, Regression tree is under re-desining,
+**Note:** Currently, Regression-tree is under re-desining,
 so one cannot use it in similarly.
 
 
