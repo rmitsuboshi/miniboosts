@@ -87,20 +87,12 @@ pub struct GraphSepBoost<'a, F> {
     edges: Vec<HashSet<usize>>,
 
 
-    // The number of edges
-    n_edge: usize,
-
-
     // Tolerance parameter
     tolerance: f64,
 
 
     // Hypohteses obtained by the weak-learner.
     hypotheses: Vec<F>,
-
-
-    // Max iteration until GraphSepBoost guarantees the optimality.
-    max_iter: usize,
 }
 
 
@@ -119,25 +111,7 @@ impl<'a, F> GraphSepBoost<'a, F> {
             hypotheses: Vec::new(),
 
             edges: Vec::new(),
-            n_edge: usize::MAX,
-
-            max_iter: usize::MAX,
         }
-    }
-
-
-    /// Returns the maximum iteration
-    /// of the `GraphSepBoost` to find a combined hypothesis
-    /// that has error at most `tolerance`.
-    /// After the `self.max_loop()` iterations,
-    /// `GraphSepBoost` guarantees zero training error in terms of zero-one loss
-    /// if the training examples are linearly separable.
-    /// 
-    /// Time complexity: `O(1)`.
-    pub fn max_loop(&self) -> usize {
-        let n_sample = self.sample.shape().0 as f64;
-
-        (n_sample.ln() / self.tolerance.powi(2)) as usize
     }
 }
 
@@ -174,7 +148,6 @@ impl<'a, F> GraphSepBoost<'a, F>
                 if predictions[i] != predictions[j] {
                     self.edges[i].remove(&j);
                     self.edges[j].remove(&i);
-                    self.n_edge -= 1;
                 }
             }
         }
@@ -198,20 +171,17 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
 
         let target = self.sample.target();
 
-        self.n_edge = 0;
         self.edges = vec![HashSet::new(); n_sample];
         for i in 0..n_sample {
             for j in i+1..n_sample {
                 if target[i] != target[j] {
                     self.edges[i].insert(j);
                     self.edges[j].insert(i);
-                    self.n_edge += 1;
                 }
             }
         }
 
         self.hypotheses = Vec::new();
-        self.max_iter = self.max_loop();
     }
 
 
@@ -222,18 +192,13 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
     ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
-        if self.max_iter < iteration {
-            return ControlFlow::Break(self.max_iter);
-        }
-
-
-        if self.n_edge == 0 {
+        let n_edges_2 = self.edges.iter()
+            .map(|edge| edge.len())
+            .sum::<usize>();
+        if n_edges_2 == 0 {
             return ControlFlow::Break(iteration);
         }
-
-        let denom = self.edges.iter()
-            .map(|edge| edge.len())
-            .sum::<usize>() as f64;
+        let denom = n_edges_2 as f64;
 
         let dist = self.edges.iter()
             .map(|edge| edge.len() as f64 / denom)
