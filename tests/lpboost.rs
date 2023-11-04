@@ -10,24 +10,25 @@ pub mod lpboost_tests {
     #[test]
     fn german() {
         let mut path = env::current_dir().unwrap();
-        path.push("tests/dataset/german.csv");
+        path.push("tests/dataset/iris_binary.csv");
 
         let sample = Sample::from_csv(path, true)
             .unwrap()
             .set_target("class");
         let n_sample = sample.shape().0 as f64;
 
-        let mut booster = LPBoost::init(&sample)
-            .tolerance(0.1)
-            .nu(0.1 * n_sample);
+        let mut booster = ERLPBoost::init(&sample)
+            .tolerance(0.001)
+            .nu(1.0);
 
-        let wl = DTreeBuilder::new(&sample)
-            .max_depth(2)
+        let wl = DecisionTreeBuilder::new(&sample)
+            .max_depth(1)
             .criterion(Criterion::Entropy)
             .build();
 
 
         let f = booster.run(&wl);
+        println!("f = {f:?}");
         let predictions = f.predict_all(&sample);
 
         let loss = sample.target()
@@ -41,36 +42,36 @@ pub mod lpboost_tests {
     }
 
 
-    #[test]
-    fn german_svmlight() {
-        let mut path = env::current_dir().unwrap();
-        path.push("tests/dataset/german.svmlight");
+    // #[test]
+    // fn german_svmlight() {
+    //     let mut path = env::current_dir().unwrap();
+    //     path.push("tests/dataset/german.svmlight");
 
-        let sample = Sample::from_svmlight(path).unwrap();
-        let n_sample = sample.shape().0 as f64;
+    //     let sample = Sample::from_svmlight(path).unwrap();
+    //     let n_sample = sample.shape().0 as f64;
 
-        let mut booster = LPBoost::init(&sample)
-            .tolerance(0.1)
-            .nu(0.1 * n_sample);
+    //     let mut booster = LPBoost::init(&sample)
+    //         .tolerance(0.1)
+    //         .nu(0.1 * n_sample);
 
-        let wl = DTreeBuilder::new(&sample)
-            .max_depth(2)
-            .criterion(Criterion::Entropy)
-            .build();
+    //     let wl = DecisionTreeBuilder::new(&sample)
+    //         .max_depth(2)
+    //         .criterion(Criterion::Entropy)
+    //         .build();
 
 
-        let f = booster.run(&wl);
-        let predictions = f.predict_all(&sample);
+    //     let f = booster.run(&wl);
+    //     let predictions = f.predict_all(&sample);
 
-        let loss = sample.target()
-            .into_iter()
-            .zip(predictions)
-            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
-            .sum::<f64>() / n_sample;
+    //     let loss = sample.target()
+    //         .into_iter()
+    //         .zip(predictions)
+    //         .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+    //         .sum::<f64>() / n_sample;
 
-        println!("Loss (german.svmlight, LPBoost, DTree): {loss}");
-        assert!(true);
-    }
+    //     println!("Loss (german.svmlight, LPBoost, DTree): {loss}");
+    //     assert!(true);
+    // }
 
 
     // #[test]

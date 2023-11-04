@@ -56,7 +56,7 @@ use std::collections::HashMap;
 /// let loss = sample.target()
 ///     .into_iter()
 ///     .zip(predictions)
-///     .map(|(ty, py)| if ty as f64 == py { 0.0 } else { 1.0 })
+///     .map(|(ty, py)| if ty == py as f64 { 0.0 } else { 1.0 })
 ///     .sum::<f64>()
 ///     / n_sample as f64;
 /// println!("loss (train) is: {loss}");
@@ -106,7 +106,7 @@ impl<'a> DecisionTree<'a> {
 
 
         // If sum of `dist` over `train` is zero, construct a leaf node.
-        if loss == 0.0 || depth <= 1 {
+        if loss == 0.0 || depth == 0 {
             return TrainNode::leaf(conf, total_weight, loss);
         }
 

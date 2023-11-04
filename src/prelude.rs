@@ -17,8 +17,13 @@ pub use crate::booster::{
     SmoothBoost,
     CERLPBoost,
 
+
     // Regression
     GBM,
+
+
+    // Others
+    GraphSepBoost,
 };
 
 #[cfg(feature="extended")]

@@ -198,18 +198,17 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
 
         let target = self.sample.target();
 
+        self.n_edge = 0;
         self.edges = vec![HashSet::new(); n_sample];
         for i in 0..n_sample {
             for j in i+1..n_sample {
                 if target[i] != target[j] {
                     self.edges[i].insert(j);
                     self.edges[j].insert(i);
+                    self.n_edge += 1;
                 }
             }
         }
-        self.n_edge = self.edges.iter()
-            .map(|edge| edge.len())
-            .sum::<usize>();
 
         self.hypotheses = Vec::new();
         self.max_iter = self.max_loop();

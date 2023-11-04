@@ -105,14 +105,7 @@ impl<H> CombinedHypothesis<H> {
     /// Normalize `self.weights`, `\| w \|_1 = 1`.
     #[inline]
     pub fn normalize(&mut self) {
-        let norm = self.weights.iter()
-            .map(|w| w.abs())
-            .sum::<f64>();
-
-        if norm <= 0.0 { return; }
-
-        self.weights.iter_mut()
-            .for_each(|w| { *w /= norm; });
+        utils::normalize(&mut self.weights);
     }
 
 
