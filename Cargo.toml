@@ -23,6 +23,7 @@ serde       = { version = "1.0.163", features = ["rc", "derive"] }
 serde_json  = { version = "1.0.96", default-features = false, features = ["alloc"] }
 polars      = { version = "0.32.1" }
 fixedbitset = { version = "0.4.2" }
+colored     = { version = "2.0.4" }
 
 [features]
 extended = ["grb"]

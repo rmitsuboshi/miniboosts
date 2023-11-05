@@ -67,20 +67,20 @@ fn main() {
     // let _ = logger.run("adaboost.csv");
 
 
-    // // Run AdaBoostV
-    // let objective = SoftMarginObjective::new(1.0);
-    // println!("Running AdaBoostV");
-    // let booster = AdaBoostV::init(&train)
-    //     .force_quit_at(300)
-    //     .tolerance(TOLERANCE);
-    // let tree = DecisionTreeBuilder::new(&train)
-    //     .max_depth(1)
-    //     .criterion(Criterion::Entropy)
-    //     .build();
-    // let mut logger = Logger::new(
-    //     booster, tree, objective, zero_one_loss, &train, &test
-    // ).time_limit_as_millis(TIME_LIMIT);
-    // let _ = logger.run("adaboostv.csv");
+    // Run AdaBoostV
+    let objective = SoftMarginObjective::new(1.0);
+    println!("Running AdaBoostV");
+    let booster = AdaBoostV::init(&train)
+        .force_quit_at(300)
+        .tolerance(TOLERANCE);
+    let tree = DecisionTreeBuilder::new(&train)
+        .max_depth(1)
+        .criterion(Criterion::Entropy)
+        .build();
+    let mut logger = Logger::new(
+            booster, tree, objective, zero_one_loss, &train, &test
+        ).time_limit_as_millis(TIME_LIMIT);
+    let _ = logger.run("adaboostv.csv");
 
 
     // // Run TotalBoost
@@ -98,25 +98,25 @@ fn main() {
     // let _ = logger.run("totalboost.csv");
 
 
-    // Run SmoothBoost
-    // `gamma` is the weak-learner guarantee.
-    // For this case, the following holds;
-    // for any distribution, the weak learner returns a hypothesis
-    // such that the edge is at least 0.006.
-    // This value `0.006` is derived from the LPBoost.
-    let objective = SoftMarginObjective::new(nu);
-    println!("Running SmoothBoost");
-    let booster = SmoothBoost::init(&train)
-        .tolerance(TOLERANCE)
-        .gamma(0.006);
-    let tree = DecisionTreeBuilder::new(&train)
-        .max_depth(1)
-        .criterion(Criterion::Entropy)
-        .build();
-    let mut logger = Logger::new(
-        booster, tree, objective, zero_one_loss, &train, &test
-    ).time_limit_as_millis(TIME_LIMIT);
-    let _ = logger.run("smoothboost.csv");
+    // // Run SmoothBoost
+    // // `gamma` is the weak-learner guarantee.
+    // // For this case, the following holds;
+    // // for any distribution, the weak learner returns a hypothesis
+    // // such that the edge is at least 0.006.
+    // // This value `0.006` is derived from the LPBoost.
+    // let objective = SoftMarginObjective::new(nu);
+    // println!("Running SmoothBoost");
+    // let booster = SmoothBoost::init(&train)
+    //     .tolerance(TOLERANCE)
+    //     .gamma(0.006);
+    // let tree = DecisionTreeBuilder::new(&train)
+    //     .max_depth(1)
+    //     .criterion(Criterion::Entropy)
+    //     .build();
+    // let mut logger = Logger::new(
+    //     booster, tree, objective, zero_one_loss, &train, &test
+    // ).time_limit_as_millis(TIME_LIMIT);
+    // let _ = logger.run("smoothboost.csv");
 
 
     // // Run SoftBoost
@@ -135,20 +135,22 @@ fn main() {
     // let _ = logger.run("softboost.csv");
 
 
-    // // Run LPBoost
-    // let objective = SoftMarginObjective::new(nu);
-    // println!("Running LPBoost");
-    // let booster = LPBoost::init(&train)
-    //     .tolerance(TOLERANCE)
-    //     .nu(nu);
-    // let tree = DecisionTreeBuilder::new(&train)
-    //     .max_depth(1)
-    //     .criterion(Criterion::Entropy)
-    //     .build();
-    // let mut logger = Logger::new(
-    //     booster, tree, objective, zero_one_loss, &train, &test
-    // ).time_limit_as_millis(TIME_LIMIT);
-    // let _ = logger.run("lpboost.csv");
+    // Run LPBoost
+    let objective = SoftMarginObjective::new(nu);
+    println!("Running LPBoost");
+    let booster = LPBoost::init(&train)
+        .tolerance(TOLERANCE)
+        .nu(nu);
+    let tree = DecisionTreeBuilder::new(&train)
+        .max_depth(1)
+        .criterion(Criterion::Entropy)
+        .build();
+    let mut logger = Logger::new(
+            booster, tree, objective, zero_one_loss, &train, &test
+        )
+        .time_limit_as_millis(TIME_LIMIT)
+        .print_every(10);
+    let _ = logger.run("lpboost.csv");
 
 
     // // // Run Perturbed LPBoost
@@ -167,20 +169,22 @@ fn main() {
     // // let _ = logger.run("stochastic-lpboost.csv");
 
 
-    // // Run ERLPBoost
-    // let objective = SoftMarginObjective::new(nu);
-    // println!("Running ERLPBoost");
-    // let booster = ERLPBoost::init(&train)
-    //     .tolerance(TOLERANCE)
-    //     .nu(nu);
-    // let tree = DecisionTreeBuilder::new(&train)
-    //     .max_depth(1)
-    //     .criterion(Criterion::Entropy)
-    //     .build();
-    // let mut logger = Logger::new(
-    //     booster, tree, objective, zero_one_loss, &train, &test
-    // ).time_limit_as_millis(TIME_LIMIT);
-    // let _ = logger.run("erlpboost.csv");
+    // Run ERLPBoost
+    let objective = SoftMarginObjective::new(nu);
+    println!("Running ERLPBoost");
+    let booster = ERLPBoost::init(&train)
+        .tolerance(TOLERANCE)
+        .nu(nu);
+    let tree = DecisionTreeBuilder::new(&train)
+        .max_depth(1)
+        .criterion(Criterion::Entropy)
+        .build();
+    let mut logger = Logger::new(
+            booster, tree, objective, zero_one_loss, &train, &test
+        )
+        .time_limit_as_millis(TIME_LIMIT)
+        .print_every(10);
+    let _ = logger.run("erlpboost.csv");
 
 
     // // Run MLPBoost

@@ -1,3 +1,5 @@
+use colored::Colorize;
+
 use crate::{
     Sample,
     Booster,
@@ -12,8 +14,11 @@ use std::path::Path;
 use std::time::Instant;
 use std::ops::ControlFlow;
 
+const DEFAULT_ROUND: usize = 100;
 const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
-const PRINT_WIDTH: usize = 9;
+const WIDTH: usize = 9;
+const PREC_WIDTH: usize = 6;
+const TIME_WIDTH: usize = 6;
 const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 
 
@@ -28,6 +33,7 @@ pub struct Logger<'a, B, W, F, G> {
     train: &'a Sample,
     test: &'a Sample,
     time_limit: u128,
+    round: usize,
 }
 
 
@@ -50,6 +56,7 @@ impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
             train,
             test,
             time_limit: DEFAULT_TIMELIMIT_MILLIS,
+            round: DEFAULT_ROUND,
         }
     }
 }
@@ -68,6 +75,18 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
         self.time_limit = time_limit;
         self
     }
+
+
+    /// Set the interval to print the current status.
+    /// By default, the method `run` prints its status every `100` rounds.
+    /// If you don't want to print the log,
+    /// set `usize::MAX`.
+    pub fn print_every(mut self, round: usize) -> Self {
+        self.round = round;
+        self
+    }
+
+
 
     /// Run the given boosting algorithm with logging.
     /// Note that this method is almost the same as `Booster::run`.
@@ -92,8 +111,32 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
 
         // ---------------------------------------------------------------------
         // Boosting step
+        if self.round != usize::MAX {
+            println!(
+                "\nPRINT LOG EVERY {} ROUNDS, TERMINATES IN {} ms\n",
+                self.round.to_string().bold().red(),
+                self.time_limit.to_string().bold().cyan(),
+            );
+            println!(
+                "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
+                "     ",
+                "".bold().red(),
+                "OBJECTIVE".bold().blue(),
+                "TRAIN".bold().green(),
+                "TEST".bold().yellow(),
+                "ACC.".bold().cyan(),
+            );
+            println!(
+                "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\n",
+                "     ",
+                "ROUND".bold().red(),
+                "VALUE".bold().blue(),
+                "ERROR".bold().green(),
+                "ERROR".bold().yellow(),
+                "TIME".bold().cyan(),
+            );
+        }
         (1..).try_for_each(|iter| {
-            if iter % 100 == 1 { println!("[ ROUND ] {iter:PRINT_WIDTH$}"); }
             // Start measuring time
             let now = Instant::now();
 
@@ -117,12 +160,43 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
                 .expect("Failed to writing {filename:?}");
 
             if time_acc > self.time_limit {
-                println!("[  TLE  ] {iter:PRINT_WIDTH$}\tReached to time limit.");
+                println!(
+                    "{} {}\t\t{}\t{}\t{}\t{}",
+                    "[TLE]".bold().bright_red(),
+                    format!("{:>WIDTH$}", iter).red(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).blue(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", train).green(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", test).yellow(),
+                    format!("{:>TIME_WIDTH$} ms", time_acc).cyan(),
+                );
                 return ControlFlow::Break(iter);
             }
 
 
-            if flow.is_break() { println!("[ BREAK ] {iter:PRINT_WIDTH$}"); }
+            if iter % self.round == 1 {
+                println!(
+                    "{} {}\t\t{}\t{}\t{}\t{}",
+                    "[LOG]".bold().magenta(),
+                    format!("{:>WIDTH$}", iter).red(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).blue(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", train).green(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", test).yellow(),
+                    format!("{:>TIME_WIDTH$} ms", time_acc).cyan(),
+                );
+            }
+
+
+            if flow.is_break() {
+                println!(
+                    "{} {}\t\t{}\t{}\t{}\t{}",
+                    "[FIN]".bold().bright_green(),
+                    format!("{:>WIDTH$}", iter).red(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", train).bold().green(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", test).bold().yellow(),
+                    format!("{:>TIME_WIDTH$} ms", time_acc).bold().cyan(),
+                );
+            }
             flow
         });
 
