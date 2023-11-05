@@ -32,7 +32,7 @@ but three main issues exist.
 - These boosting algorithms are designed 
     for a decision-tree weak learner 
     even though the boosting protocol does not demand.
-- No implementation for margin optimization boosting algorithms. 
+- There is no implementation for margin optimization boosting algorithms. 
     Margin optimization is a better goal than empirical risk minimization 
     in binary classification.
 
@@ -46,6 +46,12 @@ This crate provides:
 Also, one can implement a new Booster or Weak Learner 
 by implementing the above traits.
 
+You can use `Logger` struct to output log to `.csv` file,
+while printing the status like this:
+
+![Research feature example](img/research-feature-example.png)
+
+See [Research feature](#research-feature) section for detail.
 
 ## Features
 Currently, I implemented the following Boosters and Weak Learners.
@@ -168,7 +174,7 @@ fn main() {
 ```
 
 
-**Note:** Currently, Regression-tree is under re-desining,
+**Note:** Currently, The regression tree is under re-desining,
 so one cannot use it in similarly.
 
 
@@ -248,8 +254,10 @@ fn main() {
     let objective = SoftMarginObjective::new(nu);
 
     let mut logger = Logger::new(
-        booster, tree, objective, zero_one_loss, &train, &test
-    );
+            booster, tree, objective, zero_one_loss, &train, &test
+        )
+        .time_limit_as_millis(120_000) // Terminate in 120 seconds.
+        .print_every(10); // Print log every 10 rounds.
 
     // Each line of `lpboost.csv` contains the following four information:
     // Objective value, Train loss, Test loss, Time per iteration
