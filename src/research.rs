@@ -14,3 +14,6 @@ pub use logger::{
     Research,
 };
 
+/// Defines objective functions and its traits.
+pub mod objective_functions;
+pub use objective_functions::ObjectiveFunction;

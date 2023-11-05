@@ -3,11 +3,13 @@ use crate::{
     Classifier,
 };
 
-use super::checker;
+use crate::common::checker;
 
 
 /// A trait that logs objective value of boosting algorithms.
 pub trait ObjectiveFunction<H> {
+    /// Returns the name of the objective function.
+    fn name(&self) -> &str;
     /// Evaluates given combined hypothesis.
     fn eval(&self, sample: &Sample, hypothesis: &H) -> f64;
 }
@@ -40,6 +42,11 @@ impl SoftMarginObjective {
 impl<H> ObjectiveFunction<H> for SoftMarginObjective
     where H: Classifier,
 {
+    fn name(&self) -> &str {
+        "Soft-margin objective"
+    }
+
+
     fn eval(
         &self,
         sample: &Sample,
@@ -108,6 +115,11 @@ impl Default for HardMarginObjective {
 impl<H> ObjectiveFunction<H> for HardMarginObjective
     where H: Classifier,
 {
+    fn name(&self) -> &str {
+        "Hard-margin objective"
+    }
+
+
     fn eval(
         &self,
         sample: &Sample,
@@ -115,5 +127,49 @@ impl<H> ObjectiveFunction<H> for HardMarginObjective
     ) -> f64
     {
         self.0.eval(sample, hypothesis)
+    }
+}
+
+
+/// The exponential loss objective.
+/// Given a set of training instances `(x1, y1), (x2, y2), ..., (xm, ym)`
+/// and a hypothesis `h`,
+/// the exponential loss is computed as
+/// ```txt
+/// (1/m) sum( exp( - yk h(xk) ) )
+/// ```
+pub struct ExponentialLoss;
+impl ExponentialLoss {
+    /// Construct a new instance of `ExponentialLoss`.
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+
+impl<H> ObjectiveFunction<H> for ExponentialLoss
+    where H: Classifier
+{
+    fn name(&self) -> &str {
+        "Exponential Loss"
+    }
+
+
+    fn eval(
+        &self,
+        sample: &Sample,
+        hypothesis: &H,
+    ) -> f64
+    {
+        checker::check_sample(sample);
+        let n_sample = sample.shape().0 as f64;
+        let target = sample.target();
+
+        hypothesis.predict_all(sample)
+            .into_iter()
+            .zip(target.iter())
+            .map(|(hx, y)| (- y * hx as f64).exp())
+            .sum::<f64>()
+            / n_sample
     }
 }

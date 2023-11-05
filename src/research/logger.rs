@@ -5,7 +5,9 @@ use crate::{
     Booster,
     WeakLearner,
     Classifier,
-    common::ObjectiveFunction,
+};
+use super::{
+    ObjectiveFunction,
 };
 
 use std::fs::File;
@@ -68,12 +70,68 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
           F: ObjectiveFunction<O>,
           G: Fn(&Sample, &O) -> f64,
 {
-    /// Set the time limit for boosting algorithm.
+    /// Set the time limit for boosting algorithm as milliseconds.
     /// If the boosting algorithm reaches this limit,
     /// breaks immediately.
+    #[inline(always)]
     pub fn time_limit_as_millis(mut self, time_limit: u128) -> Self {
         self.time_limit = time_limit;
         self
+    }
+
+
+    /// Set the time limit for boosting algorithm as seconds.
+    /// If the boosting algorithm reaches this limit,
+    /// breaks immediately.
+    #[inline(always)]
+    pub fn time_limit_as_secs(mut self, time_limit: u64) -> Self {
+        self.time_limit = (time_limit as u128).checked_mul(1_000_u128)
+            .expect("The time limit (ms) cannot be represented as u128");
+        self
+    }
+
+
+    /// Set the time limit for boosting algorithm as minutes.
+    /// If the boosting algorithm reaches this limit,
+    /// breaks immediately.
+    #[inline(always)]
+    pub fn time_limit_as_mins(mut self, time_limit: u64) -> Self {
+        self.time_limit = (time_limit as u128).checked_mul(60_u128)
+            .expect("The time limit (s) cannot be represented as u128")
+            .checked_mul(1_000u128)
+            .expect("The time limit (ms) cannot be represented as u128");
+        self
+    }
+
+
+    #[inline(always)]
+    fn print_log_header(&self) {
+        println!(
+            "\n\
+            PRINT LOG EVERY {} ROUNDS, TERMINATES IN {} ms.\n\
+            OBJECTIVE FUNCTION IS {}.\n",
+            self.round.to_string().bold().red(),
+            self.time_limit.to_string().bold().cyan(),
+            self.objective_func.name().bold().blue(),
+        );
+        println!(
+            "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
+            "     ",
+            "".bold().red(),
+            "OBJECTIVE".bold().blue(),
+            "TRAIN".bold().green(),
+            "TEST".bold().yellow(),
+            "ACC.".bold().cyan(),
+        );
+        println!(
+            "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\n",
+            "     ",
+            "ROUND".bold().red(),
+            "VALUE".bold().blue(),
+            "ERROR".bold().green(),
+            "ERROR".bold().yellow(),
+            "TIME".bold().cyan(),
+        );
     }
 
 
@@ -81,6 +139,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
     /// By default, the method `run` prints its status every `100` rounds.
     /// If you don't want to print the log,
     /// set `usize::MAX`.
+    #[inline(always)]
     pub fn print_every(mut self, round: usize) -> Self {
         self.round = round;
         self
@@ -91,6 +150,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
     /// Run the given boosting algorithm with logging.
     /// Note that this method is almost the same as `Booster::run`.
     /// This method measures running time per iteration.
+    #[inline(always)]
     pub fn run<P: AsRef<Path>>(&mut self, filename: P)
         -> std::io::Result<O>
     {
@@ -111,31 +171,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
 
         // ---------------------------------------------------------------------
         // Boosting step
-        if self.round != usize::MAX {
-            println!(
-                "\nPRINT LOG EVERY {} ROUNDS, TERMINATES IN {} ms\n",
-                self.round.to_string().bold().red(),
-                self.time_limit.to_string().bold().cyan(),
-            );
-            println!(
-                "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
-                "     ",
-                "".bold().red(),
-                "OBJECTIVE".bold().blue(),
-                "TRAIN".bold().green(),
-                "TEST".bold().yellow(),
-                "ACC.".bold().cyan(),
-            );
-            println!(
-                "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\n",
-                "     ",
-                "ROUND".bold().red(),
-                "VALUE".bold().blue(),
-                "ERROR".bold().green(),
-                "ERROR".bold().yellow(),
-                "TIME".bold().cyan(),
-            );
-        }
+        if self.round != usize::MAX { self.print_log_header(); }
         (1..).try_for_each(|iter| {
             // Start measuring time
             let now = Instant::now();
@@ -163,17 +199,17 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}",
                     "[TLE]".bold().bright_red(),
-                    format!("{:>WIDTH$}", iter).red(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).blue(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", train).green(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", test).yellow(),
-                    format!("{:>TIME_WIDTH$} ms", time_acc).cyan(),
+                    format!("{:>WIDTH$}", iter).bold().red(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", train).bold().green(),
+                    format!("{:>WIDTH$.PREC_WIDTH$}", test).bold().yellow(),
+                    format!("{:>TIME_WIDTH$} ms", time_acc).bold().cyan(),
                 );
                 return ControlFlow::Break(iter);
             }
 
 
-            if iter % self.round == 1 {
+            if self.round != usize::MAX && iter % self.round == 1 {
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}",
                     "[LOG]".bold().magenta(),
@@ -186,7 +222,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
             }
 
 
-            if flow.is_break() {
+            if flow.is_break() && self.round != usize::MAX {
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}",
                     "[FIN]".bold().bright_green(),
