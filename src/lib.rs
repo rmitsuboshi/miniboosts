@@ -226,4 +226,9 @@ pub use common::{
 
 pub use research::{
     Logger,
+    objective_functions::{
+        SoftMarginObjective,
+        HardMarginObjective,
+        ExponentialLoss,
+    },
 };
