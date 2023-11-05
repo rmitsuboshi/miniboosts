@@ -20,7 +20,11 @@ use std::collections::HashSet;
 /// [Boosting Simple Learners](https://theoretics.episciences.org/10757/pdf)
 /// by Noga Alon, Alon Gonen, Elad Hazan, and Shay Moran.
 /// 
-/// 
+/// Given a `γ`-weak learner and a set `S` of training examples of size `m`,
+/// `GraphSepBoost` terminates in `O( ln(m) / γ)` rounds.
+///
+/// To guarantee the generalization ability,
+/// one needs to use a **simple** weak-learner.
 /// 
 /// # Example
 /// The following code shows a small example 
