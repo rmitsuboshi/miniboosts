@@ -250,6 +250,12 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
     where F: Classifier + Clone,
 {
     type Output = CombinedHypothesis<F>;
+
+    fn name(&self) -> &str {
+        "AdaBoostV"
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

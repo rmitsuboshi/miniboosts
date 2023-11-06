@@ -27,6 +27,12 @@ use std::ops::ControlFlow;
 /// 
 /// to write a new boosting algorithm.
 pub trait Booster<H> {
+    /// Returns the name of the boosting algorithm.
+    fn name(&self) -> &str {
+        "Not specified"
+    }
+
+
     /// The final hypothesis output by a boosting algorithm.
     /// Most algorithms return `CombinedHypothesis,`
     /// which is a weighted majority vote of base hypotheses.

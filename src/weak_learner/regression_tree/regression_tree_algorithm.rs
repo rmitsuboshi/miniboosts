@@ -146,6 +146,13 @@ impl<'a> RegressionTree<'a> {
 
 impl<'a> WeakLearner for RegressionTree<'a> {
     type Hypothesis = RegressionTreeRegressor;
+
+
+    fn name(&self) -> &str {
+        "Regression Tree"
+    }
+
+
     fn produce(&self, sample: &Sample, predictions: &[f64])
         -> Self::Hypothesis
     {

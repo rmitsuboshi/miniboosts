@@ -27,6 +27,11 @@ impl<'a> GaussianNB {
 impl WeakLearner for GaussianNB {
     type Hypothesis = NBayesClassifier<Gaussian>;
 
+    fn name(&self) -> &str {
+        "Gaussian Naive Bayes"
+    }
+
+
     fn produce(&self, sample: &Sample, dist: &[f64])
         -> Self::Hypothesis
     {

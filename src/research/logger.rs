@@ -6,9 +6,7 @@ use crate::{
     WeakLearner,
     Classifier,
 };
-use super::{
-    ObjectiveFunction,
-};
+use super::ObjectiveFunction;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -21,6 +19,8 @@ const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
 const WIDTH: usize = 9;
 const PREC_WIDTH: usize = 6;
 const TIME_WIDTH: usize = 6;
+const FULL_WIDTH: usize = 50;
+const STAT_WIDTH: usize = (FULL_WIDTH - 4) / 2;
 const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 
 
@@ -107,14 +107,6 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
     #[inline(always)]
     fn print_log_header(&self) {
         println!(
-            "\n\
-            PRINT LOG EVERY {} ROUNDS, TERMINATES IN {} ms.\n\
-            OBJECTIVE FUNCTION IS {}.\n",
-            self.round.to_string().bold().red(),
-            self.time_limit.to_string().bold().cyan(),
-            self.objective_func.name().bold().blue(),
-        );
-        println!(
             "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
             "     ",
             "".bold().red(),
@@ -131,6 +123,40 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
             "ERROR".bold().green(),
             "ERROR".bold().yellow(),
             "TIME".bold().cyan(),
+        );
+    }
+
+
+    #[inline(always)]
+    fn print_stats(&self) {
+        let limit = if self.time_limit != u128::MAX {
+            format!("{} s", (self.time_limit / 1000))
+        } else {
+            "Nothing".into()
+        };
+        println!(
+            "\n\
+            {:=>FULL_WIDTH$}\n\
+            {:^FULL_WIDTH$}\n\
+            {:=>FULL_WIDTH$}\n\
+            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
+            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
+            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
+            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
+            {:=>FULL_WIDTH$}\n\
+            ",
+            "".bold(),
+            "STATS".bold(),
+            "".bold(),
+            "BOOSTER",
+            self.booster.name().bold().green(),
+            "WEAK LEARNER",
+            self.weak_learner.name().bold().green(),
+            "OBJECTIVE",
+            self.objective_func.name().bold().green(),
+            "TIME LIMIT",
+            limit.bold().green(),
+            "".bold(),
         );
     }
 
@@ -160,10 +186,10 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
         // Write header to the file
         file.write_all(HEADER.as_bytes())?;
 
-
         // ---------------------------------------------------------------------
         // Pre-processing
         self.booster.preprocess(&self.weak_learner);
+        self.print_stats();
 
 
         // Cumulative time
@@ -197,7 +223,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
 
             if time_acc > self.time_limit {
                 println!(
-                    "{} {}\t\t{}\t{}\t{}\t{}",
+                    "{} {}\t\t{}\t{}\t{}\t{}\n",
                     "[TLE]".bold().bright_red(),
                     format!("{:>WIDTH$}", iter).bold().red(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
@@ -224,7 +250,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
 
             if flow.is_break() && self.round != usize::MAX {
                 println!(
-                    "{} {}\t\t{}\t{}\t{}\t{}",
+                    "{} {}\t\t{}\t{}\t{}\t{}\n",
                     "[FIN]".bold().bright_green(),
                     format!("{:>WIDTH$}", iter).red(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
@@ -249,6 +275,8 @@ pub trait Research {
     /// The combined hypothesis at middle stages.
     /// In general, this type is the same as the one in `Booster`.
     type Output;
+
+
     /// Returns the combined hypothesis at current state.
     fn current_hypothesis(&self) -> Self::Output;
 }

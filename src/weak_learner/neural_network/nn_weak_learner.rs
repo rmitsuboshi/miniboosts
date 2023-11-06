@@ -166,6 +166,11 @@ impl NeuralNetwork {
 impl WeakLearner for NeuralNetwork {
     type Hypothesis = NNClassifier;
 
+    fn name(&self) -> &str {
+        "Neural Network"
+    }
+
+
     #[inline]
     fn produce(&self, sample: &Sample, dist: &[f64])
         -> Self::Hypothesis

@@ -163,6 +163,13 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
     where F: Classifier + Clone,
 {
     type Output = NaiveAggregation<F>;
+
+
+    fn name(&self) -> &str {
+        "Graph Separation Boosting"
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

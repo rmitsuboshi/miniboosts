@@ -231,6 +231,12 @@ impl<F> Booster<F> for LPBoost<'_, F>
     where F: Classifier + Clone,
 {
     type Output = CombinedHypothesis<F>;
+
+
+    fn name(&self) -> &str {
+        "LPBoost"
+    }
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
