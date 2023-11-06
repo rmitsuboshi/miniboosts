@@ -117,6 +117,13 @@ impl<F> Booster<F> for TotalBoost<'_, F>
     where F: Classifier + Clone,
 {
     type Output = CombinedHypothesis<F>;
+
+
+    fn name(&self) -> &str {
+        "TotalBoost"
+    }
+
+
     fn preprocess<W>(
         &mut self,
         weak_learner: &W,

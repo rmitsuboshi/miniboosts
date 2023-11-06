@@ -335,6 +335,13 @@ impl<F> Booster<F> for MLPBoost<'_, F>
     where F: Classifier + Clone + PartialEq,
 {
     type Output = CombinedHypothesis<F>;
+
+
+    fn name(&self) -> &str {
+        "MLPBoost"
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

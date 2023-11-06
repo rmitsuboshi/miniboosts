@@ -425,6 +425,13 @@ impl<F> Booster<F> for SoftBoost<'_, F>
     where F: Classifier + Clone,
 {
     type Output = CombinedHypothesis<F>;
+
+
+    fn name(&self) -> &str {
+        "SoftBoost"
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

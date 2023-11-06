@@ -179,6 +179,13 @@ impl<F> Booster<F> for GBM<'_, F>
     where F: Regressor + Clone,
 {
     type Output = CombinedHypothesis<F>;
+
+
+    fn name(&self) -> &str {
+        "Gradient Boosting Machine"
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

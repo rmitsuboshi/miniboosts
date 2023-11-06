@@ -234,6 +234,13 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
     where F: Classifier + Clone + PartialEq + std::fmt::Debug,
 {
     type Output = CombinedHypothesis<F>;
+
+
+    fn name(&self) -> &str {
+        "Corrective ERLPBoost"
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

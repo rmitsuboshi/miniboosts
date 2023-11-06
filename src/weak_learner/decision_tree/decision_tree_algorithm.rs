@@ -152,6 +152,13 @@ impl<'a> DecisionTree<'a> {
 
 impl<'a> WeakLearner for DecisionTree<'a> {
     type Hypothesis = DecisionTreeClassifier;
+
+
+    fn name(&self) -> &str {
+        "Decision Tree"
+    }
+
+
     /// This method computes as follows;
     /// 1. construct a `TrainNode` which contains some information
     ///     to grow a tree (e.g., impurity, total distribution mass, etc.)
