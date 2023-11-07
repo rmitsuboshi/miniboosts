@@ -6,7 +6,7 @@
 ![Soft margin objective comparison](img/soft-margin.png)
 
 **Note.** 
-The algorithms depicted in above figure are aborted after 2 minutes, 
+The algorithms depicted in above figure are aborted after 1 minutes, 
 so some algorithms cannot reach their optimal value.
 
 Some boosting algorithms use [Gurobi optimizer](https://www.gurobi.com), 
