@@ -11,13 +11,13 @@ use super::{
 };
 
 
-/// A wrapper for [`NNHypothesis`](NNHypothesis).
+/// A wrapper for [`NNHypothesis`].
 #[derive(Clone, PartialEq)]
 #[repr(transparent)]
 pub struct NNClassifier(NNHypothesis);
 
 impl NNClassifier {
-    /// Construct a new instance of `NNClassifier`.
+    /// Construct a new instance of [`NNClassifier`].
     #[inline(always)]
     pub fn new(hypothesis: NNHypothesis) -> Self {
         Self(hypothesis)
@@ -32,13 +32,13 @@ impl NNClassifier {
 }
 
 
-/// A wrapper for [`NNHypothesis`](NNHypothesis).
+/// A wrapper for [`NNHypothesis`].
 #[derive(Clone, PartialEq)]
 #[repr(transparent)]
 pub struct NNRegressor(NNHypothesis);
 
 impl NNRegressor {
-    /// Construct a new instance of `NNRegressor`.
+    /// Construct a new instance of [`NNRegressor`].
     #[inline(always)]
     pub fn new(hypothesis: NNHypothesis) -> Self {
         Self(hypothesis)

@@ -5,7 +5,7 @@ use crate::WeakLearner;
 use std::ops::ControlFlow;
 
 
-/// The trait [`Booster`](Booster) defines the standard framework of Boosting.
+/// The trait [`Booster`] defines the standard framework of Boosting.
 /// Here, the **standard framework** is defined as
 /// a repeated game between **Booster** and **Weak Learner**
 /// of the following form:
@@ -21,9 +21,9 @@ use std::ops::ControlFlow;
 /// 
 /// You need to implement 
 /// 
-/// - [`Booster::preprocess`](Booster::preprocess),
-/// - [`Booster::boost`](Booster::boost), and
-/// - [`Booster::postprocess`](Booster::postprocess)
+/// - [`Booster::preprocess`],
+/// - [`Booster::boost`], and
+/// - [`Booster::postprocess`]
 /// 
 /// to write a new boosting algorithm.
 pub trait Booster<H> {
@@ -34,7 +34,7 @@ pub trait Booster<H> {
 
 
     /// The final hypothesis output by a boosting algorithm.
-    /// Most algorithms return `CombinedHypothesis,`
+    /// Most algorithms return [`CombinedHypothesis<H>`](crate::hypothesis::CombinedHypothesis),
     /// which is a weighted majority vote of base hypotheses.
     type Output;
     /// A main function that runs boosting algorithm.
@@ -55,7 +55,7 @@ pub trait Booster<H> {
 
 
     /// Pre-processing for `self`.
-    /// As you can see in [`Booster::run`](Booster::run),
+    /// As you can see in [`Booster::run`],
     /// this method is called before the boosting process.
     fn preprocess<W>(
         &mut self,
@@ -77,7 +77,7 @@ pub trait Booster<H> {
 
 
     /// Post-processing.
-    /// This method returns a [`CombinedHypothesis<H>`](CombinedHypothesis).
+    /// This method returns a [`CombinedHypothesis<H>`](crate::hypothesis::CombinedHypothesis).
     fn postprocess<W>(
         &mut self,
         weak_learner: &W,

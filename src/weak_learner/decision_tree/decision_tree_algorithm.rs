@@ -26,9 +26,6 @@ use std::collections::HashMap;
 /// `DecisionTree` is the factory that generates
 /// a `DecisionTreeClassifier` for a given distribution over examples.
 /// 
-/// See also:
-/// - [`Criterion`](Criterion)
-/// 
 /// # Example
 /// ```no_run
 /// use miniboosts::prelude::*;
@@ -69,7 +66,7 @@ pub struct DecisionTree<'a> {
 
 
 impl<'a> DecisionTree<'a> {
-    /// Initialize [`DecisionTree`](DecisionTree).
+    /// Initialize [`DecisionTree`].
     /// This method is called only via `DecisionTreeBuilder::build()`.
     #[inline]
     pub(super) fn from_components(

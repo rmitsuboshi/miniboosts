@@ -36,8 +36,8 @@ pub struct DecisionTreeBuilder<'a> {
 
 
 impl<'a> DecisionTreeBuilder<'a> {
-    /// Construct a new instance of `DecisionTreeBuilder`.
-    /// By default, `DecisionTreeBuilder` sets the parameters as follows;
+    /// Construct a new instance of [`DecisionTreeBuilder`].
+    /// By default, [`DecisionTreeBuilder`] sets the parameters as follows;
     /// ```text
     /// n_bins: DEFAULT_NBIN == 255,
     /// max_depth: DEFAULT_MAX_DEPTH == 2,
@@ -71,7 +71,7 @@ impl<'a> DecisionTreeBuilder<'a> {
 
     /// Set the node splitting rule.
     /// Default value is `Criterion::Entropy`.
-    /// See [`Criterion`](Criterion) for other rules.
+    /// See [`Criterion`] for other rules.
     #[inline]
     pub fn criterion(mut self, criterion: Criterion) -> Self {
         self.criterion = criterion;

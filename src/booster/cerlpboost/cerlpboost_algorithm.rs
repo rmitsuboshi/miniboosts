@@ -39,7 +39,7 @@ use std::ops::ControlFlow;
 /// 
 /// # Example
 /// The following code shows a small example 
-/// for running [`CERLPBoost`](CERLPBoost).  
+/// for running [`CERLPBoost`].  
 /// See also:
 /// - [`CERLPBoost::nu`]
 /// - [`DecisionTree`]

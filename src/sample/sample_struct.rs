@@ -32,7 +32,7 @@ pub struct Sample {
 
 
 impl Sample {
-    /// Convert [`DataFrame`](DataFrame) and [`Series`](Series) into `Sample`.
+    /// Convert [`DataFrame`] and [`Series`] to `Sample`.
     /// This method takes the ownership of the given pair of 
     /// `data` and `target`.
     pub fn from_dataframe(data: DataFrame, target: Series)
@@ -64,14 +64,14 @@ impl Sample {
     }
 
 
-    /// Read a CSV format file to `Sample` type.
+    /// Read a CSV format file to [`Sample`] type.
     /// This method returns `Err` if the file does not exist.
     /// 
     /// If the CSV file does not header row,
     /// this method assigns a default name for each column:
     /// `Feat. [0]`, `Feat. [1]`, ..., `Feat. [n]`.
     /// 
-    /// Do not forget to call [`Sample::set_target`](Sample::set_target) to
+    /// **Do not forget** to call [`Sample::set_target`] to
     /// assign the class label.
     pub fn from_csv<P>(file: P, mut has_header: bool) -> io::Result<Self>
         where P: AsRef<Path>,

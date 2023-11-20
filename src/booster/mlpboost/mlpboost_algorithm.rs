@@ -38,8 +38,7 @@ use std::ops::ControlFlow;
 /// 
 /// 
 /// # Example
-/// The following code shows a small example 
-/// for running [`MLPBoost`](MLPBoost).  
+/// The following code shows a small example for running [`MLPBoost`].  
 /// See also:
 /// - [`MLPBoost::nu`]
 /// - [`DecisionTree`]
@@ -198,7 +197,7 @@ impl<'a, F> MLPBoost<'a, F> {
 
 
     /// Set the Frank-Wolfe rule.
-    /// See [`FWType`](FWType).
+    /// See [`FWType`].
     /// 
     /// Time complexity: `O(1)`.
     pub fn frank_wolfe(mut self, fw_type: FWType) -> Self {

@@ -1,4 +1,4 @@
-//! Provides [`AdaBoost`](AdaBoost) by Freund & Schapire, 1995.
+//! Provides [`AdaBoost`] by Freund & Schapire, 1995.
 use rayon::prelude::*;
 
 
@@ -32,7 +32,7 @@ use std::ops::ControlFlow;
 /// 
 /// # Example
 /// The following code shows a small example 
-/// for running [`AdaBoost`](AdaBoost).  
+/// for running [`AdaBoost`].  
 /// See also:
 /// - [`DecisionTree`]
 /// - [`DecisionTreeClassifier`]

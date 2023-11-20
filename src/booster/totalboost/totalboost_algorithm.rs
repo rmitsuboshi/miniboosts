@@ -21,14 +21,13 @@ use std::ops::ControlFlow;
 /// The TotalBoost algorithm proposed in the following paper:
 /// [Manfred K. Warmuth, Jun Liao, and Gunnar Rätsch - Totally corrective boosting algorithms that maximize the margin](https://dl.acm.org/doi/10.1145/1143844.1143970)
 /// 
-/// `TotalBoost` is a special case of [`SoftBoost`].
+/// [`TotalBoost`] is a special case of [`SoftBoost`].
 /// That is, 
 /// `TotalBoost` restricts [`SoftBoost::nu`] as `1.0`.  
 /// For this reason, `TotalBoost` is just a wrapper of [`SoftBoost`].
 /// 
 /// # Example
-/// The following code shows a small example 
-/// for running [`SoftBoost`](SoftBoost).  
+/// The following code shows a small example for running [`SoftBoost`].  
 /// See also:
 /// - [`SoftBoost`]
 /// - [`DecisionTree`]

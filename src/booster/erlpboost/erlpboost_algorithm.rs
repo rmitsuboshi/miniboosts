@@ -38,7 +38,7 @@ use std::ops::ControlFlow;
 /// 
 /// # Example
 /// The following code shows a small example 
-/// for running [`ERLPBoost`](ERLPBoost).  
+/// for running [`ERLPBoost`].  
 /// See also:
 /// - [`ERLPBoost::nu`]
 /// - [`DecisionTree`]

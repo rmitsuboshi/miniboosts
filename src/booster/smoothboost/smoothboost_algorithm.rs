@@ -29,7 +29,7 @@ use std::ops::ControlFlow;
 /// 
 /// # Example
 /// The following code shows a small example 
-/// for running [`SmoothBoost`](SmoothBoost).  
+/// for running [`SmoothBoost`].  
 /// See also:
 /// - [`SmoothBoost::tolerance`]
 /// - [`SmoothBoost::gamma`]
