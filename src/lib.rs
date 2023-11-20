@@ -103,7 +103,7 @@
 //! let target = sample.target();
 //! let training_loss = target.into_iter()
 //!     .zip(predictions)
-//!     .map(|(&y, fx) if y as i64 == fx { 0.0 } else { 1.0 })
+//!     .map(|(&y, fx)| if y as i64 == fx { 0.0 } else { 1.0 })
 //!     .sum::<f64>()
 //!     / n_sample;
 //!

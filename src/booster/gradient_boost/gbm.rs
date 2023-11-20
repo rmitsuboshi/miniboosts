@@ -78,7 +78,7 @@ use std::ops::ControlFlow;
 /// let training_loss = sample.target()
 ///     .into_iter()
 ///     .zip(predictions)
-///     .map(|(y, fx) (y - fx).abs())
+///     .map(|(y, fx)| (y - fx).abs())
 ///     .sum::<f64>()
 ///     / n_sample;
 /// 
