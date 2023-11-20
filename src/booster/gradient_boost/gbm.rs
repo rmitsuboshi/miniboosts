@@ -1,4 +1,4 @@
-//! Provides [`GBM`](GBM) by Friedman, 2001.
+//! Provides Gradient Boosting Machine ([`GBM`]) by Friedman, 2001.
 use rayon::prelude::*;
 
 use crate::{
@@ -29,7 +29,7 @@ use std::ops::ControlFlow;
 /// 
 /// # Example
 /// The following code shows a small example 
-/// for running [`GBM`](GBM).  
+/// for running [`GBM`].  
 /// See also:
 /// - [`Regressor`]
 /// - [`CombinedHypothesis<F>`]

@@ -37,8 +37,7 @@ use std::ops::ControlFlow;
 /// it takes `Ω( # of training examples )` iterations.
 /// 
 /// # Example
-/// The following code shows a small example 
-/// for running [`LPBoost`](LPBoost).  
+/// The following code shows a small example for running [`LPBoost`].  
 /// See also:
 /// - [`LPBoost::nu`]
 /// - [`DecisionTree`]

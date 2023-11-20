@@ -9,32 +9,33 @@
 //! This crate includes three types of boosting algorithms. 
 //! 
 //! * Empirical risk minimizing (ERM) boosting
-//!     - [`AdaBoost`](AdaBoost).
+//!     - [`AdaBoost`],
+//!     - [`GraphSepBoost`].
 //! 
 //! 
 //! * Hard margin maximizing boosting
-//!     - [`AdaBoostV`](AdaBoostV),
-//!     - [`TotalBoost`](TotalBoost).
+//!     - [`AdaBoostV`],
+//!     - [`TotalBoost`].
 //! 
 //! 
 //! * Soft margin maximizing boosting
-//!     - [`LPBoost`](LPBoost),
-//!     - [`SoftBoost`](SoftBoost),
-//!     - [`SmoothBoost`](SmoothBoost),
-//!     - [`ERLPBoost`](ERLPBoost),
-//!     - [`CERLPBoost`](CERLPBoost),
-//!     - [`MLPBoost`](MLPBoost).
+//!     - [`LPBoost`],
+//!     - [`SoftBoost`],
+//!     - [`SmoothBoost`],
+//!     - [`ERLPBoost`],
+//!     - [`CERLPBoost`],
+//!     - [`MLPBoost`].
 //! 
+//!
 //! This crate also includes some Weak Learners.
 //! * Classification
-//!     - [`DecisionTree`](DecisionTree)
-//!     - [`NeuralNetwork`](NeuralNetwork)
+//!     - [`DecisionTree`],
+//!     - [`NeuralNetwork`].
 //! * Regression
-//!     - [`RegressionTree`](RegressionTree). Note that the current implement is not efficient.
+//!     - [`RegressionTree`]. Note that the current implement is not efficient.
 //! 
 //! # Example
-//! The following code shows a small example 
-//! for running [`LPBoost`](LPBoost).  
+//! The following code shows a small example for running [`LPBoost`].  
 //! See also:
 //! - [`LPBoost::nu`]
 //! - [`LPBoost::tolerance`]

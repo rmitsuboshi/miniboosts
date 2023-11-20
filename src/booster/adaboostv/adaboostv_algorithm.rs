@@ -1,7 +1,7 @@
 //! Provides `AdaBoost*` by Rätsch & Warmuth, 2005.
 //! Since one cannot use `*` as a struct name,
 //! We call `AdaBoost*` as `AdaBoostV`.
-//! (I found this name in the paper of `SparsiBoost`.
+//! (I found this name in the paper of `SparsiBoost`)
 use rayon::prelude::*;
 
 
@@ -33,7 +33,7 @@ use std::ops::ControlFlow;
 /// 
 /// # Example
 /// The following code shows a small example 
-/// for running [`AdaBoostV`](AdaBoostV).  
+/// for running [`AdaBoostV`].  
 /// See also:
 /// - [`DecisionTree`]
 /// - [`DecisionTreeClassifier`]

@@ -26,8 +26,7 @@ const NUMERIC_TOLERANCE: f64 = 1e-200;
 /// [Gunnar Rätsch, Manfred K. Warmuth, and Laren A. Glocer - Boosting Algorithms for Maximizing the Soft Margin](https://papers.nips.cc/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) 
 /// 
 /// # Example
-/// The following code shows a small example 
-/// for running [`SoftBoost`](SoftBoost).  
+/// The following code shows a small example for running [`SoftBoost`].  
 /// See also:
 /// - [`SoftBoost::nu`]
 /// - [`DecisionTree`]
