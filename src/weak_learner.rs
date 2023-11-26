@@ -20,6 +20,10 @@ pub mod regression_tree;
 pub mod neural_network;
 
 
+/// Defines a weak learner for worst-case LPBoost.
+pub mod bad_learner;
+
+
 /// Defines Naive Bayes.
 pub mod naive_bayes;
 
@@ -51,6 +55,13 @@ pub use self::neural_network::{
     NNHypothesis,
     Activation,
     NNLoss,
+};
+
+
+pub use self::bad_learner::{
+    BadClassifier,
+    BadBaseLearnerBuilder,
+    BadBaseLearner,
 };
 
 

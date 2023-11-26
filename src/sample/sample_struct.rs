@@ -32,6 +32,25 @@ pub struct Sample {
 
 
 impl Sample {
+    /// Construct a new dummy instance of `Self.`
+    /// This method is effective when you use a `BadBaseLearner.`
+    pub fn dummy(n_sample: usize) -> Self {
+        let half = n_sample / 2;
+        let mut target = vec![1f64; n_sample];
+        target[half..].iter_mut()
+            .for_each(|y| { *y = -1f64; });
+        let mut features = Vec::with_capacity(1);
+        features.push(Feature::new_sparse("dummy"));
+        Self {
+            name_to_index: HashMap::from([("dummy".to_string(), 0)]),
+            features,
+            target,
+            n_sample,
+            n_feature: 1usize,
+        }
+    }
+
+
     /// Convert [`DataFrame`] and [`Series`] to `Sample`.
     /// This method takes the ownership of the given pair of 
     /// `data` and `target`.

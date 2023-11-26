@@ -1,6 +1,25 @@
 use std::env;
 use miniboosts::prelude::*;
+use miniboosts::research::Logger;
+use miniboosts::SoftMarginObjective;
 
+fn zero_one_loss<H>(sample: &Sample, f: &H)
+    -> f64
+    where H: Classifier
+{
+    let n_sample = sample.shape().0 as f64;
+
+    let target = sample.target();
+
+    f.predict_all(sample)
+        .into_iter()
+        .zip(target.into_iter())
+        .map(|(hx, &y)| if hx != y as i64 { 1.0 } else { 0.0 })
+        .sum::<f64>()
+        / n_sample
+}
+
+const TIME_LIMIT: u128 = 60_000; // 1 minute as millisecond.
 
 
 /// Tests for `LPBoost`.
@@ -17,7 +36,7 @@ pub mod lpboost_tests {
             .set_target("class");
         let n_sample = sample.shape().0 as f64;
 
-        let mut booster = ERLPBoost::init(&sample)
+        let mut booster = LPBoost::init(&sample)
             .tolerance(0.001)
             .nu(1.0);
 
@@ -38,6 +57,44 @@ pub mod lpboost_tests {
             .sum::<f64>() / n_sample;
 
         println!("Loss (german.csv, LPBoost, DTree): {loss}");
+        assert!(true);
+    }
+
+
+    #[test]
+    fn worstcase() {
+        let n_sample = 1_000;
+        let nu = n_sample as f64 * 0.001;
+        let tol = 0.01;
+
+        let sample = Sample::dummy(n_sample);
+        let booster = LPBoost::init(&sample)
+            .tolerance(tol)
+            .nu(nu);
+
+        let wl = BadBaseLearnerBuilder::new(&sample)
+            .tolerance(tol)
+            .nu(nu)
+            .build();
+
+        let objective = SoftMarginObjective::new(nu);
+
+        let mut logger = Logger::new(
+                booster, wl, objective, zero_one_loss, &sample, &sample
+            )
+            .time_limit_as_millis(TIME_LIMIT)
+            .print_every(1);
+
+        let f = logger.run("dummy.csv").unwrap();
+        println!("f = {f:?}");
+        let predictions = f.predict_all(&sample);
+        let loss = sample.target()
+            .into_iter()
+            .zip(predictions)
+            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+            .sum::<f64>() / n_sample as f64;
+
+        println!("Loss (Dummy, BadLearner): {loss}");
         assert!(true);
     }
 

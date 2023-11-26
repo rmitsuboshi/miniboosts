@@ -61,6 +61,11 @@ pub use crate::weak_learner::{
     NNLoss,
 
 
+    BadClassifier,
+    BadBaseLearner,
+    BadBaseLearnerBuilder,
+
+
     // Regression -------------------------------
     RegressionTree,
     RegressionTreeBuilder,
