@@ -235,7 +235,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
             }
 
 
-            if self.round != usize::MAX && iter % self.round == 1 {
+            if self.round != usize::MAX && iter % self.round == 0 {
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}",
                     "[LOG]".bold().magenta(),

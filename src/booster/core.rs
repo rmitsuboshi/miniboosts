@@ -28,8 +28,15 @@ use std::ops::ControlFlow;
 /// to write a new boosting algorithm.
 pub trait Booster<H> {
     /// Returns the name of the boosting algorithm.
-    fn name(&self) -> &str {
-        "Not specified"
+    fn name(&self) -> &str;
+
+
+
+    /// Returns the information of boosting algorithm as `String`.
+    /// This method is used for [`Logger`](crate::research::Logger).
+    /// By default, this method returns `None`.
+    fn info(&self) -> Option<String> {
+        None
     }
 
 

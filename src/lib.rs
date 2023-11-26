@@ -197,6 +197,9 @@ pub use weak_learner::{
     NeuralNetwork,
     Activation,
     NNLoss,
+
+    BadBaseLearner,
+    BadBaseLearnerBuilder,
 };
 
 
@@ -206,6 +209,8 @@ pub use weak_learner::{
     DecisionTreeClassifier,
 
     NNHypothesis,
+
+    BadClassifier,
     // NBayesClassifier,
 };
 

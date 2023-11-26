@@ -82,12 +82,13 @@ shown in Lemma 4.2 of their paper.
 
 
 ### Weak Learners
-|`WEAK LEARNER`                                                                                |
-| :---                                                                                         |
-| [DecisionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)      |
-| [RegressionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)  |
-| GaussianNB (Gaussian Naive Bayes)                                                            |
-| NeuralNetwork (Neural Network, Experimental)                                                 |
+|`WEAK LEARNER`                                                                                                       |
+| :---                                                                                                                |
+| [DecisionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)                             |
+| [RegressionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)                         |
+| [BadWeakLearner](https://papers.nips.cc/paper_files/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) |
+| GaussianNB (Gaussian Naive Bayes)                                                                                   |
+| NeuralNetwork (Neural Network, Experimental)                                                                        |
 
 
 ## Future work
