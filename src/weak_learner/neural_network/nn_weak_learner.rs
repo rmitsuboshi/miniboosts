@@ -171,6 +171,20 @@ impl WeakLearner for NeuralNetwork {
     }
 
 
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let info = Vec::from([
+            ("Task", format!("{}", self.task)),
+            ("Mini-batch size", format!("{}", self.minibatch_size)),
+            ("Rounds per epoch", format!("{}", self.n_iter_per_epoch)),
+            ("Learning rate", format!("{}", self.learning_rate)),
+            ("# of epochs", format!("{}", self.n_epoch)),
+            ("# of layers", format!("{}", self.activations.len())),
+            ("Loss", format!("{}", self.loss_func)),
+        ]);
+        Some(info)
+    }
+
+
     #[inline]
     fn produce(&self, sample: &Sample, dist: &[f64])
         -> Self::Hypothesis

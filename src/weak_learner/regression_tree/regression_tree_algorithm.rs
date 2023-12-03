@@ -153,6 +153,21 @@ impl<'a> WeakLearner for RegressionTree<'a> {
     }
 
 
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let n_bins = self.bins.values()
+            .map(|bin| bin.len())
+            .reduce(usize::max)
+            .unwrap_or(0);
+        let info = Vec::from([
+            ("# of bins (max)", format!("{n_bins}")),
+            ("Max depth", format!("{}", self.max_depth)),
+            ("Split criterion", format!("{}", self.loss_type)),
+            ("Regularization param.", format!("{}", self.lambda_l2)),
+        ]);
+        Some(info)
+    }
+
+
     fn produce(&self, sample: &Sample, predictions: &[f64])
         -> Self::Hypothesis
     {

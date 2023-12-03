@@ -1,4 +1,4 @@
-
+use std::fmt;
 /// Defines machine learning tasks.
 /// This enum is defined for neural network.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -10,6 +10,19 @@ pub enum Task {
     MultiClass(usize),
     /// Regression
     Regression,
+}
+
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Binary => "Binary C.".to_string(),
+            Self::MultiClass(n) => format!("Multiclass ({n}) C."),
+            Self::Regression => "Regression".to_string(),
+        };
+
+        write!(f, "{name}")
+    }
 }
 
 

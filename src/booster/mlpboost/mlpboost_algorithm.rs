@@ -341,6 +341,22 @@ impl<F> Booster<F> for MLPBoost<'_, F>
     }
 
 
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let (n_sample, n_feature) = self.sample.shape();
+        let ratio = self.nu / n_sample as f64;
+        let info = Vec::from([
+            ("# of examples", format!("{n_sample}")),
+            ("# of features", format!("{n_feature}")),
+            ("Tolerance", format!("{}", 2f64 * self.half_tolerance)),
+            ("Max iteration", format!("{}", self.max_iter)),
+            ("Capping", format!("{nu} ({ratio:.3} %)", nu = self.nu)),
+            ("Primary", format!("{}", self.primary.current_type())),
+            ("Secondary", format!("LPBoost"))
+        ]);
+        Some(info)
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

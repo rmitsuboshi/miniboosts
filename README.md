@@ -174,9 +174,8 @@ fn main() {
 }
 ```
 
-
-**Note:** Currently, The regression tree is under re-desining,
-so one cannot use it in similarly.
+You can also save the hypothesis `f: CombinedHypthesis` with the `JSON` format
+since it implements the `Serialize/Deserialize` trait.
 
 
 If you use boosting for soft margin optimization, 

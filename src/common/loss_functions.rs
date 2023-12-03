@@ -1,5 +1,7 @@
 /// This trait defines the loss functions.
 pub trait LossFunction {
+    /// The name of the loss function.
+    fn name(&self) -> &str;
     /// Loss value for a single point.
     fn eval_at_point(&self, prediction: f64, true_value: f64) -> f64;
 
@@ -47,6 +49,14 @@ pub enum GBMLoss {
 
 
 impl LossFunction for GBMLoss {
+    fn name(&self) -> &str {
+        match self {
+            Self::L1 => "L1 loss",
+            Self::L2 => "L2 loss",
+        }
+    }
+
+
     fn eval_at_point(&self, prediction: f64, true_value: f64) -> f64 {
         match self {
             Self::L1 => (prediction - true_value).abs(),

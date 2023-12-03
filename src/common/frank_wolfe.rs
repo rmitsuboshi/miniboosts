@@ -6,6 +6,8 @@ use crate::{
     common::{utils, checker},
 };
 
+use std::fmt;
+
 
 const SUB_TOLERANCE: f64 = 1e-9;
 
@@ -28,6 +30,19 @@ pub enum FWType {
     /// The Blended-Pairwise strategy, 
     /// See [this paper](https://proceedings.mlr.press/v162/tsuji22a). 
     BlendedPairwise,
+}
+
+
+impl fmt::Display for FWType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fw = match self {
+            Self::Classic => "Classic FW",
+            Self::ShortStep => "Short-step FW",
+            Self::LineSearch => "Line-search FW",
+            Self::BlendedPairwise => "Blended Pairwise (BP) FW",
+        };
+        write!(f, "{fw}")
+    }
 }
 
 
@@ -54,6 +69,12 @@ impl FrankWolfe {
     /// Set `nu`.
     pub(crate) fn nu(&mut self, nu: f64) {
         self.nu = nu;
+    }
+
+
+    /// Get the current Frank-Wolfe strategy.
+    pub(crate) fn current_type(&self) -> FWType {
+        self.fw_type
     }
 
 

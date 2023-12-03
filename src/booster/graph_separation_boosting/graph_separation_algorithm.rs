@@ -50,11 +50,7 @@ use std::collections::HashSet;
 ///     .expect("Failed to read the training sample")
 ///     .set_target("class");
 /// 
-/// // Initialize `Graph Separation Boosting` and set the tolerance parameter as `0.01`.
-/// // This means `booster` returns a hypothesis whose training error is
-/// // less than `0.01` if the traing examples are linearly separable.
-/// let mut booster = GraphSepBoost::init(&sample)
-///     .tolerance(0.01);
+/// let mut booster = GraphSepBoost::init(&sample);
 /// 
 /// // Set the weak learner with setting parameters.
 /// let weak_learner = DecisionTreeBuilder::new(&sample)
@@ -91,10 +87,6 @@ pub struct GraphSepBoost<'a, F> {
     edges: Vec<HashSet<usize>>,
 
 
-    // Tolerance parameter
-    tolerance: f64,
-
-
     // Hypohteses obtained by the weak-learner.
     hypotheses: Vec<F>,
 }
@@ -106,14 +98,9 @@ impl<'a, F> GraphSepBoost<'a, F> {
     /// Time complexity: `O(1)`.
     #[inline]
     pub fn init(sample: &'a Sample) -> Self {
-        let n_sample = sample.shape().0;
-
         Self {
             sample,
-
-            tolerance: 1.0 / (n_sample as f64 + 1.0),
             hypotheses: Vec::new(),
-
             edges: Vec::new(),
         }
     }
@@ -122,17 +109,6 @@ impl<'a, F> GraphSepBoost<'a, F> {
 impl<'a, F> GraphSepBoost<'a, F>
     where F: Classifier
 {
-    /// Set the tolerance parameter.
-    /// `GraphSepBoost` terminates immediately
-    /// after reaching the specified `tolerance`.
-    /// 
-    /// Time complexity: `O(1)`.
-    pub fn tolerance(mut self, tolerance: f64) -> Self {
-        self.tolerance = tolerance;
-        self
-    }
-
-
     /// Returns a weight on the new hypothesis.
     /// `update_params` also updates `self.dist`.
     /// 
@@ -167,6 +143,16 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
 
     fn name(&self) -> &str {
         "Graph Separation Boosting"
+    }
+
+
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let (n_sample, n_feature) = self.sample.shape();
+        let info = Vec::from([
+            ("# of examples", format!("{n_sample}")),
+            ("# of features", format!("{n_feature}")),
+        ]);
+        Some(info)
     }
 
 

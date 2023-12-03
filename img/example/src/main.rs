@@ -28,7 +28,7 @@ fn zero_one_loss<H>(sample: &Sample, f: &H)
 
 const TOLERANCE: f64 = 0.001;
 // const TIME_LIMIT: u128 = 300_000; // 5 minutes as millisecond.
-const TIME_LIMIT: u128 = 60_000; // 1 minute as millisecond.
+const TIME_LIMIT: u128 = 2_000; // 1 minute as millisecond.
 
 
 fn main() {
@@ -53,27 +53,23 @@ fn main() {
         .set_target("class");
 
 
-    // Run AdaBoost
-    let objective = ExponentialLoss::new();
-    println!("Running AdaBoost");
-    let booster = AdaBoost::init(&train)
-        .force_quit_at(300)
-        .tolerance(TOLERANCE);
-    let tree = DecisionTreeBuilder::new(&train)
-        .max_depth(1)
-        .criterion(Criterion::Entropy)
-        .build();
-    let mut logger = Logger::new(
-        booster, tree, objective, zero_one_loss, &train, &test
-    ).time_limit_as_millis(TIME_LIMIT);
-    let _ = logger.run("adaboost.csv");
+    // // Run AdaBoost
+    // let objective = ExponentialLoss::new();
+    // let booster = AdaBoost::init(&train)
+    //     .tolerance(TOLERANCE);
+    // let tree = DecisionTreeBuilder::new(&train)
+    //     .max_depth(1)
+    //     .criterion(Criterion::Entropy)
+    //     .build();
+    // let mut logger = Logger::new(
+    //         booster, tree, objective, zero_one_loss, &train, &test
+    //     ).time_limit_as_millis(TIME_LIMIT);
+    // let _ = logger.run("adaboost.csv");
 
 
     // // Run AdaBoostV
     // let objective = ExponentialLoss::new();
-    // println!("Running AdaBoostV");
     // let booster = AdaBoostV::init(&train)
-    //     .force_quit_at(300)
     //     .tolerance(TOLERANCE);
     // let tree = DecisionTreeBuilder::new(&train)
     //     .max_depth(1)
@@ -87,7 +83,6 @@ fn main() {
 
     // // Run TotalBoost
     // let objective = HardMarginObjective::new();
-    // println!("Running TotalBoost");
     // let booster = TotalBoost::init(&train)
     //     .tolerance(TOLERANCE);
     // let tree = DecisionTreeBuilder::new(&train)
@@ -110,7 +105,6 @@ fn main() {
     // // such that the edge is at least 0.006.
     // // This value `0.006` is derived from the LPBoost.
     // let objective = SoftMarginObjective::new(nu);
-    // println!("Running SmoothBoost");
     // let booster = SmoothBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .gamma(0.006);
@@ -126,7 +120,6 @@ fn main() {
 
     // // Run SoftBoost
     // let objective = SoftMarginObjective::new(nu);
-    // println!("Running SoftBoost");
     // let booster = SoftBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .nu(nu);
@@ -142,7 +135,6 @@ fn main() {
 
     // Run LPBoost
     let objective = SoftMarginObjective::new(nu);
-    println!("Running LPBoost");
     let booster = LPBoost::init(&train)
         .tolerance(TOLERANCE)
         .nu(nu);
@@ -161,7 +153,6 @@ fn main() {
 
     // // // Run Perturbed LPBoost
     // // let objective = SoftMarginObjective::new(nu);
-    // // println!("Running Perturbed LPBoost");
     // // let booster = PerturbedLPBoost::init(&train)
     // //     .tolerance(TOLERANCE)
     // //     .nu(nu);
@@ -177,7 +168,6 @@ fn main() {
 
     // // Run ERLPBoost
     // let objective = SoftMarginObjective::new(nu);
-    // println!("Running ERLPBoost");
     // let booster = ERLPBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .nu(nu);
@@ -195,7 +185,6 @@ fn main() {
 
     // // Run MLPBoost
     // let objective = SoftMarginObjective::new(nu);
-    // println!("Running MLPBoost");
     // let booster = MLPBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     // .frank_wolfe(FWType::LineSearch)
@@ -212,7 +201,6 @@ fn main() {
 
     // // Run Corrective ERLPBoost
     // let objective = SoftMarginObjective::new(nu);
-    // println!("Running CERLPBoost");
     // let booster = CERLPBoost::init(&train)
     //     .tolerance(TOLERANCE)
     //     .fw_type(FWType::Classic)
@@ -222,14 +210,15 @@ fn main() {
     //     .criterion(Criterion::Entropy)
     //     .build();
     // let mut logger = Logger::new(
-    //     booster, tree, objective, zero_one_loss, &train, &test
-    // ).time_limit_as_millis(TIME_LIMIT);
+    //         booster, tree, objective, zero_one_loss, &train, &test
+    //     )
+    //     .time_limit_as_millis(TIME_LIMIT)
+    //     .print_every(100);
     // let _ = logger.run("cerlpboost.csv");
 
 
     // // Run Graph Separation Boosting
     // let objective = SoftMarginObjective::new(nu);
-    // println!("Running GraphSepBoost");
     // let booster = GraphSepBoost::init(&train)
     //     .tolerance(TOLERANCE);
     // let tree = DecisionTreeBuilder::new(&train)

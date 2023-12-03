@@ -156,6 +156,20 @@ impl<'a> WeakLearner for DecisionTree<'a> {
     }
 
 
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let n_bins = self.bins.values()
+            .map(|bin| bin.len())
+            .reduce(usize::max)
+            .unwrap_or(0);
+        let info = Vec::from([
+            ("# of bins (max)", format!("{n_bins}")),
+            ("Max depth", format!("{}", self.max_depth)),
+            ("Split criterion", format!("{}", self.criterion)),
+        ]);
+        Some(info)
+    }
+
+
     /// This method computes as follows;
     /// 1. construct a `TrainNode` which contains some information
     ///     to grow a tree (e.g., impurity, total distribution mass, etc.)

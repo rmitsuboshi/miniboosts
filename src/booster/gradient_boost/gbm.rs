@@ -186,6 +186,19 @@ impl<F> Booster<F> for GBM<'_, F>
     }
 
 
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let (n_sample, n_feature) = self.sample.shape();
+        let info = Vec::from([
+            ("# of examples", format!("{n_sample}")),
+            ("# of features", format!("{n_feature}")),
+            ("Tolerance", format!("{}", self.tolerance)),
+            ("Loss", format!("{}", self.loss.name())),
+            ("Max iteration", format!("{}", self.max_iter)),
+        ]);
+        Some(info)
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,
