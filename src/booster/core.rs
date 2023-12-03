@@ -1,7 +1,6 @@
 //! Provides `Booster` trait.
 
 use crate::WeakLearner;
-
 use std::ops::ControlFlow;
 
 
@@ -31,11 +30,10 @@ pub trait Booster<H> {
     fn name(&self) -> &str;
 
 
-
     /// Returns the information of boosting algorithm as `String`.
     /// This method is used for [`Logger`](crate::research::Logger).
     /// By default, this method returns `None`.
-    fn info(&self) -> Option<String> {
+    fn info(&self) -> Option<Vec<(&str, String)>> {
         None
     }
 

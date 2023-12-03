@@ -69,6 +69,12 @@ impl<F> WeakLearner for WLUnion<F>
 {
     type Hypothesis = Box<dyn Classifier>;
 
+
+    fn name(&self) -> &str {
+        "Union of WLs"
+    }
+
+
     /// Output a boxed hypothesis which maximizes the edge
     /// among the hypotheses returned by weak learners.
     fn produce(

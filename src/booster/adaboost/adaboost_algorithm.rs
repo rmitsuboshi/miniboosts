@@ -252,6 +252,24 @@ impl<F> Booster<F> for AdaBoost<'_, F>
     }
 
 
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let (n_sample, n_feature) = self.sample.shape();
+        let quit = if let Some(it) = self.force_quit_at {
+            format!("At round {it}")
+        } else {
+            format!("-")
+        };
+        let info = Vec::from([
+            ("# of examples", format!("{}", n_sample)),
+            ("# of features", format!("{}", n_feature)),
+            ("Tolerance", format!("{}", self.tolerance)),
+            ("Max iteration", format!("{}", self.max_loop())),
+            ("Force quit", quit),
+        ]);
+        Some(info)
+    }
+
+
     fn preprocess<W>(
         &mut self,
         _weak_learner: &W,

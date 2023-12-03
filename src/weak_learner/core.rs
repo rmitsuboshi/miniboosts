@@ -12,6 +12,15 @@ pub trait WeakLearner {
         "Not specified"
     }
 
+
+    /// Returns the information of boosting algorithm as `String`.
+    /// This method is used for [`Logger`](crate::research::Logger).
+    /// By default, this method returns `None`.
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        None
+    }
+
+
     /// For classification, `WeakLearner::produce`
     /// outputs an instance of `Classifier` trait
     /// that achieves high accuracy

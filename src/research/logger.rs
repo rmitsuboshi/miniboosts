@@ -16,10 +16,10 @@ use std::ops::ControlFlow;
 
 const DEFAULT_ROUND: usize = 100;
 const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
-const WIDTH: usize = 9;
-const PREC_WIDTH: usize = 6;
-const TIME_WIDTH: usize = 6;
-const FULL_WIDTH: usize = 50;
+const WIDTH: usize = 8;
+const PREC_WIDTH: usize = 5;
+const TIME_WIDTH: usize = 5;
+const FULL_WIDTH: usize = 60;
 const STAT_WIDTH: usize = (FULL_WIDTH - 4) / 2;
 const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 
@@ -110,7 +110,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
             "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
             "     ",
             "".bold().red(),
-            "OBJECTIVE".bold().blue(),
+            "OBJ.".bold().blue(),
             "TRAIN".bold().green(),
             "TEST".bold().yellow(),
             "ACC.".bold().cyan(),
@@ -134,30 +134,65 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
         } else {
             "Nothing".into()
         };
+        let header = format!(
+            "{:=>FULL_WIDTH$}\n{:^FULL_WIDTH$}\n{:->FULL_WIDTH$}",
+            "", "STATS".bold(), "",
+        );
         println!(
-            "\n\
-            {:=>FULL_WIDTH$}\n\
-            {:^FULL_WIDTH$}\n\
-            {:=>FULL_WIDTH$}\n\
-            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
-            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
-            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
-            {:>STAT_WIDTH$}\t{:<STAT_WIDTH$}\n\
-            {:=>FULL_WIDTH$}\n\
-            ",
-            "".bold(),
-            "STATS".bold(),
-            "".bold(),
-            "BOOSTER",
+            "\n{header}\n\
+            + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}",
+            "Booster".bold(),
             self.booster.name().bold().green(),
-            "WEAK LEARNER",
+        );
+
+        if let Some(info) = self.booster.info() {
+            let line = info.into_iter()
+                .map(|(key, val)| {
+                    format!(
+                        "    + {:<STAT_WIDTH$}\t{:>width$}",
+                        key,
+                        val.bold().yellow(),
+                        width = STAT_WIDTH - 8
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            println!("{line}");
+        }
+
+
+        println!(
+            "+ {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}",
+            "Weak Learner".bold(),
             self.weak_learner.name().bold().green(),
-            "OBJECTIVE",
+        );
+        if let Some(info) = self.weak_learner.info() {
+            let line = info.into_iter()
+                .map(|(key, val)| {
+                    format!(
+                        "    + {:<STAT_WIDTH$}\t{:>width$}",
+                        key,
+                        val.bold().yellow(),
+                        width = STAT_WIDTH - 8
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            println!("{line}");
+        }
+        println!(
+            "\
+            + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}\n\
+            + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}\n\
+            {:=^FULL_WIDTH$}\
+            ",
+            "Objective".bold(),
             self.objective_func.name().bold().green(),
-            "TIME LIMIT",
+            "Time Limit".bold(),
             limit.bold().green(),
             "".bold(),
         );
+        println!("");
     }
 
 

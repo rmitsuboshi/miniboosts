@@ -123,6 +123,11 @@ impl<F> Booster<F> for TotalBoost<'_, F>
     }
 
 
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        self.softboost.info()
+    }
+
+
     fn preprocess<W>(
         &mut self,
         weak_learner: &W,

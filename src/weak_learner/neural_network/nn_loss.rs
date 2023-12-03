@@ -1,3 +1,5 @@
+use std::fmt;
+
 /// Loss functions available to Neural networks.
 #[derive(Clone, Copy)]
 pub enum NNLoss {
@@ -6,6 +8,18 @@ pub enum NNLoss {
 
     /// Cross-entropy loss
     CrossEntropy,
+}
+
+
+impl fmt::Display for NNLoss {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::L2 => "L2",
+            Self::CrossEntropy => "Cross Entropy",
+        };
+
+        write!(f, "{name}")
+    }
 }
 
 
