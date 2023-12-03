@@ -239,13 +239,14 @@ impl<F> Booster<F> for LPBoost<'_, F>
 
     fn info(&self) -> Option<Vec<(&str, String)>> {
         let (n_sample, n_feature) = self.sample.shape();
-        let ratio = self.nu / n_sample as f64;
+        let ratio = self.nu * 100f64 / n_sample as f64;
+        let nu = self.nu;
         let info = Vec::from([
             ("# of examples", format!("{n_sample}")),
             ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", self.tolerance)),
             ("Max iteration", format!("-")),
-            ("Capping", format!("{nu} ({ratio:.3} %)", nu = self.nu))
+            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)"))
         ]);
         Some(info)
     }
