@@ -215,6 +215,16 @@ impl<'a, F> CERLPBoost<'a, F> {
 
         max_iter.ceil() as usize
     }
+
+
+    /// Set the Frank-Wolfe rule.
+    /// See [`FWType`].
+    /// 
+    /// Time complexity: `O(1)`.
+    pub fn variant(mut self, fw_type: FWType) -> Self {
+        self.frank_wolfe.fw_type(fw_type);
+        self
+    }
 }
 
 
@@ -245,12 +255,14 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
         let (n_sample, n_feature) = self.sample.shape();
         let ratio = self.nu / n_sample as f64;
         let nu = self.nu;
+        let fw = self.frank_wolfe.current_type();
         let info = Vec::from([
             ("# of examples", format!("{n_sample}")),
             ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", 2f64 * self.half_tolerance)),
             ("Max iteration", format!("{}", self.max_iter)),
-            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)"))
+            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)")),
+            ("Frank-Wolfe", format!("{fw}")),
         ]);
         Some(info)
     }
