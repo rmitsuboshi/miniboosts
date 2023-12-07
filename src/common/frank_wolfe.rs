@@ -147,34 +147,36 @@ impl FrankWolfe {
     ) -> Vec<f64>
         where H: Classifier,
     {
-        if hypotheses.len() == 1 {
-            return vec![1.0];
-        }
+        if hypotheses.len() == 1 { return vec![1.0]; }
 
 
         let h = &hypotheses[position_of_new_one];
 
-        let mut numer: f64 = 0.0;
-        let mut denom: f64 = f64::MIN;
 
         let old_margins = utils::margins_of_weighted_hypothesis(
             sample, &weights[..], hypotheses,
         );
         let new_margins = utils::margins_of_hypothesis(sample, h);
 
+
+        // Compute the step size `= numer / denom`, where
+        // `numer = d^T A (e_h - w)` and
+        // `denom = ‖ A (e_h - w) ‖_∞`.
+        // See the paper by Shalev-Shwartz, [COLT '08].
+        let mut numer: f64 = 0.0;
+        let mut denom: f64 = f64::MIN;
         new_margins.into_iter()
             .zip(old_margins)
             .zip(dist)
-            .for_each(|((ynew, yold), &d)| {
-                let diff = ynew - yold;
+            .for_each(|((ae, aw), &d)| {
+                let diff = ae - aw;
                 numer += d * diff;
                 denom = denom.max(diff.abs());
             });
-
         let step = numer / (self.eta * denom.powi(2));
 
         // Clip the step size to `[0, 1]`.
-        let step_size = step.max(0.0_f64).min(1.0_f64);
+        let step_size = step.clamp(0f64, 1f64);
 
 
         // Update the weights
