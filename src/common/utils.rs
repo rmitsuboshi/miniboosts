@@ -238,6 +238,33 @@ pub fn project_log_distribution_to_capped_simplex<I>(
     ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
 
 
+    // let mut ln_z = dist[ix[0]];
+    // for &i in &ix[1..] {
+    //     let ln_d = dist[i];
+    //     let small = ln_z.min(ln_d);
+    //     let large = ln_z.max(ln_d);
+    //     ln_z = large + (1f64 + (small - large).exp()).ln();
+    // }
+
+    // let v = 1f64 / nu;
+    // let ln_v = v.ln();
+
+    // for i in 0..n_sample {
+    //     let ln_xi = (1f64 - v * i as f64).ln() - ln_z;
+    //     let ln_di = dist[ix[i]];
+    //     if ln_xi + ln_di <= ln_v {
+    //         for j in i..n_sample {
+    //             let ln_dj = dist[ix[j]];
+    //             dist[ix[j]] = (ln_xi + ln_dj).exp();
+    //         }
+    //         break;
+    //     }
+    //     dist[ix[i]] = v;
+    //     ln_z = ln_z + (1f64 - (ln_di - ln_z).exp()).ln();
+    // }
+
+
+    // `logsums[k] = ln( sum_{i=0}^{k-1} exp( -η (Aw)i ) )
     let mut logsums: Vec<f64> = Vec::with_capacity(n_sample);
     ix.iter().rev()
         .copied()
@@ -284,7 +311,8 @@ pub fn project_log_distribution_to_capped_simplex<I>(
 
 /// Compute the relative entropy from the uniform distribution.
 #[inline(always)]
-pub fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
+pub fn entropy_from_uni_distribution<T: AsRef<[f64]>>(dist: T) -> f64 {
+    let dist = dist.as_ref();
     let n_dim = dist.len() as f64;
     let e = entropy(dist);
 
@@ -294,7 +322,8 @@ pub fn entropy_from_uni_distribution(dist: &[f64]) -> f64 {
 
 /// Compute the entropy of the given distribution.
 #[inline(always)]
-pub fn entropy(dist: &[f64]) -> f64 {
+pub fn entropy<T: AsRef<[f64]>>(dist: T) -> f64 {
+    let dist = dist.as_ref();
     dist.iter()
         .copied()
         .map(|d| if d == 0.0 { 0.0 } else { d * d.ln() })
