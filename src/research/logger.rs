@@ -28,14 +28,14 @@ const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 /// logs objective value, train/test loss value, and running time
 /// for each step of boosting.
 pub struct Logger<'a, B, W, F, G> {
-    booster: B,
-    weak_learner: W,
-    objective_func: F,
-    loss_func: G,
-    train: &'a Sample,
-    test: &'a Sample,
-    time_limit: u128,
-    round: usize,
+    pub(super) booster: B,
+    pub(super) weak_learner: W,
+    pub(super) objective_func: F,
+    pub(super) loss_func: G,
+    pub(super) train: &'a Sample,
+    pub(super) test: &'a Sample,
+    pub(super) time_limit: u128,
+    pub(super) round: usize,
 }
 
 
