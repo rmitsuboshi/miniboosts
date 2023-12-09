@@ -211,7 +211,7 @@ pub use weak_learner::{
     NNHypothesis,
 
     BadClassifier,
-    // NBayesClassifier,
+    NBayesClassifier,
 };
 
 pub use weak_learner::{
@@ -232,6 +232,7 @@ pub use common::{
 
 pub use research::{
     Logger,
+    LoggerBuilder,
     objective_functions::{
         SoftMarginObjective,
         HardMarginObjective,

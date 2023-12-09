@@ -8,11 +8,15 @@
 
 /// Defines a trait for logging.
 pub mod logger;
+/// Defines the logger builder.
+pub mod logger_builder;
 
 pub use logger::{
     Logger,
     Research,
 };
+
+pub use logger_builder::LoggerBuilder;
 
 /// Defines objective functions and its traits.
 pub mod objective_functions;
