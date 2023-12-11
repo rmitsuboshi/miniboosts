@@ -30,7 +30,9 @@
 //! This crate also includes some Weak Learners.
 //! * Classification
 //!     - [`DecisionTree`],
-//!     - [`NeuralNetwork`].
+//!     - [`NeuralNetwork`],
+//!     - [`GaussianNB`],
+//!     - [`BadBaseLearner`] (The bad base learner for LPBoost).
 //! * Regression
 //!     - [`RegressionTree`]. Note that the current implement is not efficient.
 //! 
@@ -41,11 +43,6 @@
 //! - [`LPBoost::tolerance`]
 //! - [`DecisionTree`]
 //! - [`DecisionTreeClassifier`]
-//! - [`CombinedHypothesis<F>`]
-//! - [`DataFrame`]
-//! - [`Series`]
-//! - [`DataFrame::shape`]
-//! - [`CsvReader`]
 //! 
 //! [`LPBoost::nu`]: LPBoost::nu
 //! [`LPBoost::tolerance`]: LPBoost::tolerance
@@ -53,11 +50,8 @@
 //! [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 //! [`NeuralNetwork`]: crate::weak_learner::NeuralNetwork
 //! [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-//! [`DataFrame`]: polars::prelude::DataFrame
-//! [`Series`]: polars::prelude::Series
-//! [`DataFrame::shape`]: polars::prelude::DataFrame::shape
-//! [`CsvReader`]: polars::prelude::CsvReader
-//! 
+//! [`GaussianNB`]: crate::weak_learner::GaussianNB
+//! [`BadBaseLearner`]: crate::weak_learner::BadBaseLearner
 //! 
 //! ```no_run
 //! use miniboosts::prelude::*;
@@ -161,6 +155,8 @@ pub use booster::{
 };
 
 
+// Export the boosting algorithms that maximizes the soft margin.
+// (These boosting algorithms use Gurobi)
 #[cfg(feature="extended")]
 pub use booster::{
     TotalBoost,
