@@ -188,7 +188,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     }
 
 
-    /// Build [`Logger`](Logger) from the given components.
+    /// Build [Logger] from the given components.
     pub fn build(self) -> Logger<'a, B, W, F, G> {
         let booster = self.booster
             .expect("Boosting algorithm is not specified");
