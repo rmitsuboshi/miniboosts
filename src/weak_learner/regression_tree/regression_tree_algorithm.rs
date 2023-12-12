@@ -53,7 +53,7 @@ use std::collections::HashMap;
 /// let loss = sample.target()
 ///     .into_iter()
 ///     .zip(predictions)
-///     .map(|(ty, py)| (ty as f64 - py).powi(2))
+///     .map(|(ty, py)| (*ty as f64 - py).powi(2))
 ///     .sum::<f64>()
 ///     / n_sample as f64;
 /// println!("loss (train) is: {loss}");
