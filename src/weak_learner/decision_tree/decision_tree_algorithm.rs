@@ -46,9 +46,12 @@ use std::collections::HashMap;
 ///     .max_depth(2)
 ///     .criterion(Criterion::Entropy)
 ///     .build();
-/// 
-/// let predictions = tree.predict_all(&sample);
+///
 /// let n_sample = sample.shape().0;
+/// let dist = vec![1/n_sample as f64; n_sample];
+/// let f = tree.produce(&sample, &dist);
+/// 
+/// let predictions = f.predict_all(&sample);
 /// 
 /// let loss = sample.target()
 ///     .into_iter()
