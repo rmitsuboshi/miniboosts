@@ -45,7 +45,7 @@ use std::collections::HashMap;
 ///     .build();
 /// 
 /// let n_sample = sample.shape().0;
-/// let dist = vec![1/n_sample as f64; n_sample];
+/// let dist = vec![1f64 / n_sample as f64; n_sample];
 /// let f = tree.produce(&sample, &dist);
 /// 
 /// let predictions = f.predict_all(&sample);
