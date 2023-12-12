@@ -15,16 +15,16 @@
 //! 
 //! * Hard margin maximizing boosting
 //!     - [`AdaBoostV`],
-//!     - [`TotalBoost`].
+//!     - [`TotalBoost`](crate::booster::TotalBoost).
 //! 
 //! 
 //! * Soft margin maximizing boosting
-//!     - [`LPBoost`],
-//!     - [`SoftBoost`],
+//!     - [`LPBoost`](crate::booster::LPBoost),
+//!     - [`SoftBoost`](crate::booster::SoftBoost),
 //!     - [`SmoothBoost`],
-//!     - [`ERLPBoost`],
+//!     - [`ERLPBoost`](crate::booster::ERLPBoost),
 //!     - [`CERLPBoost`],
-//!     - [`MLPBoost`].
+//!     - [`MLPBoost`](crate::booster::MLPBoost).
 //! 
 //!
 //! This crate also includes some Weak Learners.
