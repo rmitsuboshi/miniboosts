@@ -1,5 +1,6 @@
 use miniboosts::prelude::*;
 use miniboosts::research::{
+    LoggerBuilder,
     Logger,
 };
 use miniboosts::{
@@ -26,9 +27,10 @@ fn zero_one_loss<H>(sample: &Sample, f: &H)
         / n_sample
 }
 
+
 const TOLERANCE: f64 = 0.001;
 // const TIME_LIMIT: u128 = 300_000; // 5 minutes as millisecond.
-const TIME_LIMIT: u128 = 2_000; // 1 minute as millisecond.
+const TIME_LIMIT: u128 = 60_000; // 1 minute as millisecond.
 
 
 fn main() {
@@ -166,37 +168,42 @@ fn main() {
     // // let _ = logger.run("stochastic-lpboost.csv");
 
 
-    // // Run ERLPBoost
-    // let objective = SoftMarginObjective::new(nu);
-    // let booster = ERLPBoost::init(&train)
-    //     .tolerance(TOLERANCE)
-    //     .nu(nu);
-    // let tree = DecisionTreeBuilder::new(&train)
-    //     .max_depth(1)
-    //     .criterion(Criterion::Entropy)
-    //     .build();
-    // let mut logger = Logger::new(
-    //         booster, tree, objective, zero_one_loss, &train, &test
-    //     )
-    //     .time_limit_as_millis(TIME_LIMIT)
-    //     .print_every(10);
-    // let _ = logger.run("erlpboost.csv");
+    // Run ERLPBoost
+    let objective = SoftMarginObjective::new(nu);
+    let booster = ERLPBoost::init(&train)
+        .tolerance(TOLERANCE)
+        .nu(nu);
+    let tree = DecisionTreeBuilder::new(&train)
+        .max_depth(1)
+        .criterion(Criterion::Entropy)
+        .build();
+    let mut logger = LoggerBuilder::new()
+        .booster(booster)
+        .weak_learner(tree)
+        .train_sample(&train)
+        .test_sample(&test)
+        .objective_function(objective)
+        .loss_function(zero_one_loss)
+        .time_limit_as_millis(TIME_LIMIT)
+        .print_every(10)
+        .build();
+    let _ = logger.run("erlpboost.csv");
 
 
-    // // Run MLPBoost
-    // let objective = SoftMarginObjective::new(nu);
-    // let booster = MLPBoost::init(&train)
-    //     .tolerance(TOLERANCE)
-    //     // .frank_wolfe(FWType::LineSearch)
-    //     .nu(nu);
-    // let tree = DecisionTreeBuilder::new(&train)
-    //     .max_depth(1)
-    //     .criterion(Criterion::Entropy)
-    //     .build();
-    // let mut logger = Logger::new(
-    //     booster, tree, objective, zero_one_loss, &train, &test
-    // ).time_limit_as_millis(TIME_LIMIT);
-    // let _ = logger.run("mlpboost.csv");
+    // Run MLPBoost
+    let objective = SoftMarginObjective::new(nu);
+    let booster = MLPBoost::init(&train)
+        .tolerance(TOLERANCE)
+        .frank_wolfe(FWType::Classic)
+        .nu(nu);
+    let tree = DecisionTreeBuilder::new(&train)
+        .max_depth(1)
+        .criterion(Criterion::Entropy)
+        .build();
+    let mut logger = Logger::new(
+        booster, tree, objective, zero_one_loss, &train, &test
+    ).time_limit_as_millis(TIME_LIMIT);
+    let _ = logger.run("mlpboost.csv");
 
 
     // // Run Corrective ERLPBoost

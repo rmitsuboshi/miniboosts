@@ -53,6 +53,8 @@ pub use self::regression_tree::{
 pub use self::neural_network::{
     NeuralNetwork,
     NNHypothesis,
+    NNClassifier,
+    NNRegressor,
     Activation,
     NNLoss,
 };

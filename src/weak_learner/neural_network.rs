@@ -13,4 +13,8 @@ pub(crate) mod layer;
 pub use nn_weak_learner::NeuralNetwork;
 pub use nn_loss::NNLoss;
 pub use activation::Activation;
-pub use nn_hypothesis::NNHypothesis;
+pub use nn_hypothesis::{
+    NNHypothesis,
+    NNClassifier,
+    NNRegressor,
+};

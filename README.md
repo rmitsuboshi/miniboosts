@@ -253,11 +253,16 @@ fn main() {
     // One can use your own function by implementing ObjectiveFunction trait.
     let objective = SoftMarginObjective::new(nu);
 
-    let mut logger = Logger::new(
-            booster, tree, objective, zero_one_loss, &train, &test
-        )
-        .time_limit_as_millis(120_000) // Terminate in 120 seconds.
-        .print_every(10); // Print log every 10 rounds.
+    let mut logger = LoggerBuilder::new()
+        .booster(booster)
+        .weak_learner(tree)
+        .train_sample(&train)
+        .test_sample(&test)
+        .objective_function(objective)
+        .loss_function(zero_one_loss)
+        .time_limit_as_secs(120) // Terminate after 120 seconds
+        .print_every(10) // Print log every 10 rounds.
+        .build();
 
     // Each line of `lpboost.csv` contains the following four information:
     // Objective value, Train loss, Test loss, Time per iteration

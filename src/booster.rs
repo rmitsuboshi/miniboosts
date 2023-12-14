@@ -20,6 +20,8 @@ pub mod erlpboost;
 pub mod softboost;
 #[cfg(feature="extended")]
 pub mod mlpboost;
+// #[cfg(feature="extended")]
+// pub mod perturbed_lpboost;
 
 pub mod gradient_boost;
 pub mod graph_separation_boosting;
@@ -44,7 +46,7 @@ pub use self::adaboostv::AdaBoostV;
 pub use self::totalboost::TotalBoost;
 
 
-/// Soft Margin Maximization
+// Soft Margin Maximization
 #[cfg(feature="extended")]
 pub use self::lpboost::LPBoost;
 #[cfg(feature="extended")]
