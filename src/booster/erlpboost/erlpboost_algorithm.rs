@@ -29,7 +29,7 @@ use std::ops::ControlFlow;
 /// ERLPBoost aims to optimize the soft-margin.
 /// The main difference between ERLPBoost 
 /// and [LPBoost](crate::prelude::LPBoost) is that
-/// ERLPBoost guaranteed to find an approximate solution in polynomial time.
+/// ERLPBoost guarantees to find an approximate solution in polynomial time.
 /// More precisely, given a tolerance parameter `epsilon > 0` and
 /// the number of outliers `nu * m <- [1, m]`
 /// (`m` is the number of training examples),

@@ -167,51 +167,51 @@ pub fn exp_distribution_from_margins<I>(
 }
 
 
-/// Projects the given distribution onto the capped simplex.
-/// Capped simplex with parameter `ν (nu)` is defined as
-/// 
-/// ```txt
-/// Δ_{m, ν} := { d ∈ [0, 1/ν]^m | sum( d[i] ) = 1 }
-/// ```
-/// 
-/// That is, each coordinate takes at most `1/ν`.
-/// Specifying `ν = 1` yields the no-capped simplex.
-#[inline(always)]
-pub fn project_distribution_to_capped_simplex<I>(
-    nu: f64,
-    iter: I,
-) -> Vec<f64>
-    where I: Iterator<Item = f64>,
-{
-    let mut dist: Vec<_> = iter.collect();
-    let n_sample = dist.len();
-
-    // Construct a vector of indices sorted in descending order of `dist`.
-    let mut ix = (0..n_sample).collect::<Vec<usize>>();
-    ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
-
-    let mut sum = dist.iter().sum::<f64>();
-
-    let ub = 1.0 / nu;
-
-
-    let mut ix = ix.into_iter().enumerate();
-    for (k, i) in ix.by_ref() {
-        let xi = (1.0 - ub * k as f64) / sum;
-        if xi * dist[i] <= ub {
-            dist[i] = xi * dist[i];
-            for (_, j) in ix {
-                dist[j] = xi * dist[j];
-            }
-            break;
-        }
-        sum -= dist[i];
-        dist[i] = ub;
-    }
-
-    checker::check_capped_simplex_condition(&dist, nu);
-    dist
-}
+// /// Projects the given distribution onto the capped simplex.
+// /// Capped simplex with parameter `ν (nu)` is defined as
+// /// 
+// /// ```txt
+// /// Δ_{m, ν} := { d ∈ [0, 1/ν]^m | sum( d[i] ) = 1 }
+// /// ```
+// /// 
+// /// That is, each coordinate takes at most `1/ν`.
+// /// Specifying `ν = 1` yields the no-capped simplex.
+// #[inline(always)]
+// pub fn project_distribution_to_capped_simplex<I>(
+//     nu: f64,
+//     iter: I,
+// ) -> Vec<f64>
+//     where I: Iterator<Item = f64>,
+// {
+//     let mut dist: Vec<_> = iter.collect();
+//     let n_sample = dist.len();
+// 
+//     // Construct a vector of indices sorted in descending order of `dist`.
+//     let mut ix = (0..n_sample).collect::<Vec<usize>>();
+//     ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
+// 
+//     let mut sum = dist.iter().sum::<f64>();
+// 
+//     let ub = 1.0 / nu;
+// 
+// 
+//     let mut ix = ix.into_iter().enumerate();
+//     for (k, i) in ix.by_ref() {
+//         let xi = (1.0 - ub * k as f64) / sum;
+//         if xi * dist[i] <= ub {
+//             dist[i] = xi * dist[i];
+//             for (_, j) in ix {
+//                 dist[j] = xi * dist[j];
+//             }
+//             break;
+//         }
+//         sum -= dist[i];
+//         dist[i] = ub;
+//     }
+// 
+//     checker::check_capped_simplex_condition(&dist, nu);
+//     dist
+// }
 
 
 /// Projects the given logarithmic distribution onto the capped simplex.

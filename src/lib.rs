@@ -103,13 +103,13 @@
 //!
 //! println!("Training Loss is: {training_loss}");
 //! ```
-pub mod sample;
-pub mod common;
-pub mod hypothesis;
-pub mod booster;
-pub mod weak_learner;
-pub mod prelude;
+mod sample;
+mod common;
+mod hypothesis;
+mod booster;
+mod weak_learner;
 
+pub mod prelude;
 pub mod research;
 // pub mod pywriter;
 
@@ -205,6 +205,8 @@ pub use weak_learner::{
     DecisionTreeClassifier,
 
     NNHypothesis,
+    NNClassifier,
+    NNRegressor,
 
     BadClassifier,
     NBayesClassifier,

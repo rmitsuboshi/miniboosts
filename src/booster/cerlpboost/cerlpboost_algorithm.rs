@@ -32,7 +32,7 @@ use std::ops::ControlFlow;
 /// ## Strength
 /// - Running time per round is 
 ///   the fastest among soft-margin boosting algorithms.
-/// - The iteration bound is the same as the one to ERLPBoost.
+/// - The iteration bound is the same as the one to [`ERLPBoost`].
 /// ## Weakness
 /// - Empirically, the number of rounds tend to huge compared to
 ///   totally corrective algorithms such as [`ERLPBoost`] and [`LPBoost`].
