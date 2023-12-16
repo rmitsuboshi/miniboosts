@@ -115,13 +115,13 @@ You can see the document by `cargo doc --open` command.
 You need to write the following line to `Cargo.toml`.
 
 ```TOML
-miniboosts = { version = "0.3.1" }
+miniboosts = { version = "0.3.2" }
 ```
 
 If you want to use `extended` features, such as `LPBoost`, specify the option:
 
 ```TOML
-miniboosts = { version = "0.3.0", features = ["extended"] }
+miniboosts = { version = "0.3.2", features = ["extended"] }
 ```
 
 
