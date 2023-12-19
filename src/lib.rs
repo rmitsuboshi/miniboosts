@@ -221,6 +221,9 @@ pub use weak_learner::{
 
 /// Some useful functions / traits
 pub use common::{
+    frank_wolfe::{
+        FWType,
+    },
     loss_functions::{
         GBMLoss,
         LossFunction,

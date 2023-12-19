@@ -22,33 +22,44 @@ use std::ops::ControlFlow;
 
 
 
-/// The ERLPBoost algorithm proposed in the following paper: 
+/// The `ERLPBoost` algorithm proposed in the following paper: 
 /// 
 /// [Manfred K. Warmuth, Karen A. Glocer, and S. V. N. Vishwanathan - Entropy Regularized LPBoost](https://link.springer.com/chapter/10.1007/978-3-540-87987-9_23)
 /// 
-/// ERLPBoost aims to optimize the soft-margin.
-/// The main difference between ERLPBoost 
-/// and [LPBoost](crate::prelude::LPBoost) is that
-/// ERLPBoost guarantees to find an approximate solution in polynomial time.
-/// More precisely, given a tolerance parameter `epsilon > 0` and
-/// the number of outliers `nu * m <- [1, m]`
-/// (`m` is the number of training examples),
-/// ERLPBoost terminates in `O( ln(m / (nu * m)) / (epsilon ^ 2) )` iterations,
-/// while LPBoost terminates after `Ω( m )` iterations for the worst case.
+/// Given a set `{(x_{1}, y_{1}), (x_{2}, y_{2}), ..., (x_{m}, y_{m})}`
+/// of training examples,
+/// a capping parameters `ν ∈ [1, m]`, and
+/// an accuracy parameter `ε > 0`,
+/// `ERLPBoost` aims to find an `ε`-approximate solution of
+/// the soft-margin optimization problem:
+/// ```txt
+///  max  ρ - (1/ν) Σ_{i=1}^{m} ξ_{i}
+/// ρ,w,ξ
+/// s.t. y_{i} Σ_{h ∈ Δ_{H}} w_{h} h(x_{i}) ≥ ρ - ξ_{i},
+///                                         for all i ∈ [m],
+///      w ∈ Δ_{H},
+///      ξ ≥ 0.
+/// ```
+/// 
+/// # Convergence rate
+/// - `ERLPBoost` terminates in `O( ln(m/ν) / ε² )` iterations.
+///
+/// # Related information
+/// - Every round, `ERLPBoost` solves a convex program
+///   by the sequential quadratic minimization technique.
+///   So, running time per round is slow 
+///   compared to [`LPBoost`](crate::booster::LPBoost).
+/// - This code uses Gurobi optimizer,
+///   so you need to do the followings:
+///     1. Install Gurobi and put its license to your home directory.
+///     2. Enable `extended` flag.
+///     ```toml
+///     miniboosts = { version = "0.3.2", features = ["extended"] }
+///     ```
 /// 
 /// # Example
 /// The following code shows a small example 
 /// for running [`ERLPBoost`].  
-/// See also:
-/// - [`ERLPBoost::nu`]
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// 
-/// [`ERLPBoost::nu`]: ERLPBoost::nu
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
 /// 
 /// 
 /// ```no_run

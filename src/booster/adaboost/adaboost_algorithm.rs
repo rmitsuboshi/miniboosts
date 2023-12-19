@@ -16,32 +16,29 @@ use crate::{
 use std::ops::ControlFlow;
 
 
-/// The AdaBoost algorithm proposed by Robert E. Schapire and Yoav Freund.
+/// The AdaBoost algorithm 
+/// proposed by Robert E. Schapire and Yoav Freund.
 /// 
 /// This struct is based on the book: 
 /// [Boosting: Foundations and Algorithms](https://direct.mit.edu/books/oa-monograph/5342/BoostingFoundations-and-Algorithms)
 /// by Robert E. Schapire and Yoav Freund.
 /// 
 /// AdaBoost is a boosting algorithm for binary classification 
-/// that minimizes exponential loss.
+/// that minimizes exponential loss over a set of training examples.
+///
+/// # Convergence rate
+/// Given a set of training examples of size `m > 0`
+/// and an accuracy parameter `ε > 0`,
+/// `AdaBoost` finds an convex combination of hypotheses
+/// whose empirical loss is less than `ε`
+/// in `O( ln(m) / ε² )` iterations.
 /// 
-/// As some paper proved, AdaBoost **approximately** maximizes the hard margin.
+/// # Related information
+/// - As some papers proved, 
+/// `AdaBoost` **approximately maximizes the hard margin.**
 /// 
-/// [`AdaBoostV`](crate::booster::AdaBoostV), 
+/// - [`AdaBoostV`](crate::booster::AdaBoostV), 
 /// a successor of AdaBoost, maximizes the hard margin.
-/// 
-/// # Example
-/// The following code shows a small example 
-/// for running [`AdaBoost`].  
-/// See also:
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// - [`Sample`]
-/// 
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
 /// 
 /// 
 /// ```no_run

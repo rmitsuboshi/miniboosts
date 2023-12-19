@@ -21,28 +21,47 @@ use std::ops::ControlFlow;
 
 
 
-/// Defines `AdaBoostV`.
-/// This struct is based on the paper: 
-/// `AdaBoostV`, also known as `AdaBoost_{\nu}^\star`, is a boosting algorithm
-/// in the following paper:
+/// The `AdaBoostV` algorithm, proposed by Rätsch and Warmuth.  
+/// `AdaBoostV`, also known as `AdaBoost_{ν}^{★}`, 
+/// is a boosting algorithm proposed in the following paper:
 /// 
 /// [Gunnar Rätsch and Manfred K. Warmuth - Efficient Margin Maximizing with Boosting](https://www.jmlr.org/papers/v6/ratsch05a.html)
 /// 
-/// `AdaBoostV` aims to maximize the hard-margin 
-/// for linearly separable training instances.
+/// Given a set `{(x_{1}, y_{1}), (x_{2}, y_{2}), ..., (x_{m}, y_{m})}`
+/// of training examples,
+/// [`AdaBoostV`] aims to find an optimal solution of
+/// the hard-margin optimization problem:
+///
+/// ```txt
+/// max ρ
+/// ρ,w
+/// s.t. y_{i} Σ_{h ∈ Δ_{H}} w_{h} h(x_{i}) ≥ ρ, for all i ∈ [m],
+///      w ∈ Δ_{H}
+/// ```
+///
+/// # Convergence rate
+/// Assume that there exists a convex combination of hypotheses
+/// that perfectly classifies the training examples:
+///
+/// ```txt
+/// ∃ w ∈ Δ_{H},
+/// ∀ (x, y) in training examples,
+/// y Σ_{h ∈ H} w_{h} h( x ) > 0.
+/// ```
+///
+/// Given a set of training examples of size `m > 0`
+/// and an accuracy parameter `ε > 0`,
+/// `AdaBoostV` finds an `ε`-approximate solution of
+/// the hard-margin optimization problem
+/// in `O( ln(m) / ε² )` iterations.
+/// 
+/// # Related information
+/// 
+/// - `AdaBoostV` does not use the weak learnability parameter.
 /// 
 /// # Example
 /// The following code shows a small example 
 /// for running [`AdaBoostV`].  
-/// See also:
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// - [`Sample`]
-/// 
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
 /// 
 /// 
 /// ```no_run
