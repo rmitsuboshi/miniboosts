@@ -20,24 +20,45 @@ use std::ops::ControlFlow;
 
 /// The TotalBoost algorithm proposed in the following paper:
 /// [Manfred K. Warmuth, Jun Liao, and Gunnar Rätsch - Totally corrective boosting algorithms that maximize the margin](https://dl.acm.org/doi/10.1145/1143844.1143970)
+///
+/// Given a set `{(x_{1}, y_{1}), (x_{2}, y_{2}), ..., (x_{m}, y_{m})}`
+/// of training examples,
+/// [`TotalBoost`] aims to find an optimal solution of
+/// the hard-margin optimization problem:
+///
+/// ```txt
+/// max ρ
+/// ρ,w
+/// s.t. y_{i} Σ_{h ∈ Δ_{H}} w_{h} h(x_{i}) ≥ ρ, for all i ∈ [m],
+///      w ∈ Δ_{H}
+/// ```
 /// 
-/// [`TotalBoost`] is a special case of [`SoftBoost`].
-/// That is, 
-/// `TotalBoost` restricts [`SoftBoost::nu`] as `1.0`.  
-/// For this reason, `TotalBoost` is just a wrapper of [`SoftBoost`].
+/// # Convergence rate
+/// Assume that there exists a convex combination of hypotheses
+/// that perfectly classifies the training examples:
+///
+/// ```txt
+/// ∃ w ∈ Δ_{h},
+/// ∀ (x, y) in training examples,
+/// y Σ_{h ∈ H} w_{h} h( x ) > 0.
+/// ```
+///
+/// Given a set of training examples of size `m > 0`
+/// and an accuracy parameter `ε > 0`,
+/// `TotalBoost` finds an `ε`-approximate solution of
+/// the hard-margin optimization problem
+/// in `o( ln(m) / ε² )` iterations.
+/// 
+/// # Related information
+/// - [`TotalBoost`] is a special case of [`SoftBoost`].
+///   That is, `TotalBoost` restricts [`SoftBoost::nu`] as `1.0`.  
+///   For this reason, [`TotalBoost`] is 
+///   just a wrapper of [`SoftBoost`].
+///
 /// 
 /// # Example
-/// The following code shows a small example for running [`SoftBoost`].  
-/// See also:
-/// - [`SoftBoost`]
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// 
-/// [`SoftBoost`]: SoftBoost
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// The following code shows 
+/// a small example for running [`TotalBoost`].  
 /// 
 /// 
 /// ```no_run

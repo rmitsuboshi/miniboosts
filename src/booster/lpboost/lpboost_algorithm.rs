@@ -21,33 +21,52 @@ use std::cell::RefCell;
 use std::ops::ControlFlow;
 
 
-/// The LPBoost algorithm proposed in the following paper:
+/// The `LPBoost` algorithm 
+/// proposed by Demiriz, Bennett, and Shawe-Taylor.  
+/// `LPBoost` is originally proposed in the following paper:  
 /// 
 /// [Ayhan Demiriz, Kristin P. Bennett, and John Shawe-Taylor - Linear Programming Boosting via Column Generation](https://www.researchgate.net/publication/220343627_Linear_Programming_Boosting_via_Column_Generation)
 /// 
-/// The code is based on the following paper:
+/// My implementation of `LPBoost` is based on the following paper:
 /// 
 /// [Manfred K. Warmuth, Karen Glocer, and Gunnar Rätsch - Boosting algorithms for Maximizing the Soft Margin](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf)
 /// 
-/// LPBoost aims to optimize soft-margin,
-/// which is the hard-margin excluding some outliers.
-/// One can give the ratio of outliers as a parameter.
+/// Given a set `{(x_{1}, y_{1}), (x_{2}, y_{2}), ..., (x_{m}, y_{m})}`
+/// of training examples,
+/// a capping parameters `ν ∈ [1, m]`, and
+/// an accuracy parameter `ε > 0`,
+/// `LPBoost` aims to find an `ε`-approximate solution of
+/// the soft-margin optimization problem:
+/// ```txt
+///  max  ρ - (1/ν) Σ_{i=1}^{m} ξ_{i}
+/// ρ,w,ξ
+/// s.t. y_{i} Σ_{h ∈ Δ_{H}} w_{h} h(x_{i}) ≥ ρ - ξ_{i},
+///                                         for all i ∈ [m],
+///      w ∈ Δ_{H},
+///      ξ ≥ 0.
+/// ```
 /// 
-/// LPBoost works very fast in practice, but for the worst case,
-/// it takes `Ω( # of training examples )` iterations.
+/// # Convergence rate
+/// There exists a training set of size `m > 0` such that
+/// `LPBoost` takes `Ω( m )` iterations for the worst case.
+///
+///
+/// # Related information
+/// - Currently (2023), `LPBoost` has no convergence guarantee.
+/// - [`ERLPBoost`](crate::booster::ERLPBoost), 
+/// A stabilized version of `LPBoost` is 
+/// proposed by Warmuth et al. (2008).
+/// - This code uses Gurobi optimizer,
+/// so you need to do the followings:
+///     1. Install Gurobi and put its license to your home directory.
+///     2. Enable `extended` flag.
+///     ```toml
+///     miniboosts = { version = "0.3.2", features = ["extended"] }
+///     ```
+///
 /// 
 /// # Example
 /// The following code shows a small example for running [`LPBoost`].  
-/// See also:
-/// - [`LPBoost::nu`]
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// 
-/// [`LPBoost::nu`]: LPBoost::nu
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
 /// 
 /// 
 /// ```no_run

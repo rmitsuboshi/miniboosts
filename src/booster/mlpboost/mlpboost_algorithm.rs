@@ -33,22 +33,61 @@ use std::ops::ControlFlow;
 /// 
 /// [Ryotaro Mitsuboshi, Kohei Hatano, and Eiji Takimoto - Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831)
 /// 
-/// MLPBoost is an abstraction of soft-margin boosting algorithms
-/// in terms of Frank-Wolfe algorithm.
+/// MLPBoost is an abstraction of 
+/// some soft-margin boosting algorithms.
+///
+/// 
+/// Given a set `{(x_{1}, y_{1}), (x_{2}, y_{2}), ..., (x_{m}, y_{m})}`
+/// of training examples,
+/// a capping parameters `ν ∈ [1, m]`, and
+/// an accuracy parameter `ε > 0`,
+/// `MLPBoost` aims to find an `ε`-approximate solution of
+/// the soft-margin optimization problem:
+/// ```txt
+///  max  ρ - (1/ν) Σ_{i=1}^{m} ξ_{i}
+/// ρ,w,ξ
+/// s.t. y_{i} Σ_{h ∈ Δ_{H}} w_{h} h(x_{i}) ≥ ρ - ξ_{i},
+///                                         for all i ∈ [m],
+///      w ∈ Δ_{H},
+///      ξ ≥ 0.
+/// ```
+/// 
+/// `MLPBoost` can be seen as a mixture of 
+/// [`LPBoost`](crate::booster::LPBoost) and
+/// [`CERLPBoost`](crate::booster::CERLPBoost).
+/// `MLPBoost` attains the fast convergence property 
+/// of [`LPBoost`](crate::booster::LPBoost)
+/// while keeping the convergence guarantee 
+/// for [`CERLPBoost`](crate::booster::CERLPBoost).
 /// 
 /// 
+/// # Convergence rate
+/// - `MLPBoost` terminates in `O( ln(m/ν) / ε² )` iterations.
+///
+/// # Related information
+/// - Every round, `MLPBoost` solves a linear program.
+/// - This code uses Gurobi optimizer,
+///   so you need to do the followings:
+///     1. Install Gurobi and put its license to your home directory.
+///     2. Enable `extended` flag.
+///     ```toml
+///     miniboosts = { version = "0.3.2", features = ["extended"] }
+///     ```
+/// - By default, `MLPBoost` sets 
+///   [`FWType::ShortStep`](crate::FWType)
+///   as the primary strategy.
+///   This choice triggers 
+///   [`LPBoost`](crate::booster::LPBoost) update more frequently.
+///   Therefore, one can expect fast convergent for real-world dataset.
+///   (For many real datasets, [`LPBoost`](crate::booster::LPBoost) is
+///   the fastest.
+/// - One can choose different Frank-Wolfe algorithm.
+///   See [`MLPBoost::frank_wolfe`].
+///
+///
 /// # Example
-/// The following code shows a small example for running [`MLPBoost`].  
-/// See also:
-/// - [`MLPBoost::nu`]
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// 
-/// [`MLPBoost::nu`]: MLPBoost::nu
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// The following code shows 
+/// a small example for running [`MLPBoost`].  
 /// 
 /// 
 /// ```no_run
@@ -77,7 +116,6 @@ use std::ops::ControlFlow;
 /// // the number of training examples in `sample`.
 /// let mut booster = MLPBoost::init(&sample)
 ///     .tolerance(0.01)
-///     .frank_wolfe(FWType::ShortStep)
 ///     .nu(0.1 * n_sample);
 /// 
 /// // Set the weak learner with setting parameters.

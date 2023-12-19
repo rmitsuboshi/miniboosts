@@ -23,35 +23,46 @@ use crate::{
 
 use std::ops::ControlFlow;
 
-/// The Corrective ERLPBoost algorithm, proposed in the following paper:
+/// The Corrective ERLPBoost algorithm, 
+/// proposed in the following paper:
 /// 
 /// [Shai Shalev-Shwartz and Yoram Singer - On the equivalence of weak learnability and linear separability: new relaxations and efficient boosting algorithms](https://link.springer.com/article/10.1007/s10994-010-5173-z)
 /// 
-/// Corrective ERLPBoost aims to optimize soft-margin 
+///
+/// Given a set `{(x_{1}, y_{1}), (x_{2}, y_{2}), ..., (x_{m}, y_{m})}`
+/// of training examples,
+/// a capping parameters `ν ∈ [1, m]`, and
+/// an accuracy parameter `ε > 0`,
+/// Corrective ERLPBoost aims to find an `ε`-approximate solution of
+/// the soft margin optimization problem
+/// ```txt
+///  max  ρ - (1/ν) Σ_{i=1}^{m} ξ_{i}
+/// ρ,w,ξ
+/// s.t. y_{i} Σ_{h ∈ Δ_{H}} w_{h} h(x_{i}) ≥ ρ - ξ_{i},
+///                                         for all i ∈ [m],
+///      w ∈ Δ_{H},
+///      ξ ≥ 0.
+/// ```
 /// without using LP/QP solver.
-/// ## Strength
+///
+/// # Convergence rate
+/// - `CERLPBoost` terminates in `O( ln(m/ν) / ε² )` iterations.
+///
+/// # Related information
 /// - Running time per round is 
 ///   the fastest among soft-margin boosting algorithms.
 /// - The iteration bound is the same as the one to [`ERLPBoost`].
-/// ## Weakness
 /// - Empirically, the number of rounds tend to huge compared to
-///   totally corrective algorithms such as [`ERLPBoost`] and [`LPBoost`].
+///   totally corrective algorithms 
+///   such as [`ERLPBoost`] and [`LPBoost`].
+/// - By default, CERLPBoost uses short-step strategy,
+///   which converges very slow.
+/// - One can specify other step size strategies.
+///   See [`CERLPBoost::variant`].
 /// 
 /// # Example
 /// The following code shows a small example 
 /// for running [`CERLPBoost`].  
-/// See also:
-/// - [`CERLPBoost::nu`]
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// 
-/// [`CERLPBoost::nu`]: CERLPBoost::nu
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
-/// [`LPBoost`]: crate::prelude::LPBoost
-/// [`ERLPBoost`]: crate::prelude::ERLPBoost
 /// 
 /// ```no_run
 /// use miniboosts::prelude::*;

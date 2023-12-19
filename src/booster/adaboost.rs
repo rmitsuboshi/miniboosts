@@ -6,9 +6,7 @@
 //! 
 //! AdaBoost is a boosting algorithm for binary classification 
 //! that minimizes exponential loss.
-//! 
-//! As some paper suggests, AdaBoost **approximately** maximizes
-//! the hard margin.
+//!
 //! 
 //! `[AdaBoostV](crate::booster::AdaBoostV)`, 
 //! a successor of AdaBoost, maximizes the hard margin.

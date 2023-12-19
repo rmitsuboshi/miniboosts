@@ -22,21 +22,47 @@ const NUMERIC_TOLERANCE: f64 = 1e-200;
 
 
 
-/// The SoftBoost algorithm proposed in the following paper:
+/// The SoftBoost algorithm proposed in the following paper:  
+///
 /// [Gunnar Rätsch, Manfred K. Warmuth, and Laren A. Glocer - Boosting Algorithms for Maximizing the Soft Margin](https://papers.nips.cc/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) 
+///
+/// Given a set `{(x_{1}, y_{1}), (x_{2}, y_{2}), ..., (x_{m}, y_{m})}`
+/// of training examples,
+/// a capping parameters `ν ∈ [1, m]`, and
+/// an accuracy parameter `ε > 0`,
+/// `SoftBoost` aims to find an `ε`-approximate solution of
+/// the soft-margin optimization problem:
+/// ```txt
+///  max  ρ - (1/ν) Σ_{i=1}^{m} ξ_{i}
+/// ρ,w,ξ
+/// s.t. y_{i} Σ_{h ∈ Δ_{H}} w_{h} h(x_{i}) ≥ ρ - ξ_{i},
+///                                         for all i ∈ [m],
+///      w ∈ Δ_{H},
+///      ξ ≥ 0.
+/// ```
+/// 
+/// 
+/// # Convergence rate
+/// - `SoftBoost` terminates in `O( ln(m/ν) / ε² )` iterations.
+/// 
+/// # Related information
+/// - Every round, `ERLPBoost` solves a convex program
+///   by the sequential quadratic minimization technique.
+///   So, running time per round is slow 
+///   compared to [`LPBoost`](crate::booster::LPBoost).
+/// - This code uses Gurobi optimizer,
+///   so you need to do the followings:
+///     1. Install Gurobi and put its license to your home directory.
+///     2. Enable `extended` flag.
+///     ```toml
+///     miniboosts = { version = "0.3.2", features = ["extended"] }
+///     ```
+/// - [`SoftBoost`] is the extension 
+///   of [`TotalBoost`](crate::booster::TotalBoost).
 /// 
 /// # Example
-/// The following code shows a small example for running [`SoftBoost`].  
-/// See also:
-/// - [`SoftBoost::nu`]
-/// - [`DecisionTree`]
-/// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
-/// 
-/// [`SoftBoost::nu`]: SoftBoost::nu
-/// [`DecisionTree`]: crate::weak_learner::DecisionTree
-/// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// The following code shows 
+/// a small example for running [`SoftBoost`].  
 /// 
 /// 
 /// ```no_run
