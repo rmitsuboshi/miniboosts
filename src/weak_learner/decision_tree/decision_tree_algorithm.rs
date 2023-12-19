@@ -23,8 +23,18 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 
-/// `DecisionTree` is the factory that generates
-/// a `DecisionTreeClassifier` for a given distribution over examples.
+/// The Decision Tree algorithm.  
+/// Given a set of training examples for binary classification
+/// and a distribution over the set,
+/// [`DecisionTree`] outputs a decision tree classifier
+/// named [`DecisionTreeClassifier`]
+/// under the specified parameters.
+///
+/// The code is based on the book
+/// `Classification and Regression Trees`.
+///
+/// [`DecisionTree`] is constructed 
+/// by [`DecisionTreeBuilder`](crate::weak_learner::DecisionTreeBuilder).
 /// 
 /// # Example
 /// ```no_run
@@ -70,7 +80,7 @@ pub struct DecisionTree<'a> {
 
 impl<'a> DecisionTree<'a> {
     /// Initialize [`DecisionTree`].
-    /// This method is called only via `DecisionTreeBuilder::build()`.
+    /// This method is called only via `DecisionTreeBuilder::build`.
     #[inline]
     pub(super) fn from_components(
         bins: HashMap<&'a str, Bins>,
