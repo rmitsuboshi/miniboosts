@@ -1,30 +1,30 @@
 //! Provides some boosting algorithms.
 
-pub mod core;
+mod core;
 
 // ------------------------------------------------
 // Classification
-pub mod smoothboost;
-pub mod adaboost;
-pub mod adaboostv;
+mod smoothboost;
+mod adaboost;
+mod adaboostv;
 
 #[cfg(feature="extended")]
-pub mod totalboost;
+mod totalboost;
 
-pub mod cerlpboost;
+mod cerlpboost;
 #[cfg(feature="extended")]
-pub mod lpboost;
+mod lpboost;
 #[cfg(feature="extended")]
-pub mod erlpboost;
+mod erlpboost;
 #[cfg(feature="extended")]
-pub mod softboost;
+mod softboost;
 #[cfg(feature="extended")]
-pub mod mlpboost;
+mod mlpboost;
 // #[cfg(feature="extended")]
 // pub mod perturbed_lpboost;
 
-pub mod gradient_boost;
-pub mod graph_separation_boosting;
+mod gradient_boost;
+mod graph_separation_boosting;
 
 
 /// Booster trait

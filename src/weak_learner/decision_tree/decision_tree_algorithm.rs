@@ -44,10 +44,12 @@ use std::collections::HashMap;
 /// 
 /// // Read the training data from the CSV file.
 /// let file = "/path/to/data/file.csv";
-/// let has_header = true;
-/// let sample = Sample::from_csv(file, has_header)
-///     .unwrap()
-///     .set_target("class");
+/// let sample = SampleReader::new()
+///     .file(file)
+///     .has_header(true)
+///     .target_feature("class")
+///     .read()
+///     .unwrap();
 /// 
 /// 
 /// // Get an instance of decision tree weak learner.

@@ -1,9 +1,9 @@
-/// Defines `BadBaseLearnerBuilder.`
-pub mod builder;
-/// Defines `BadBaseLearner.`
-pub mod worstcase_lpboost;
-/// Defines `BadClassifier.`
-pub mod worstcase_classifier;
+// Defines `BadBaseLearnerBuilder.`
+mod builder;
+// Defines `BadBaseLearner.`
+mod worstcase_lpboost;
+// Defines `BadClassifier.`
+mod worstcase_classifier;
 
 
 pub use builder::BadBaseLearnerBuilder;

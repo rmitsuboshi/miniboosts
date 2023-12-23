@@ -71,7 +71,7 @@ use std::ops::ControlFlow;
 ///     1. Install Gurobi and put its license to your home directory.
 ///     2. Enable `extended` flag.
 ///     ```toml
-///     miniboosts = { version = "0.3.2", features = ["extended"] }
+///     miniboosts = { version = "0.3.3", features = ["extended"] }
 ///     ```
 /// - By default, `MLPBoost` sets 
 ///   [`FWType::ShortStep`](crate::FWType)

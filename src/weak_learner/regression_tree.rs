@@ -1,13 +1,13 @@
-/// These file defines the regression tree producer.
-pub mod regression_tree_algorithm;
-/// This file defines the regression tree regressor.
-pub mod regression_tree_regressor;
+// These file defines the regression tree producer.
+mod regression_tree_algorithm;
+// This file defines the regression tree regressor.
+mod regression_tree_regressor;
 
-/// This file defines the loss type.
-pub mod loss;
+// This file defines the loss type.
+mod loss;
 
-/// Regression Tree builder.
-pub mod builder;
+// Regression Tree builder.
+mod builder;
 
 
 pub(crate) mod bin;

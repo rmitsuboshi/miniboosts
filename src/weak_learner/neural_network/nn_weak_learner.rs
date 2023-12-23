@@ -34,10 +34,12 @@ type OutputDim = usize;
 /// 
 /// // Read a dataset from a CSV file.
 /// let path = "/path/to/dataset.csv";
-/// let has_header = true;
-/// let sample = Sample::from_csv(path, has_header)
-///     .unwrap()
-///     .set_target("class");
+/// let sample = SampleReader::new()
+///     .file(path)
+///     .has_header(true)
+///     .target_feature("class")
+///     .read()
+///     .unwrap();
 /// let n_sample = sample.shape().0;
 /// let batch_size = n_sample / 10;
 /// 
