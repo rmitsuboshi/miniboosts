@@ -59,10 +59,12 @@
 //! // Read the training sample from the CSV file.
 //! // We use the column named `class` as the label.
 //! let path = "path/to/dataset.csv";
-//! let has_header = true;
-//! let sample = Sample::from_csv(path, has_header)
-//!     .unwrap()
-//!     .set_target("class");
+//! let sample = SampleReader::new()
+//!     .file(path)
+//!     .has_header(true)
+//!     .target_feature("class")
+//!     .read()
+//!     .unwrap();
 //! 
 //! // Get the number of training examples.
 //! let n_sample = data.shape().0 as f64;
@@ -116,6 +118,7 @@ pub mod research;
 
 // Export the struct that represents batch sample
 pub use sample::{
+    SampleReader,
     Sample,
     Feature,
 };

@@ -66,10 +66,12 @@ use std::ops::ControlFlow;
 /// 
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
-/// let has_header = true;
-/// let sample = Sample::from_csv(path_to_csv_file, has_header)
-///     .expect("Failed to read the training sample")
-///     .set_target("class");
+/// let sample = SampleReader::new()
+///     .file(path_to_file)
+///     .has_header(true)
+///     .target_feature("class")
+///     .read()
+///     .unwrap();
 /// 
 /// 
 /// // Get the number of training examples.

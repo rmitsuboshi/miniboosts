@@ -80,7 +80,10 @@ pub use crate::hypothesis::{
     CombinedHypothesis,
 };
 
-pub use crate::Sample;
+pub use crate::{
+    SampleReader,
+    Sample,
+};
 
 pub use crate::common::{
     loss_functions::GBMLoss,

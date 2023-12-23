@@ -36,11 +36,11 @@ pub use self::core::Booster;
 // ------------------------------------------------
 // Classification
 
-/// Empirical Risk Minimization
+// Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
 
 
-/// Hard Margin Maximization
+// Hard Margin Maximization
 pub use self::adaboostv::AdaBoostV;
 #[cfg(feature="extended")]
 pub use self::totalboost::TotalBoost;
