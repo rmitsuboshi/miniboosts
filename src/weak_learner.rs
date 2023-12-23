@@ -1,7 +1,7 @@
 //! The files in `weak_learner/` directory defines
 //! `WeakLearner` trait and weak learners.
 
-/// Provides WeakLearner trait.
+// Provides WeakLearner trait.
 pub mod core;
 
 // /// Union of Weak learners.
@@ -9,23 +9,23 @@ pub mod core;
 
 pub(crate) mod common;
 
-/// Defines Decision Tree.
-pub mod decision_tree;
+// Defines Decision Tree.
+mod decision_tree;
 
 
-/// Defines Regression Tree.
-pub mod regression_tree;
+// Defines Regression Tree.
+mod regression_tree;
 
-/// Defines Neural network.
-pub mod neural_network;
-
-
-/// Defines a weak learner for worst-case LPBoost.
-pub mod bad_learner;
+// Defines Neural network.
+mod neural_network;
 
 
-/// Defines Naive Bayes.
-pub mod naive_bayes;
+// Defines a weak learner for worst-case LPBoost.
+mod bad_learner;
+
+
+// Defines Naive Bayes.
+mod naive_bayes;
 
 pub use self::core::WeakLearner;
 

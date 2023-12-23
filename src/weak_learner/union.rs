@@ -1,6 +1,6 @@
-//! This file defines the union of weak learners.
+//! This file defines the union of weak learners.  
 
-/// This file provides the union of weak learners.
-pub mod wl_union;
+// This file provides the union of weak learners.
+mod wl_union;
 
 pub use wl_union::WLUnion;

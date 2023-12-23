@@ -74,7 +74,7 @@ See `cargo doc -F extended --open` for details.
 | [CERLPBoost](https://link.springer.com/article/10.1007/s10994-010-5173-z) (Corrective ERLPBoost)<br>by Shalev-Shwartz and Singer, 2010 | `extended` |
 | [MLPBoost](https://arxiv.org/abs/2209.10831)<br>by Mitsuboshi, Hatano, and Takimoto, 2022 | `extended` |
 | [GBM](https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full) (Gradient Boosting Machine),<br>by Jerome H. Friedman, 2001 | |
-| [GraphSepBoost](https://theoretics.episciences.org/10757) (Graph Separation Boosting)<br>by Noga Alon, Alon Gonen, Elad Hazan, and Shay Moran, 2023 | |
+| [GraphSepBoost](https://theoretics.episciences.org/10757) (Graph Separation Boosting)<br>by Alon, Gonen, Hazan, and Moran, 2023 | |
 
 
 **Note.** Currently, `GraphSepBoost` only supports the aggregation rule
@@ -82,13 +82,13 @@ shown in Lemma 4.2 of their paper.
 
 
 ### Weak Learners
-|`WEAK LEARNER`                                                                                                       |
-| :---                                                                                                                |
-| [DecisionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)                             |
-| [RegressionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)                         |
-| [BadBaseLearner](https://papers.nips.cc/paper_files/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) |
-| GaussianNB (Gaussian Naive Bayes)                                                                                   |
-| NeuralNetwork (Neural Network, Experimental)                                                                        |
+|`WEAK LEARNER`                                                                                                                                               |
+| :---                                                                                                                                                        |
+| [DecisionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Decision Tree)                                                                     |
+| [RegressionTree](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418) (Regression Tree)                                                                 |
+| [BadBaseLearner](https://papers.nips.cc/paper_files/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html) (A worst-case weak learner for LPBoost) |
+| GaussianNB (Gaussian Naive Bayes)                                                                                                                           |
+| NeuralNetwork (Neural Network, Experimental)                                                                                                                |
 
 
 ## Future work
@@ -115,13 +115,13 @@ You can see the document by `cargo doc --open` command.
 You need to write the following line to `Cargo.toml`.
 
 ```TOML
-miniboosts = { version = "0.3.2" }
+miniboosts = { version = "0.3.3" }
 ```
 
 If you want to use `extended` features, such as `LPBoost`, specify the option:
 
 ```TOML
-miniboosts = { version = "0.3.2", features = ["extended"] }
+miniboosts = { version = "0.3.3", features = ["extended"] }
 ```
 
 
@@ -135,12 +135,14 @@ fn main() {
     // Set file name
     let file = "/path/to/input/data.csv";
 
-    // Read a CSV file
+    // Read the CSV file
     // The column named `class` corresponds to the labels (targets).
-    let has_header = true;
-    let sample = Sample::from_csv(file, has_header)
-        .unwrap()
-        .set_target("class");
+    let sample = SampleReader::new()
+        .file(file)
+        .has_header(true)
+        .target_feature("class")
+        .read()
+        .unwrap();
 
 
     // Set tolerance parameter as `0.01`.
@@ -225,10 +227,12 @@ fn zero_one_loss<H>(sample: &Sample, f: &CombinedHypothesis<H>) -> f64
 fn main() {
     // Read the training data
     let path = "/path/to/train/data.csv";
-    let has_header = true;
-    let train = Sample::from_csv(path, has_header)
-        .unwrap()
-        .set_target("class");
+    let train = SampleReader::new()
+        .file(path)
+        .has_header(true)
+        .target_feature("class")
+        .read()
+        .unwrap();
 
     // Set some parameters used later.
     let n_sample = train.shape().0 as f64;
@@ -237,13 +241,18 @@ fn main() {
 
     // Read the test data
     let path = "/path/to/test/data.csv";
-    let has_header = true;
-    let test = Sample::from_csv(path, has_header)
-        .unwrap()
-        .set_target("class");
+    let test = SampleReader::new()
+        .file(path)
+        .has_header(true)
+        .target_feature("class")
+        .read()
+        .unwrap();
 
 
-    let booster = LPBoost::init(&train);
+    let booster = LPBoost::init(&train)
+        .tolerance(0.01)
+        .nu(nu);
+
     let weak_learner = DecisionTreeBuilder::new(&train)
         .max_depth(2)
         .criterion(Criterion::Entropy)

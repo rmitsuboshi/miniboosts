@@ -55,7 +55,7 @@ const NUMERIC_TOLERANCE: f64 = 1e-200;
 ///     1. Install Gurobi and put its license to your home directory.
 ///     2. Enable `extended` flag.
 ///     ```toml
-///     miniboosts = { version = "0.3.2", features = ["extended"] }
+///     miniboosts = { version = "0.3.3", features = ["extended"] }
 ///     ```
 /// - [`SoftBoost`] is the extension 
 ///   of [`TotalBoost`](crate::booster::TotalBoost).

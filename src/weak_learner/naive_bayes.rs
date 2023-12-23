@@ -1,5 +1,5 @@
 /// Defines Naive Bayes classifier.
-pub mod nbayes;
+mod nbayes;
 /// Defines Naive Bayes Classifiers returned by `NBayes`.
 mod nbayes_classifier;
 
