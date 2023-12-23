@@ -24,14 +24,16 @@ use std::collections::HashMap;
 
 
 /// The Decision Tree algorithm.  
-/// Given a set of training examples for binary classification
+/// Given a set of training examples for classification
 /// and a distribution over the set,
 /// [`DecisionTree`] outputs a decision tree classifier
 /// named [`DecisionTreeClassifier`]
 /// under the specified parameters.
 ///
-/// The code is based on the book
-/// `Classification and Regression Trees`.
+/// The code is based on the book:  
+/// [Classification and Regression
+/// Trees](https://www.amazon.com/Classification-Regression-Wadsworth-Statistics-Probability/dp/0412048418)
+/// by Leo Breiman, Jerome H. Friedman, Richard A. Olshen, and Charles J. Stone.
 ///
 /// [`DecisionTree`] is constructed 
 /// by [`DecisionTreeBuilder`](crate::weak_learner::DecisionTreeBuilder).
@@ -49,9 +51,7 @@ use std::collections::HashMap;
 /// 
 /// 
 /// // Get an instance of decision tree weak learner.
-/// // In this example,
-/// // the output hypothesis is at most depth 2.
-/// // Further, this example uses `Criterion::Edge` for splitting rule.
+/// // In this example, the output tree is at most depth 2.
 /// let tree = DecisionTreeBuilder::new(&sample)
 ///     .max_depth(2)
 ///     .criterion(Criterion::Entropy)

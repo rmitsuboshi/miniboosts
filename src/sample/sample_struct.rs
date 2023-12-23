@@ -51,38 +51,6 @@ impl Sample {
     }
 
 
-    /// Convert [`DataFrame`] and [`Series`] to `Sample`.
-    /// This method takes the ownership of the given pair of 
-    /// `data` and `target`.
-    pub fn from_dataframe(data: DataFrame, target: Series)
-        -> io::Result<Self>
-    {
-        let (n_sample, n_feature) = data.shape();
-        let target = target.f64()
-            .expect("The target is not a dtype f64")
-            .into_iter()
-            .collect::<Option<Vec<_>>>()
-            .unwrap();
-
-        let features = data.get_columns()
-            .into_par_iter()
-            .map(|series| 
-                Feature::Dense(DenseFeature::from_series(series))
-            )
-            .collect::<Vec<_>>();
-
-        let name_to_index = features.iter()
-            .enumerate()
-            .map(|(i, f)| (f.name().to_string(), i))
-            .collect::<HashMap<_, _>>();
-
-        let sample = Self {
-            name_to_index, features, target, n_sample, n_feature,
-        };
-        Ok(sample)
-    }
-
-
     /// Read a CSV format file to [`Sample`] type.
     /// This method returns `Err` if the file does not exist.
     /// 
@@ -92,7 +60,8 @@ impl Sample {
     /// 
     /// **Do not forget** to call [`Sample::set_target`] to
     /// assign the class label.
-    pub fn from_csv<P>(file: P, mut has_header: bool) -> io::Result<Self>
+    pub(super) fn from_csv<P>(file: P, mut has_header: bool)
+        -> io::Result<Self>
         where P: AsRef<Path>,
     {
         // Open the given `file`.
@@ -109,7 +78,7 @@ impl Sample {
         let mut n_sample = 0_usize;
 
         // For each line of the file
-        for line in lines {
+        for (i, line) in lines.enumerate() {
             // Split the line by white spaces
             let line = line?;
 
@@ -117,7 +86,15 @@ impl Sample {
             // construct a dummy header.
             if !has_header {
                 let xs = line.split(',')
-                    .map(|x| x.trim().parse::<f64>().unwrap())
+                    .map(|x| {
+                        x.trim().parse::<f64>()
+                            .unwrap_or_else(|_| {
+                                panic!(
+                                    "The file contains non-numerical value. \
+                                    Got {x} in Line {i}"
+                                )
+                            })
+                    })
                     .collect::<Vec<_>>();
 
                 let n_feature = xs.len();
@@ -162,6 +139,38 @@ impl Sample {
             name_to_index, features, target, n_sample, n_feature,
         };
 
+        Ok(sample)
+    }
+
+
+    /// Convert [`DataFrame`] and [`Series`] to `Sample`.
+    /// This method takes the ownership of the given pair of 
+    /// `data` and `target`.
+    pub fn from_dataframe(data: DataFrame, target: Series)
+        -> io::Result<Self>
+    {
+        let (n_sample, n_feature) = data.shape();
+        let target = target.f64()
+            .expect("The target is not a dtype f64")
+            .into_iter()
+            .collect::<Option<Vec<_>>>()
+            .unwrap();
+
+        let features = data.get_columns()
+            .into_par_iter()
+            .map(|series| 
+                Feature::Dense(DenseFeature::from_series(series))
+            )
+            .collect::<Vec<_>>();
+
+        let name_to_index = features.iter()
+            .enumerate()
+            .map(|(i, f)| (f.name().to_string(), i))
+            .collect::<HashMap<_, _>>();
+
+        let sample = Self {
+            name_to_index, features, target, n_sample, n_feature,
+        };
         Ok(sample)
     }
 
@@ -225,7 +234,9 @@ impl Sample {
     /// The SVMLight format file is basically 1-indexed,
     /// while the `sklearn.datasets.dump_svmlight_file` outputs
     /// a svmlight format file with 0-indexed, by default.
-    pub fn from_svmlight<P: AsRef<Path>>(file: P) -> io::Result<Self> {
+    pub(super) fn from_svmlight<P: AsRef<Path>>(file: P)
+        -> io::Result<Self>
+    {
         let mut features = Vec::new();
         let mut target = Vec::new();
         let mut n_sample = 0_usize;
