@@ -31,7 +31,8 @@ but three main issues exist.
     Most algorithms are implemented by C/C++ internally, 
     so implementing a new boosting algorithm by Python 3
     results in a slow running time.
-    Implementing C/C++ and wrap it to available by Python is hard for me.
+    Implementing a boosting algorithm in C/C++ 
+    and wrapping the code to available Python is hard for me.
 - These boosting algorithms are designed 
     for a decision-tree weak learner 
     even though the boosting protocol does not demand.
