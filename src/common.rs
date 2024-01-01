@@ -14,6 +14,3 @@ pub(crate) mod checker;
 
 /// Defines machine learning tasks.
 pub(crate) mod task;
-
-
-pub use task::*;
