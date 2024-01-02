@@ -1,75 +1,28 @@
-# MiniBoosts
-**A collection of boosting algorithms written in Rust 🦀.**
+<img src="./img/logo.svg"> 
+
 
 [Documentation][miniboosts]
 
+*MiniBoosts* is a library for boosting algorithm developers.  
+Boosting is a repeated game between a *Booster* and a *Weak Learner*.
 
-![Training loss comparison](img/training-loss.png)
-![Soft margin objective comparison](img/soft-margin.png)
+For each round of the game,
+1. The *Booster* chooses a distribution over training examples,
+2. Then the *Weak Learner* chooses a hypothesis (function)
+   whose accuracy w.r.t. the distribution is 
+   slightly better than random guessing.
 
-**Note.**  
-The algorithms depicted in above figure are aborted after 1 minutes, 
-so some algorithms cannot reach their optimal value.
+After sufficient rounds, the *Booster* outputs a hypothesis
+that performs significantly better on training examples.
 
-Some boosting algorithms use [Gurobi optimizer][gurobi], 
-so you must acquire a license to use this library. 
-If you have the license, you can use these boosting algorithms (boosters) 
-by specifying `features = ["extended"]` in `Cargo.toml`.
-
-**Note.**  
-If you are trying to use the `extended` features without a Gurobi license, 
-the compilation fails.
-
-# Why MiniBoosts?
-I, a Ph.D. student, 
-needed to implement boosting algorithms 
-to show the effectiveness of a proposed algorithm. 
-Some boosting algorithms 
-for empirical are implemented in Python 3, 
-but three main issues exist.
-- They are dedicated to boosting algorithm users, not to developers. 
-    Most algorithms are implemented by C/C++ internally, 
-    so implementing a new boosting algorithm by Python 3
-    results in a slow running time.
-    Implementing a boosting algorithm in C/C++ 
-    and wrapping the code to available Python is hard for me.
-- These boosting algorithms are designed 
-    for a decision-tree weak learner 
-    even though the boosting protocol does not demand.
-- There is no implementation for margin optimization boosting algorithms. 
-    Margin optimization is a better goal than empirical risk minimization 
-    in binary classification.
-
-
-MiniBoosts is a crate to address the above issues.
-This crate provides:
-- Two main traits, named `Booster` and `WeakLearner`,
-- Some famous boosting algorithms, 
-    including [AdaBoost][adaboost], 
-    [LPBoost][lpboost], 
-    [ERLPBoost][erlpboost], etc.
-- Some weak learners, including Decision-Tree, Regression-Tree, etc.
-
-Also, one can implement a new Booster or a new Weak Learner 
-by implementing the above traits.
-
-## MiniBoosts for reasearch
-Sometimes, one wants to log each step of boosting procedure.
-You can use `Logger` struct to output log to `.csv` file,
-while printing the status like this:
-
-![Research feature example](img/research-feature-example.png)
-
-See [Research feature](#research-feature) section for detail.
-
-## Features
-Currently, I implemented the following Boosters and Weak Learners.
-
-If you invent a new boosting algorithm,
-you can introduce it by implementing `Booster` trait.
-See `cargo doc -F extended --open` for details.
-
-### Boosters
+Some *Booster* need to enable `extended` flag in `Cargo.toml` like this:  
+```toml
+minibosts = { version = "0.3.3", features = ["extended"] }
+```
+These boosting algorithms use [Gurobi][gurobi] to compute 
+a distribution over training examples.
+Thanks to Gurobi, 
+you can use the `extended` feature for free if you are a student.
 
 |`BOOSTER`                                                                                             | `FEATURE FLAG` |
 | :---                                                                                                 | :---           |
@@ -85,62 +38,85 @@ See `cargo doc -F extended --open` for details.
 | [MLPBoost][mlpboost]<br>by Mitsuboshi, Hatano, and Takimoto, 2022                                    |   `extended`   |
 | [GraphSepBoost][graphsepboost] (Graph Separation Boosting)<br>by Alon, Gonen, Hazan, and Moran, 2023 |                |
 
-**Note.**  
-`GraphSepBoost` only supports the aggregation rule
-shown in Lemma 4.2 of their paper.
+
+If you invent a new boosting algorithm,
+you can introduce it by implementing `Booster` trait.
+See `cargo doc -F extended --open` for details.
 
 
-### Weak Learners
 Currently, no weak learners use [Gurobi][gurobi].
 So, you can use all weak learners without enabling `extended` flag.
 
-|`WEAK LEARNER`                                                            |
-| :---                                                                     |
-| [DecisionTree][decisiontree] (Decision Tree)                             |
-| [RegressionTree][regressiontree] (Regression Tree)                       |
-| [BadBaseLearner][badbaselearner] (A worst-case weak learner for LPBoost) |
-| GaussianNB (Gaussian Naive Bayes)                                        |
-| NeuralNetwork (Neural Network, Experimental)                             |
+|`WEAK LEARNER`                                           |
+| :---                                                    |
+| [Decision Tree][decisiontree]                           |
+| [Regression Tree][regressiontree]                       |
+| [A worst-case weak learner for LPBoost][badbaselearner] |
+| Gaussian Naive Bayes                                    |
+| Neural Network (Experimental)                           |
 
 
-## Future work
 
-- Boosters
-    - [AnyBoost][anyboost]
-    - [SparsiBoost][sparsiboost]
-    - [LogitBoost][logitboost]
-    - [AdaBoost.L][adaboostl]
+## Why *MiniBoosts*?
+If you write a paper about boosting algorithms, 
+you need to compare your algorithm against others.
+At this point, some issues arise.
+- Some boosting algorithms, 
+  such as [*LightGBM*][lightgbm] or [*XGBoost*][xgboost], 
+  are implemented and available for free.
+  These are very easy to use in Python3 but hard to compare to other algorithms
+  since they are implemented in C++ internally.
+  Implementing your algorithm in Python3
+  makes the running time comparison unfair 
+  (Python3 is significantly slow compared to C++).
+  However, implementing it in C++ is extremely hard (based on my experience).
+- Most boosting algorithms are designed 
+  for a decision-tree weak learner 
+  even though the boosting protocol does not demand.
+- There is no implementation for margin optimization boosting algorithms. 
+  Margin optimization is a better goal than empirical risk minimization 
+  in binary classification.
 
 
-- Weak Learners
-    - Bag of words
-    - TF-IDF
-    - [RBF-Net](https://link.springer.com/content/pdf/10.1023/A:1007618119488.pdf)
+*MiniBoosts* is a crate to address the above issues.  
+This crate provides the followings.
+- Two main traits, named `Booster` and `WeakLearner.`
+  - If you invent a new Boosting algorithm, 
+    all you need is to implement `Booster.`
+  - If you invent a new Weak Learning algorithm, 
+    all you need is to implement `WeakLearner.`
+- Some famous boosting algorithms, 
+  including [*AdaBoost*][adaboost], 
+  [*LPBoost*][lpboost], 
+  [*ERLPBoost*][erlpboost], etc.
+- Some weak learners, including Decision-Tree, Regression-Tree, etc.
 
 
-- Others
-    - Parallelization
-    - LP/QP solver (This work allows you to use `extended` features without a license).
+## *MiniBoosts* for reasearch
+Sometimes, one wants to log each step of boosting procedure.
+You can use `Logger` struct to output log to `.csv` file,
+while printing the status like this:
+
+![Research feature example](img/research-feature-example.png)
+
+See [Research feature](#research-feature) section for detail.
+
 
 
 ## How to use
-You can see the document by `cargo doc --open` command.  
+[Documentation][miniboosts]
 
-You need to write the following line to `Cargo.toml`.
-
+Write the following to `Cargo.toml`.
 ```TOML
 miniboosts = { version = "0.3.3" }
 ```
 
-If you want to use `extended` features, such as `LPBoost`, specify the option:
-
+If you want to use `extended` features, enable the flag:
 ```TOML
 miniboosts = { version = "0.3.3", features = ["extended"] }
 ```
 
-
 Here is a sample code:
-
 ```rust
 use miniboosts::prelude::*;
 
@@ -187,31 +163,26 @@ fn main() {
     // You can predict the `i`th instance.
     let i = 0_usize;
     let prediction = f.predict(&sample, i);
+
+    // You can convert the hypothesis `f` to `String`.
+    let s = serde_json::to_string(&f);
 }
 ```
-
-You can also save the hypothesis `f: CombinedHypthesis` with the `JSON` format
-since it implements the `Serialize/Deserialize` trait.
 
 
 If you use boosting for soft margin optimization, 
 initialize booster like this:
 ```rust
-let n_sample = sample.shape().0;
-let nu = n_sample as f64 * 0.2;
+let n_sample = sample.shape().0; // Get the number of training examples
+let nu = n_sample as f64 * 0.2; // Set the upper-bound of the number of outliers.
 let lpboost = LPBoost::init(&sample)
     .tolerance(tol)
     .nu(nu); // Set a capping parameter.
 ```
-
 Note that the capping parameter must satisfies `1 <= nu && nu <= n_sample`.
 
 
 ## Research feature
-When you invent a new boosting algorithm and write a paper,
-you need to compare it to previous works to show the effectiveness of your one.
-One way to compare the algorithms is
-to plot the curve for objective value or train/test loss.
 This crate can output a CSV file for such values in each step.
 
 Here is an example:
@@ -290,13 +261,45 @@ fn main() {
     // Each line of `lpboost.csv` contains the following four information:
     // Objective value, Train loss, Test loss, Time per iteration
     // The returned value `f` is the combined hypothesis.
-    let f = logger.run("lpboost.csv");
+    let f = logger.run("lpboost.csv")
+        .expect("Failed to logging");
 }
 ```
 
-Further, one can log your algorithm by implementing `Research` trait.
+## Others
+- Currently, this crate mainly supports 
+  boosting algorithms for binary classification.
+- Some boosting algorithms use [Gurobi optimizer][gurobi], 
+  so you must acquire a license to use this library. 
+  If you have the license, you can use these boosting algorithms (boosters) 
+  by specifying `features = ["extended"]` in `Cargo.toml`.
+  The compilation fails 
+  if you try to use the extended feature without a Gurobi license.
+- One can log your algorithm by implementing `Research` trait.
+- Run `cargo doc -F extended --open` to see more information.
+- `GraphSepBoost` only supports the aggregation rule 
+  shown in Lemma 4.2 of their paper.
 
-Run `cargo doc -F extended --open` to see more information.
+
+
+## Future work
+
+- Boosters
+    - [AnyBoost][anyboost]
+    - [SparsiBoost][sparsiboost]
+    - [LogitBoost][logitboost]
+    - [AdaBoost.L][adaboostl]
+
+
+- Weak Learners
+    - Bag of words
+    - TF-IDF
+    - [RBF-Net](https://link.springer.com/content/pdf/10.1023/A:1007618119488.pdf)
+
+
+- Others
+    - Parallelization
+    - LP/QP solver (This work allows you to use `extended` features without a license).
 
 
 
@@ -311,6 +314,7 @@ Run `cargo doc -F extended --open` to see more information.
 [gbm]: https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full
 [gurobi]: https://www.gurobi.com
 [graphsepboost]: https://theoretics.episciences.org/10757
+[lightgbm]: https://github.com/microsoft/LightGBM
 [logitboost]: https://projecteuclid.org/journals/annals-of-statistics/volume-28/issue-2/Additive-logistic-regression--a-statistical-view-of-boosting-With/10.1214/aos/1016218223.full
 [lpboost]: https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf
 [smoothboost]: https://link.springer.com/chapter/10.1007/3-540-44581-1_31
@@ -319,5 +323,6 @@ Run `cargo doc -F extended --open` to see more information.
 [mlpboost]: https://arxiv.org/abs/2209.10831
 [regressiontree]: https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418
 [sparsiboost]: http://proceedings.mlr.press/v97/mathiasen19a/mathiasen19a.pdf
+[xgboost]: https://github.com/dmlc/xgboost
 
 [miniboosts]: https://docs.rs/miniboosts/latest/miniboosts/
