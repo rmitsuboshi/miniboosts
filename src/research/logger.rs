@@ -18,7 +18,6 @@ const DEFAULT_ROUND: usize = 100;
 const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
 const WIDTH: usize = 8;
 const PREC_WIDTH: usize = 5;
-const TIME_WIDTH: usize = 5;
 const FULL_WIDTH: usize = 60;
 const STAT_WIDTH: usize = (FULL_WIDTH - 4) / 2;
 const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
@@ -130,7 +129,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
     #[inline(always)]
     fn print_stats(&self) {
         let limit = if self.time_limit != u128::MAX {
-            format!("{} s", (self.time_limit / 1000))
+            time_format(self.time_limit)
         } else {
             "Nothing".into()
         };
@@ -264,7 +263,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
                     format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", train).bold().green(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", test).bold().yellow(),
-                    format!("{:>TIME_WIDTH$} ms", time_acc).bold().cyan(),
+                    time_format(time_acc).bold().cyan(),
                 );
                 return ControlFlow::Break(iter);
             }
@@ -278,7 +277,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
                     format!("{:>WIDTH$.PREC_WIDTH$}", obj).blue(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", train).green(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", test).yellow(),
-                    format!("{:>TIME_WIDTH$} ms", time_acc).cyan(),
+                    time_format(time_acc).bold().cyan(),
                 );
             }
 
@@ -291,7 +290,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
                     format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", train).bold().green(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", test).bold().yellow(),
-                    format!("{:>TIME_WIDTH$} ms", time_acc).bold().cyan(),
+                    time_format(time_acc).bold().cyan(),
                 );
             }
             flow
@@ -301,6 +300,26 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
         let f = self.booster.postprocess(&self.weak_learner);
         Ok(f)
     }
+}
+
+
+fn time_format(millisec: u128) -> String {
+    if millisec < 1_000 {
+        return format!("  0.{:0>3}s", millisec);
+    }
+    let sec = millisec / 1_000;
+    let millisec = millisec % 1_000;
+    if sec < 60 {
+        return format!(" {:0>2}.{:0>3}s", sec, millisec);
+    }
+    let min = sec / 60;
+    let sec = sec % 60;
+    if min < 60 {
+        return format!(" {:0>2}m {:0>2}s", min, sec);
+    }
+    let hours = min / 60;
+    let min = min % 60;
+    format!(" {:0>2}h {:0>2}m", hours, min)
 }
 
 
