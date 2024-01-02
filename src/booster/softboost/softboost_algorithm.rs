@@ -153,12 +153,14 @@ impl<'a, F> SoftBoost<'a, F>
         let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
-        let mut env = Env::new("")
-            .expect("Failed to construct a new `Env` for LPBoost");
+        let mut env = Env::empty()
+            .expect("Failed to construct a new `Env` for SoftBoost");
         env.set(param::OutputFlag, 0)
             .expect("Failed to set `param::OutputFlag` to `0`");
         env.set(param::NumericFocus, 3)
             .expect("Failed to set `NumericFocus` parameter to `3`");
+        let env = env.start()
+            .expect("Failed to construct a new `Env` for SoftBoost");
 
         // Set uni as an uniform weight
         let uni = 1.0 / n_sample as f64;

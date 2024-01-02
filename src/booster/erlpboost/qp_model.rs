@@ -24,12 +24,14 @@ impl QPModel {
     pub(super) fn init(eta: f64, size: usize, upper_bound: f64)
         -> Self
     {
-        let mut env = Env::new("")
-            .expect("Failed to construct a new `Env` for ERLPBoost");
+        let mut env = Env::empty()
+            .expect("Failed to construct a new `Env` for LPBoost");
         env.set(param::OutputFlag, 0)
             .expect("Failed to set `param::OutputFlag` to `0`");
         env.set(param::NumericFocus, 3)
             .expect("Failed to set `NumericFocus` parameter to `3`");
+        let env = env.start()
+            .expect("Failed to construct a new `Env` for ERLPBoost");
 
         let mut model = Model::with_env("ERLPBoost", env)
             .expect("Failed to construct a new model for `ERLPBoost`");
