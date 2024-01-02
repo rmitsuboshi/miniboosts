@@ -146,7 +146,7 @@ impl<'a> CrossValidation<'a> {
     fn fold_at(&self, i: usize) -> (Sample, Sample) {
         let sample_size = self.sample.shape().0;
         let test_size = sample_size - self.train_size;
-        let (start, end) = (i*test_size, (i+1)*test_size);
+        let (start, end) = (i*test_size, ((i+1)*test_size).min(sample_size));
         self.sample.split(&self.ix, start, end)
     }
 }
