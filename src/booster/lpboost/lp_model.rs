@@ -19,10 +19,12 @@ impl LPModel {
     /// - `size`: Number of variables (Number of examples).
     /// - `upper_bound`: Capping parameter. `[1, size]`.
     pub(super) fn init(size: usize, upper_bound: f64) -> Self {
-        let mut env = Env::new("")
+        let mut env = Env::empty()
             .expect("Failed to construct a new `Env` for LPBoost");
         env.set(param::OutputFlag, 0)
             .expect("Failed to set `param::OutputFlag` to `0`");
+        let env = env.start()
+            .expect("Failed to construct a new `Env` for LPBoost");
 
         let mut model = Model::with_env("LPBoost", env)
             .expect("Failed to construct a new model for `MLPBoost`");

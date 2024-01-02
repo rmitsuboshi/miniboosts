@@ -14,10 +14,12 @@ pub(super) struct LPModel {
 
 impl LPModel {
     pub(super) fn init(n_sample: usize, upper_bound: f64) -> Self {
-        let mut env = Env::new("")
+        let mut env = Env::empty()
             .expect("Failed to construct a new `Env` for MLPBoost");
         env.set(param::OutputFlag, 0)
             .expect("Failed to set `param::OutputFlag` to `0`");
+        let env = env.start()
+            .expect("Failed to construct a new `Env` for MLPBoost");
 
         let mut model = Model::with_env("MLPBoost", env)
             .expect("Failed to construct a new model for `MLPBoost`");
