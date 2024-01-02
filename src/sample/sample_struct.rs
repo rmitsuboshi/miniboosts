@@ -21,7 +21,7 @@ use super::feature_struct::*;
 ///     .unwrap()
 ///     .set_target("class");
 /// ```
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct Sample {
     pub(super) name_to_index: HashMap<String, usize>,
     pub(super) features: Vec<Feature>,
@@ -514,6 +514,80 @@ impl Sample {
                 feat.weighted_mean_and_variance_for_label(y, target, weight)
             )
             .collect()
+    }
+
+
+    fn append(&mut self, row: usize, feat: Vec<f64>, y: f64) {
+        self.features.par_iter_mut()
+            .zip(feat)
+            .for_each(|(col, f)| {
+                col.append(row, f);
+            });
+        self.target.push(y);
+    }
+
+
+
+    /// Split `self` into two samples.
+    pub(crate) fn split<T>(&self, ix: T, start: usize, end: usize)
+        -> (Sample, Sample)
+        where T: AsRef<[usize]>
+    {
+        let n_feature = self.features.len();
+        let test_size = end - start;
+        let train_size = self.n_sample - test_size;
+        let ix = ix.as_ref();
+
+        let name_to_ix = self.name_to_index.clone();
+        let mut train = Self {
+            n_sample: train_size,
+            n_feature: n_feature,
+            name_to_index: name_to_ix.clone(),
+            features: vec![Feature::new_sparse("dummy"); n_feature],
+            target: Vec::with_capacity(train_size),
+        };
+
+        let mut test = Self {
+            n_sample: test_size,
+            n_feature: n_feature,
+            name_to_index: name_to_ix,
+            features: vec![Feature::new_sparse("dummy"); n_feature],
+            target: Vec::with_capacity(test_size),
+        };
+
+        for (name, &i) in self.name_to_index.iter() {
+            if self.features[i].is_sparse() {
+                train.features[i] = Feature::new_sparse(name.to_string());
+                test.features[i] = Feature::new_sparse(name.to_string());
+                train.features[i].set_n_sample(train_size);
+                test.features[i].set_n_sample(test_size);
+            } else {
+                train.features[i] = Feature::new_dense(name.to_string());
+                test.features[i] = Feature::new_dense(name.to_string());
+            }
+        }
+
+        for i in 0..start {
+            let ii = ix[i];
+            let (x, y) = self.at(ii);
+            train.append(i, x, y);
+        }
+
+
+        for i in start..end {
+            let ii = ix[i];
+            let (x, y) = self.at(ii);
+            test.append(i, x, y);
+        }
+
+
+        for i in end..self.n_sample {
+            let ii = ix[i];
+            let (x, y) = self.at(ii);
+            train.append(i, x, y);
+        }
+
+        (train, test)
     }
 }
 

@@ -8,7 +8,7 @@ const BUF_SIZE: usize = 256;
 const MINIMAL_WEIGHT_SUM: f64 = 1e-100;
 
 /// Dense representation of a feature.
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct DenseFeature {
     /// Feature name
     pub name: String,
@@ -18,7 +18,7 @@ pub struct DenseFeature {
 
 
 /// Sparse representation of a feature.
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct SparseFeature {
     /// Feature name
     pub name: String,
@@ -31,7 +31,7 @@ pub struct SparseFeature {
 
 
 /// An enumeration of sparse/dense feature.
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Feature {
     /// Dense representation of a feature
     Dense(DenseFeature),
@@ -50,6 +50,37 @@ impl Feature {
     /// Construct a sparse feature
     pub fn new_sparse<T: ToString>(name: T) -> Self {
         Self::Sparse(SparseFeature::new(name))
+    }
+
+
+    pub(crate) fn is_sparse(&self) -> bool {
+        match self {
+            Self::Dense(_) => false,
+            Self::Sparse(_) => true,
+        }
+    }
+
+
+    // pub(crate) fn is_dense(&self) -> bool {
+    //     !self.is_sparse()
+    // }
+
+
+    pub(crate) fn set_n_sample(&mut self, n_sample: usize) {
+        match self {
+            Self::Dense(_) => {},
+            Self::Sparse(feat) => {
+                feat.n_sample = n_sample;
+            }
+        }
+    }
+
+
+    pub(crate) fn append(&mut self, i: usize, f: f64) {
+        match self {
+            Self::Dense(feat) => { feat.append(f); },
+            Self::Sparse(feat) => { feat.append((i, f)); }
+        }
     }
 
 
