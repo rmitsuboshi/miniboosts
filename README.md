@@ -188,8 +188,11 @@ This crate can output a CSV file for such values in each step.
 Here is an example:
 ```rust
 use miniboosts::prelude::*;
-use miniboosts::research::Logger;
-use miniboosts::common::objective_functions::SoftMarginObjective;
+use miniboosts::{
+    Logger,
+    LoggerBuilder,
+    SoftMarginObjective,
+};
 
 
 // Define a loss function
