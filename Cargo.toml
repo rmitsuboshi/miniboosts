@@ -23,10 +23,10 @@ rand        = { version = "0.8.5" }
 rand_distr  = { version = "0.4.3" }
 rayon       = { version = "1.8.0" }
 serde       = { version = "1.0.193", features = ["rc", "derive"] }
-serde_json  = { version = "1.0.108", default-features = false, features = ["alloc"] }
+serde_json  = { version = "1.0.109", default-features = false, features = ["alloc"] }
 polars      = { version = "0.35.4" }
 fixedbitset = { version = "0.4.2" }
-colored     = { version = "2.0.4" }
+colored     = { version = "2.1.0" }
 
 [features]
 extended = ["grb"]

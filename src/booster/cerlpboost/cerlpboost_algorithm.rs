@@ -267,7 +267,7 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
     fn info(&self) -> Option<Vec<(&str, String)>> {
         let (n_sample, n_feature) = self.sample.shape();
         let ratio = self.nu / n_sample as f64;
-        let nu = self.nu;
+        let nu = utils::format_unit(self.nu);
         let fw = self.frank_wolfe.current_type();
         let info = Vec::from([
             ("# of examples", format!("{n_sample}")),

@@ -386,3 +386,20 @@ pub(crate) fn total_weight_for_label(
         .filter_map(|(t, w)| if t == y { Some(w) } else { None })
         .sum::<f64>()
 }
+
+
+pub(crate) fn format_unit(value: f64) -> String {
+    if value < 1_000f64 {
+        return format!("{value}");
+    }
+    let k = value / 1_000f64;
+    if k < 1_000f64 {
+        return format!("{k:>.1}K");
+    }
+    let m = k / 1_000f64;
+    if m < 1_000f64 {
+        return format!("{m:>.1}M");
+    }
+    let g = m / 1_000f64;
+    format!("{g:>.1}G")
+}
