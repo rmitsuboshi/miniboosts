@@ -7,6 +7,7 @@ mod core;
 mod smoothboost;
 mod adaboost;
 mod adaboostv;
+// mod adaboostl;
 
 #[cfg(feature="extended")]
 mod totalboost;
@@ -38,6 +39,7 @@ pub use self::core::Booster;
 
 // Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
+// pub use self::adaboostl::AdaBoostL;
 
 
 // Hard Margin Maximization

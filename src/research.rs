@@ -6,15 +6,19 @@
 //! - Test loss
 
 
-/// Defines a trait for logging.
-pub mod logger;
-/// Defines the logger builder.
-pub mod logger_builder;
+// Defines a trait for logging.
+mod logger;
+// Defines the logger builder.
+mod logger_builder;
+
+mod cross_validation;
 
 pub use logger::{
     Logger,
     Research,
 };
+
+pub use cross_validation::CrossValidation;
 
 pub use logger_builder::LoggerBuilder;
 

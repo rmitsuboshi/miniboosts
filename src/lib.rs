@@ -141,6 +141,7 @@ pub use booster::Booster;
 // Export the boosting algorithms that minimizes the empirical loss.
 pub use booster::{
     AdaBoost,
+    // AdaBoostL,
 };
 
 
@@ -237,6 +238,7 @@ pub use common::{
 pub use research::{
     Logger,
     LoggerBuilder,
+    CrossValidation,
     objective_functions::{
         SoftMarginObjective,
         HardMarginObjective,
