@@ -8,7 +8,7 @@ use crate::{
     WeakLearner,
 
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
 
     SoftBoost,
 
@@ -138,7 +138,7 @@ impl<'a, F> TotalBoost<'a, F>
 impl<F> Booster<F> for TotalBoost<'_, F>
     where F: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -185,7 +185,7 @@ impl<F> Booster<F> for TotalBoost<'_, F>
 impl<H> Research for TotalBoost<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
         self.softboost.current_hypothesis()
     }

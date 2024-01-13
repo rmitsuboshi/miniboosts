@@ -29,7 +29,7 @@ you can use the `extended` feature for free if you are a student.
 | [AdaBoost][adaboost]<br>by Freund and Schapire, 1997                                                 |                |
 | [GBM][gbm] (Gradient Boosting Machine),<br>by Jerome H. Friedman, 2001                               |                |
 | [LPBoost][lpboost]<br>by Demiriz, Bennett, and Shawe-Taylor, 2002                                    |   `extended`   |
-| [SmoothBoost][smoothboost]<br>by Rocco A. Servedio, 2003                                             |                |
+| [SmoothBoost][smoothboost]<br>by Servedio, 2003                                             |                |
 | [AdaBoostV][adaboostv]<br>by Rätsch and Warmuth, 2005                                                |                |
 | [TotalBoost][totalboost]<br>by Warmuth, Liao, and Rätsch, 2006                                       |   `extended`   |
 | [SoftBoost][softboost]<br>by Warmuth, Glocer, and Rätsch, 2007                                       |   `extended`   |
@@ -258,13 +258,13 @@ fn main() {
         .objective_function(objective)
         .loss_function(zero_one_loss)
         .time_limit_as_secs(120) // Terminate after 120 seconds
-        .print_every(10) // Print log every 10 rounds.
+        .print_every(10)         // Print log every 10 rounds.
         .build();
 
     // Each line of `lpboost.csv` contains the following four information:
     // Objective value, Train loss, Test loss, Time per iteration
     // The returned value `f` is the combined hypothesis.
-    let f = logger.run("lpboost.csv")
+    let f = logger.run("logfile.csv")
         .expect("Failed to logging");
 }
 ```
@@ -292,6 +292,7 @@ fn main() {
     - [SparsiBoost][sparsiboost]
     - [LogitBoost][logitboost]
     - [AdaBoost.L][adaboostl]
+    - [Branching Program][branching]
 
 
 - Weak Learners
@@ -311,6 +312,7 @@ fn main() {
 [adaboostv]: http://jmlr.org/papers/v6/ratsch05a.html
 [anyboost]: https://www.researchgate.net/publication/243689632_Functional_gradient_techniques_for_combining_hypotheses
 [badbaselearner]: https://papers.nips.cc/paper_files/paper/2007/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html
+[branching]: https://www.sciencedirect.com/science/article/pii/S0022000001917969
 [cerlpboost]: https://link.springer.com/article/10.1007/s10994-010-5173-z
 [decisiontree]: https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418
 [erlpboost]: https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf

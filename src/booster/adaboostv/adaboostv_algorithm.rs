@@ -11,7 +11,7 @@ use crate::{
     WeakLearner,
 
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
 
     common::utils,
     research::Research,
@@ -278,7 +278,7 @@ impl<'a, F> AdaBoostV<'a, F> {
 impl<F> Booster<F> for AdaBoostV<'_, F>
     where F: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
     fn name(&self) -> &str {
         "AdaBoostV"
@@ -378,7 +378,7 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
     ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -386,9 +386,9 @@ impl<F> Booster<F> for AdaBoostV<'_, F>
 impl<H> Research for AdaBoostV<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 

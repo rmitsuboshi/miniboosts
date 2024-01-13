@@ -7,7 +7,7 @@ use crate::{
     Booster,
     WeakLearner,
     Regressor,
-    CombinedHypothesis
+    WeightedMajority
 };
 
 use std::ops::ControlFlow;
@@ -32,11 +32,11 @@ use std::ops::ControlFlow;
 /// for running [`GBM`].  
 /// See also:
 /// - [`Regressor`]
-/// - [`CombinedHypothesis<F>`]
+/// - [`WeightedMajority<F>`]
 /// 
 /// [`RegressionTree`]: crate::weak_learner::RegressionTree
 /// [`RegressionTreeRegressor`]: crate::weak_learner::RegressionTreeRegressor
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`WeightedMajority<F>`]: crate::hypothesis::WeightedMajority
 /// 
 /// 
 /// ```no_run
@@ -180,7 +180,7 @@ impl<'a, F> GBM<'a, F> {
 impl<F> Booster<F> for GBM<'_, F>
     where F: Regressor + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -266,7 +266,7 @@ impl<F> Booster<F> for GBM<'_, F>
     ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 

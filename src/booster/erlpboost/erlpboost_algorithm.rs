@@ -8,7 +8,7 @@ use crate::{
     WeakLearner,
 
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
     common::utils,
     common::checker,
     research::Research,
@@ -335,7 +335,7 @@ impl<F> ERLPBoost<'_, F>
 impl<F> Booster<F> for ERLPBoost<'_, F>
     where F: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -440,14 +440,14 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
             .weight()
             .collect::<Vec<_>>();
 
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
 impl<H> Research for ERLPBoost<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
         let weights = self.qp_model.as_ref()
             .expect("Failed to call `.as_ref()` to `self.qp_model`")
@@ -455,7 +455,7 @@ impl<H> Research for ERLPBoost<'_, H>
             .weight()
             .collect::<Vec<_>>();
 
-        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
 

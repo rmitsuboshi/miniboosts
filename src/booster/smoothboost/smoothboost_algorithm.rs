@@ -11,7 +11,7 @@ use crate::{
     WeakLearner,
 
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
 
     research::Research,
 };
@@ -35,13 +35,13 @@ use std::ops::ControlFlow;
 /// - [`SmoothBoost::gamma`]
 /// - [`DecisionTree`]
 /// - [`DecisionTreeClassifier`]
-/// - [`CombinedHypothesis<F>`]
+/// - [`WeightedMajority<F>`]
 /// 
 /// [`SmoothBoost::tolerance`]: SmoothBoost::tolerance
 /// [`SmoothBoost::gamma`]: SmoothBoost::gamma
 /// [`DecisionTree`]: crate::weak_learner::DecisionTree
 /// [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-/// [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+/// [`WeightedMajority<F>`]: crate::hypothesis::WeightedMajority
 /// 
 /// 
 /// ```no_run
@@ -74,7 +74,7 @@ use std::ops::ControlFlow;
 ///     .criterion(Criterion::Edge);
 /// 
 /// // Run `SmoothBoost` and obtain the resulting hypothesis `f`.
-/// let f: CombinedHypothesis<DecisionTreeClassifier> = booster.run(&weak_learner);
+/// let f: WeightedMajority<DecisionTreeClassifier> = booster.run(&weak_learner);
 /// 
 /// // Get the predictions on the training set.
 /// let predictions: Vec<i64> = f.predict_all(&sample);
@@ -224,7 +224,7 @@ impl<'a, F> SmoothBoost<'a, F> {
 impl<F> Booster<F> for SmoothBoost<'_, F>
     where F: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -346,7 +346,7 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
     {
         let weight = 1.0 / self.terminated as f64;
         let weights = vec![weight; self.n_sample];
-        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
 
@@ -354,10 +354,10 @@ impl<F> Booster<F> for SmoothBoost<'_, F>
 impl<H> Research for SmoothBoost<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
         let weight = 1.0 / self.terminated as f64;
         let weights = vec![weight; self.n_sample];
-        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }

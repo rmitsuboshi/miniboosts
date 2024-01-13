@@ -49,7 +49,7 @@
 //! [`DecisionTree`]: crate::weak_learner::DecisionTree
 //! [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
 //! [`NeuralNetwork`]: crate::weak_learner::NeuralNetwork
-//! [`CombinedHypothesis<F>`]: crate::hypothesis::CombinedHypothesis
+//! [`WeightedMajority<F>`]: crate::hypothesis::WeightedMajority
 //! [`GaussianNB`]: crate::weak_learner::GaussianNB
 //! [`BadBaseLearner`]: crate::weak_learner::BadBaseLearner
 //! 
@@ -128,7 +128,7 @@ pub use sample::{
 pub use hypothesis::{
     Classifier,
     Regressor,
-    CombinedHypothesis,
+    WeightedMajority,
     NaiveAggregation,
 };
 
