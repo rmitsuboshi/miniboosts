@@ -77,7 +77,7 @@ pub use crate::weak_learner::{
 pub use crate::hypothesis::{
     Classifier,
     Regressor,
-    CombinedHypothesis,
+    WeightedMajority,
 };
 
 pub use crate::{

@@ -39,7 +39,7 @@ pub trait Booster<H> {
 
 
     /// The final hypothesis output by a boosting algorithm.
-    /// Most algorithms return [`CombinedHypothesis<H>`](crate::hypothesis::CombinedHypothesis),
+    /// Most algorithms return [`WeightedMajority<H>`](crate::hypothesis::WeightedMajority),
     /// which is a weighted majority vote of base hypotheses.
     type Output;
     /// A main function that runs boosting algorithm.
@@ -82,7 +82,7 @@ pub trait Booster<H> {
 
 
     /// Post-processing.
-    /// This method returns a [`CombinedHypothesis<H>`](crate::hypothesis::CombinedHypothesis).
+    /// This method returns a [`WeightedMajority<H>`](crate::hypothesis::WeightedMajority).
     fn postprocess<W>(
         &mut self,
         weak_learner: &W,

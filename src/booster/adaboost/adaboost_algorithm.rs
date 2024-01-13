@@ -6,7 +6,7 @@ use crate::{
     Booster,
     WeakLearner,
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
     Sample,
 
     common::utils,
@@ -21,7 +21,9 @@ use std::ops::ControlFlow;
 /// 
 /// This struct is based on the book: 
 ///
-/// [Boosting: Foundations and Algorithms](https://direct.mit.edu/books/oa-monograph/5342/BoostingFoundations-and-Algorithms)
+/// [
+/// Boosting: Foundations and Algorithms
+/// ](https://direct.mit.edu/books/oa-monograph/5342/BoostingFoundations-and-Algorithms)  
 /// by Robert E. Schapire and Yoav Freund.
 /// 
 /// AdaBoost is a boosting algorithm for binary classification 
@@ -244,7 +246,7 @@ impl<'a, F> AdaBoost<'a, F> {
 impl<F> Booster<F> for AdaBoost<'_, F>
     where F: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -343,7 +345,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
     ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -351,8 +353,8 @@ impl<F> Booster<F> for AdaBoost<'_, F>
 impl<H> Research for AdaBoost<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }

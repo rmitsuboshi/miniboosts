@@ -8,7 +8,7 @@ use crate::{
     WeakLearner,
 
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
     common::utils,
     research::Research,
 };
@@ -453,7 +453,7 @@ impl<F> SoftBoost<'_, F>
 impl<F> Booster<F> for SoftBoost<'_, F>
     where F: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -546,7 +546,7 @@ impl<F> Booster<F> for SoftBoost<'_, F>
         // by solving a linear program
         self.weights = self.set_weights()
             .expect("Failed to solve the LP");
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -555,11 +555,11 @@ impl<F> Booster<F> for SoftBoost<'_, F>
 impl<H> Research for SoftBoost<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
         let weights = self.set_weights()
             .expect("Failed to solve the LP");
-        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
 

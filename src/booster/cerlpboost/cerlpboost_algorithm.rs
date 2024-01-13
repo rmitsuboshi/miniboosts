@@ -14,7 +14,7 @@ use crate::{
     WeakLearner,
 
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
     common::utils,
     common::checker,
     common::frank_wolfe::{FrankWolfe, FWType},
@@ -51,14 +51,17 @@ use std::ops::ControlFlow;
 /// # Related information
 /// - Running time per round is 
 ///   the fastest among soft-margin boosting algorithms.
-/// - The iteration bound is the same as the one to [`ERLPBoost`].
+/// - The iteration bound is the same as the one to [`ERLPBoost`][erlpboost].
 /// - Empirically, the number of rounds tend to huge compared to
 ///   totally corrective algorithms 
-///   such as [`ERLPBoost`] and [`LPBoost`].
+///   such as [`ERLPBoost`][erlpboost] and [`LPBoost`][lpboost].
 /// - By default, CERLPBoost uses short-step strategy,
 ///   which converges very slow.
 /// - One can specify other step size strategies.
 ///   See [`CERLPBoost::variant`].
+///
+/// [erlpboost]: crate::booster::ERLPBoost
+/// [lpboost]: crate::booster::LPBoost
 /// 
 /// # Example
 /// The following code shows a small example 
@@ -256,7 +259,7 @@ impl<F> CERLPBoost<'_, F>
 impl<F> Booster<F> for CERLPBoost<'_, F>
     where F: Classifier + Clone + PartialEq + std::fmt::Debug,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -385,7 +388,7 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
     ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -393,8 +396,8 @@ impl<F> Booster<F> for CERLPBoost<'_, F>
 impl<H> Research for CERLPBoost<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }

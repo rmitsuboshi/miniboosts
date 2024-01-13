@@ -10,7 +10,7 @@ use crate::{
     WeakLearner,
 
     Classifier,
-    CombinedHypothesis,
+    WeightedMajority,
     common::utils,
     common::checker,
     research::Research,
@@ -250,7 +250,7 @@ impl<'a, F> LPBoost<'a, F>
 impl<F> Booster<F> for LPBoost<'_, F>
     where F: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<F>;
+    type Output = WeightedMajority<F>;
 
 
     fn name(&self) -> &str {
@@ -341,7 +341,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
             .weight()
             .collect::<Vec<_>>();
 
-        CombinedHypothesis::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
@@ -349,7 +349,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
 impl<H> Research for LPBoost<'_, H>
     where H: Classifier + Clone,
 {
-    type Output = CombinedHypothesis<H>;
+    type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
         let weights = self.lp_model.as_ref()
             .expect("Failed to call `.as_ref()` to `self.lp_model`")
@@ -357,6 +357,6 @@ impl<H> Research for LPBoost<'_, H>
             .weight()
             .collect::<Vec<_>>();
 
-        CombinedHypothesis::from_slices(&weights[..], &self.hypotheses[..])
+        WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
