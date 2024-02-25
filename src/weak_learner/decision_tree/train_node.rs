@@ -15,6 +15,9 @@ use std::cell::RefCell;
 use std::fmt;
 
 
+pub(super) type TrainNodePtr = Rc<RefCell<TrainNode>>;
+
+
 /// Enumeration of `TrainBranchNode` and `TrainLeafNode`.
 pub enum TrainNode {
     /// A node that have two childrens.
@@ -34,11 +37,11 @@ pub struct TrainBranchNode {
 
 
     // Left child
-    pub(super) left: Rc<RefCell<TrainNode>>,
+    pub(super) left: TrainNodePtr,
 
 
     // Right child
-    pub(super) right: Rc<RefCell<TrainNode>>,
+    pub(super) right: TrainNodePtr,
 
 
     // A label that have most weight on this node.
@@ -125,8 +128,8 @@ impl TrainNode {
     #[inline]
     pub(super) fn branch(
         rule: Splitter,
-        left: Rc<RefCell<TrainNode>>,
-        right: Rc<RefCell<TrainNode>>,
+        left: TrainNodePtr,
+        right: TrainNodePtr,
         confidence: Confidence<f64>,
         total_weight: f64,
         loss_as_leaf: LossValue,

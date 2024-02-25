@@ -19,7 +19,6 @@ use super::{
 
 use std::fmt;
 use std::rc::Rc;
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 
@@ -103,7 +102,7 @@ impl<'a> DecisionTree<'a> {
         indices: Vec<usize>,
         criterion: Criterion,
         depth: Depth,
-    ) -> Rc<RefCell<TrainNode>>
+    ) -> TrainNodePtr
     {
         let total_weight = indices.par_iter()
             .copied()
@@ -254,11 +253,7 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
 
     // From the update rule of boosting algorithm,
     // the sum of `dist` over `indices` may become zero,
-    let loss = if total > 0.0 {
-        total * (1.0 - (p / total))
-    } else {
-        0.0
-    };
+    let loss = if total > 0.0 { total * (1.0 - (p / total)) } else { 0.0 };
 
     // `label` takes value in `{-1, +1}`.
     let confidence = if total > 0.0 {
