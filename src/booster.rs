@@ -7,6 +7,7 @@ mod core;
 mod smoothboost;
 mod adaboost;
 mod adaboostv;
+mod madaboost;
 // mod adaboostl;
 
 #[cfg(feature="extended")]
@@ -39,6 +40,7 @@ pub use self::core::Booster;
 
 // Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
+pub use self::madaboost::MadaBoost;
 // pub use self::adaboostl::AdaBoostL;
 
 

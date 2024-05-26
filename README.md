@@ -15,7 +15,7 @@ For each round of the game,
 After sufficient rounds, the *Booster* outputs a hypothesis
 that performs significantly better on training examples.
 
-Some *Booster* need to enable `extended` flag in `Cargo.toml` like this:  
+Some *Booster*s need to enable `extended` flag in `Cargo.toml` like this:  
 ```toml
 minibosts = { version = "0.3.3", features = ["extended"] }
 ```
@@ -27,9 +27,10 @@ you can use the `extended` feature for free if you are a student.
 |`BOOSTER`                                                                                             | `FEATURE FLAG` |
 | :---                                                                                                 | :---           |
 | [AdaBoost][adaboost]<br>by Freund and Schapire, 1997                                                 |                |
-| [GBM][gbm] (Gradient Boosting Machine),<br>by Jerome H. Friedman, 2001                               |                |
+| [MadaBoost][madaboost]<br>by Domingo and Watanabe, 2000                                              |                |
+| [GBM][gbm] (Gradient Boosting Machine)<br>by Jerome H. Friedman, 2001                                |                |
 | [LPBoost][lpboost]<br>by Demiriz, Bennett, and Shawe-Taylor, 2002                                    |   `extended`   |
-| [SmoothBoost][smoothboost]<br>by Servedio, 2003                                             |                |
+| [SmoothBoost][smoothboost]<br>by Servedio, 2003                                                      |                |
 | [AdaBoostV][adaboostv]<br>by Rätsch and Warmuth, 2005                                                |                |
 | [TotalBoost][totalboost]<br>by Warmuth, Liao, and Rätsch, 2006                                       |   `extended`   |
 | [SoftBoost][softboost]<br>by Warmuth, Glocer, and Rätsch, 2007                                       |   `extended`   |
@@ -317,17 +318,18 @@ fn main() {
 [decisiontree]: https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418
 [erlpboost]: https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf
 [gbm]: https://projecteuclid.org/journals/annals-of-statistics/volume-29/issue-5/Greedy-function-approximation-A-gradient-boostingmachine/10.1214/aos/1013203451.full
-[gurobi]: https://www.gurobi.com
 [graphsepboost]: https://theoretics.episciences.org/10757
+[gurobi]: https://www.gurobi.com
 [lightgbm]: https://github.com/microsoft/LightGBM
 [logitboost]: https://projecteuclid.org/journals/annals-of-statistics/volume-28/issue-2/Additive-logistic-regression--a-statistical-view-of-boosting-With/10.1214/aos/1016218223.full
 [lpboost]: https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf
+[mlpboost]: https://arxiv.org/abs/2209.10831
+[madaboost]: https://www.learningtheory.org/colt2000/papers/DomingoWatanabe.pdf
+[regressiontree]: https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418
 [smoothboost]: https://link.springer.com/chapter/10.1007/3-540-44581-1_31
 [softboost]: https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf
-[totalboost]: https://dl.acm.org/doi/10.1145/1143844.1143970
-[mlpboost]: https://arxiv.org/abs/2209.10831
-[regressiontree]: https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418
 [sparsiboost]: http://proceedings.mlr.press/v97/mathiasen19a/mathiasen19a.pdf
+[totalboost]: https://dl.acm.org/doi/10.1145/1143844.1143970
 [xgboost]: https://github.com/dmlc/xgboost
 
 [miniboosts]: https://docs.rs/miniboosts/latest/miniboosts/
