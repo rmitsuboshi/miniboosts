@@ -11,9 +11,12 @@ pub mod gbm_boston {
         let mut path = env::current_dir().unwrap();
         path.push("tests/dataset/boston_housing.csv");
 
-        let sample = Sample::from_csv(path, true)
-            .unwrap()
-            .set_target("MEDV");
+        let sample = SampleReader::new()
+            .file(path)
+            .has_header(true)
+            .target_feature("target")
+            .read()
+            .unwrap();
 
 
         let n_sample = sample.shape().0 as f64;
