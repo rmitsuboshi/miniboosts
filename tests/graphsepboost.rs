@@ -12,9 +12,12 @@ pub mod graphsepboost_tests {
         let mut path = env::current_dir().unwrap();
         path.push("tests/dataset/iris_binary.csv");
 
-        let sample = Sample::from_csv(path, true)
-            .unwrap()
-            .set_target("class");
+        let sample = SampleReader::new()
+            .file(path)
+            .has_header(true)
+            .target_feature("class")
+            .read()
+            .unwrap();
 
 
         let mut booster = GraphSepBoost::init(&sample)
