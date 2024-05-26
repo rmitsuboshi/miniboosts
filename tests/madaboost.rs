@@ -3,9 +3,9 @@ use miniboosts::prelude::*;
 
 
 
-/// Tests for `AdaBoost`.
+/// Tests for `MadaBoost`.
 #[cfg(test)]
-pub mod adaboost_tests {
+pub mod madaboost_tests {
     use super::*;
     #[test]
     fn german() {
@@ -20,9 +20,10 @@ pub mod adaboost_tests {
             .unwrap();
 
 
-        let mut booster = AdaBoost::init(&sample)
+        let mut booster = MadaBoost::init(&sample)
             .tolerance(0.01)
-            .force_quit_at(100);
+            .force_quit_at(200);
+
 
         let wl = DecisionTreeBuilder::new(&sample)
             .max_depth(2)

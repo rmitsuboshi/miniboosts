@@ -8,6 +8,7 @@ pub use crate::booster::{
     // Classification ---------------------------
     // ERM boostings
     AdaBoost,
+    MadaBoost,
 
 
     // Hard margin maximizing boostings
