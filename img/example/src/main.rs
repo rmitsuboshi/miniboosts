@@ -40,9 +40,12 @@ fn main() {
     let path = args.next()
         .expect("[USAGE] ./example [csv file (train)] [csv file (test)]");
 
-    let train = Sample::from_csv(path, true)
-        .unwrap()
-        .set_target("class");
+    let train = SampleReader::new()
+        .file(path)
+        .has_header(true)
+        .target_feature("class")
+        .read()
+        .unwrap();
 
     let n_sample = train.shape().0 as f64;
     let nu = 0.01 * n_sample;
@@ -50,9 +53,13 @@ fn main() {
 
     let path = args.next()
         .expect("[USAGE] ./example [csv file (train)] [csv file (test)]");
-    let test = Sample::from_csv(path, true)
-        .unwrap()
-        .set_target("class");
+
+    let test = SampleReader::new()
+        .file(path)
+        .has_header(true)
+        .target_feature("class")
+        .read()
+        .unwrap();
 
 
     // // Run AdaBoost
