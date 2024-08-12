@@ -17,7 +17,7 @@ that performs significantly better on training examples.
 
 Some *Booster*s need to enable `extended` flag in `Cargo.toml` like this:  
 ```toml
-minibosts = { version = "0.3.3", features = ["extended"] }
+minibosts = { version = "0.3.4", features = ["extended"] }
 ```
 These boosting algorithms use [Gurobi][gurobi] to compute 
 a distribution over training examples.
@@ -109,12 +109,12 @@ See [Research feature](#research-feature) section for detail.
 
 Write the following to `Cargo.toml`.
 ```TOML
-miniboosts = { version = "0.3.3" }
+miniboosts = { version = "0.3.4" }
 ```
 
 If you want to use `extended` features, enable the flag:
 ```TOML
-miniboosts = { version = "0.3.3", features = ["extended"] }
+miniboosts = { version = "0.3.4", features = ["extended"] }
 ```
 
 Here is a sample code:
