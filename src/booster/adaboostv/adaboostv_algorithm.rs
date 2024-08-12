@@ -197,6 +197,7 @@ impl<'a, F> AdaBoostV<'a, F> {
     /// Set the maximal number of rounds.
     /// This method is called by [SparsiBoost](crate::booster::SparsiBoost).
     #[inline]
+    #[allow(unused)]
     pub(crate) fn set_max_loop(&mut self, max_loop: usize) {
         self.max_iter = max_loop;
     }
