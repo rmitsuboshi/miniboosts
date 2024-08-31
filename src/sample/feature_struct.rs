@@ -347,7 +347,7 @@ impl DenseFeature {
 
 
 impl SparseFeature {
-    /// Construct an empty dense feature with `name`.
+    /// Construct an empty sparse feature with `name`.
     pub fn new<T: ToString>(name: T) -> Self {
         Self {
             name: name.to_string(),
