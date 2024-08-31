@@ -91,6 +91,10 @@ pub struct GraphSepBoost<'a, F> {
 
     // Hypohteses obtained by the weak-learner.
     hypotheses: Vec<F>,
+
+
+    // The number of edges at the end of the previous round.
+    n_edges: usize,
 }
 
 
@@ -104,6 +108,7 @@ impl<'a, F> GraphSepBoost<'a, F> {
             sample,
             hypotheses: Vec::new(),
             edges: Vec::new(),
+            n_edges: usize::MAX,
         }
     }
 }
@@ -180,6 +185,11 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
             }
         }
 
+        self.n_edges = self.edges
+            .iter()
+            .map(|edges| edges.len())
+            .sum();
+
         self.hypotheses = Vec::new();
     }
 
@@ -191,22 +201,29 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
     ) -> ControlFlow<usize>
         where W: WeakLearner<Hypothesis = F>,
     {
-        let n_edges_2 = self.edges.iter()
-            .map(|edge| edge.len())
-            .sum::<usize>();
-        if n_edges_2 == 0 {
+        if self.n_edges == 0 {
             return ControlFlow::Break(iteration);
         }
-        let denom = n_edges_2 as f64;
 
         let dist = self.edges.iter()
-            .map(|edge| edge.len() as f64 / denom)
+            .map(|edge| edge.len() as f64 / self.n_edges as f64)
             .collect::<Vec<_>>();
 
         // Get a new hypothesis
         let h = weak_learner.produce(self.sample, &dist);
         self.update_params(&h);
         self.hypotheses.push(h);
+
+
+        let n_edges = self.edges
+            .iter()
+            .map(|edges| edges.len())
+            .sum::<usize>();
+        if self.n_edges == n_edges {
+            eprintln!("[WARN] number of edges does not decrease.");
+            return ControlFlow::Break(iteration+1);
+        }
+        self.n_edges = n_edges;
 
         ControlFlow::Continue(())
     }

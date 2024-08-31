@@ -10,7 +10,8 @@ pub mod graphsepboost_tests {
     #[test]
     fn iris() {
         let mut path = env::current_dir().unwrap();
-        path.push("tests/dataset/iris_binary.csv");
+        path.push("tests/dataset/german.csv");
+        // path.push("tests/dataset/iris_binary.csv");
 
         let sample = SampleReader::new()
             .file(path)
@@ -20,8 +21,7 @@ pub mod graphsepboost_tests {
             .unwrap();
 
 
-        let mut booster = GraphSepBoost::init(&sample)
-            .tolerance(0.01);
+        let mut booster = GraphSepBoost::init(&sample);
 
         let wl = DecisionTreeBuilder::new(&sample)
             .max_depth(1)
