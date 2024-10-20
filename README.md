@@ -4,7 +4,9 @@
 
 [Documentation][miniboosts]
 
-*MiniBoosts* is a library for boosting algorithm developers.  
+*MiniBoosts* is a library for boosting algorithm researchers.  
+
+## What is **Boosting**?
 Boosting is a repeated game between a *Booster* and a *Weak Learner*.
 
 For each round of the game,
@@ -16,14 +18,25 @@ For each round of the game,
 After sufficient rounds, the *Booster* outputs a hypothesis
 that performs significantly better on training examples.
 
+## How to use this library
+Write the following in your `cargo.toml.`
+```toml
+[dependencies]
+minibosts = { version = "0.3.4" }
+```
+
 Some *Booster*s need to enable `extended` flag in `Cargo.toml` like this:  
 ```toml
+[dependencies]
 minibosts = { version = "0.3.4", features = ["extended"] }
 ```
 These boosting algorithms use [Gurobi][gurobi] to compute 
 a distribution over training examples.
-Thanks to Gurobi, 
-you can use the `extended` feature for free if you are a student.
+One can use the `extended` features for free if you are a student.
+
+**Note:** _The compilation fails if you_ **do not** _have a Gurobi licenses._
+
+Currently, following boosting algorithms are available:
 
 |`BOOSTER`                                                                                             | `FEATURE FLAG` |
 | :---                                                                                                 | :---           |
