@@ -5,15 +5,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: cargo build --release -F extended
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
   windows:
     runs-on: windows-latest
     steps:
       - run: cargo build --release -F extended
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
   macos:
     runs-on: macos-latest
     steps:
       - run: cargo build --release -F extended
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
