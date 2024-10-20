@@ -118,7 +118,7 @@ See [Research feature](#research-feature) section for detail.
 
 
 
-## How to use
+## Examples
 [Documentation][miniboosts]
 
 Write the following to `Cargo.toml`.

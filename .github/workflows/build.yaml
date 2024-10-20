@@ -5,7 +5,7 @@ on:
     paths:
       - '.github/workflows/build.yaml'
       - 'Cargo.toml'
-      - 'src/*'
+      - 'src/**'
 jobs:
   ubuntu:
     runs-on: ubuntu-latest
