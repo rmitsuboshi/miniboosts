@@ -1,5 +1,6 @@
 <img src="./img/logo.svg"> 
 
+[![Build check](https://github.com/rmitsuboshi/miniboosts/actions/workflows/build.yaml/badge.svg)](https://github.com/rmitsuboshi/miniboosts/actions/workflows/build.yaml)
 
 [Documentation][miniboosts]
 
