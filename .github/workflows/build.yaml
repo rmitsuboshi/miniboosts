@@ -1,19 +1,19 @@
-name: cargo build check
+name: cargo build check (no extend feature)
 on: push
 jobs:
   ubuntu:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build --release -F extended
+      - run: cargo build --release
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build --release -F extended
+      - run: cargo build --release
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build --release -F extended
+      - run: cargo build --release
 
