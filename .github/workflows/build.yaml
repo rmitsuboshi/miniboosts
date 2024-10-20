@@ -4,16 +4,16 @@ jobs:
   ubuntu:
     runs-on: ubuntu-latest
     steps:
-      - run: cargo build --release -F extended
       - uses: actions/checkout@v4
+      - run: cargo build --release -F extended
   windows:
     runs-on: windows-latest
     steps:
-      - run: cargo build --release -F extended
       - uses: actions/checkout@v4
+      - run: cargo build --release -F extended
   macos:
     runs-on: macos-latest
     steps:
-      - run: cargo build --release -F extended
       - uses: actions/checkout@v4
+      - run: cargo build --release -F extended
 
