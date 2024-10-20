@@ -4,16 +4,16 @@ jobs:
   ubuntu:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Build check on ${{ runner.name }}"
       - run: cargo build --release -F extended
+        uses: actions/checkout@v4
   windows:
     runs-on: windows-latest
     steps:
-      - run: echo "Build check on ${{ runner.name }}"
       - run: cargo build --release -F extended
+        uses: actions/checkout@v4
   macos:
     runs-on: macos-latest
     steps:
-      - run: echo "Build check on ${{ runner.name }}"
       - run: cargo build --release -F extended
+        uses: actions/checkout@v4
 
