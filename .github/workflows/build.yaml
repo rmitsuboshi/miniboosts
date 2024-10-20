@@ -1,5 +1,11 @@
-name: cargo build check (no extend feature)
-on: push
+name: Build check
+on:
+  push:
+    branches: ['main']
+    paths:
+      - '.github/workflows/build.yaml'
+      - 'Cargo.toml'
+      - 'src/*'
 jobs:
   ubuntu:
     runs-on: ubuntu-latest
