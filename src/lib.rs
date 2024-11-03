@@ -162,14 +162,19 @@ pub use booster::{
 
 // Export the boosting algorithms that maximizes the soft margin.
 // (These boosting algorithms use Gurobi)
-#[cfg(feature="extended")]
+#[cfg(not(feature="gurobi"))]
 pub use booster::{
-    TotalBoost,
     LPBoost,
+};
+#[cfg(feature="gurobi")]
+pub use booster::{
+    LPBoost,
+    TotalBoost,
     ERLPBoost,
     SoftBoost,
     MLPBoost,
 };
+
 
 
 // Export the boosting algorithms for regression

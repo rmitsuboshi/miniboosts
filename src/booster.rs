@@ -7,26 +7,23 @@ mod core;
 mod smoothboost;
 mod adaboost;
 mod adaboostv;
-mod madaboost;
-// mod adaboostl;
-
-#[cfg(feature="extended")]
-mod totalboost;
-
 mod cerlpboost;
-#[cfg(feature="extended")]
-mod lpboost;
-#[cfg(feature="extended")]
-mod erlpboost;
-#[cfg(feature="extended")]
-mod softboost;
-#[cfg(feature="extended")]
-mod mlpboost;
-// #[cfg(feature="extended")]
-// pub mod perturbed_lpboost;
-
 mod gradient_boost;
 mod graph_separation_boosting;
+mod madaboost;
+// mod branching_program;
+mod lpboost;
+
+#[cfg(feature="gurobi")]
+mod totalboost;
+
+#[cfg(feature="gurobi")]
+mod erlpboost;
+#[cfg(feature="gurobi")]
+mod softboost;
+#[cfg(feature="gurobi")]
+mod mlpboost;
+
 
 
 /// Booster trait
@@ -41,28 +38,26 @@ pub use self::core::Booster;
 // Empirical Risk Minimization
 pub use self::adaboost::AdaBoost;
 pub use self::madaboost::MadaBoost;
-// pub use self::adaboostl::AdaBoostL;
 
 
 // Hard Margin Maximization
 pub use self::adaboostv::AdaBoostV;
-#[cfg(feature="extended")]
+#[cfg(feature="gurobi")]
 pub use self::totalboost::TotalBoost;
 
 
 // Soft Margin Maximization
-#[cfg(feature="extended")]
 pub use self::lpboost::LPBoost;
-#[cfg(feature="extended")]
+#[cfg(feature="gurobi")]
 pub use self::erlpboost::ERLPBoost;
-#[cfg(feature="extended")]
+#[cfg(feature="gurobi")]
 pub use self::softboost::SoftBoost;
 
 pub use self::smoothboost::SmoothBoost;
 
 pub use self::cerlpboost::CERLPBoost;
 
-#[cfg(feature="extended")]
+#[cfg(feature="gurobi")]
 pub use self::mlpboost::MLPBoost;
 
 

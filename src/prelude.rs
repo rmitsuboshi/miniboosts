@@ -17,6 +17,7 @@ pub use crate::booster::{
     // Soft margin optimization
     SmoothBoost,
     CERLPBoost,
+    LPBoost,
 
 
     // Regression
@@ -27,12 +28,11 @@ pub use crate::booster::{
     GraphSepBoost,
 };
 
-#[cfg(feature="extended")]
+#[cfg(feature="gurobi")]
 pub use crate::booster::{
     TotalBoost,
 
     // Soft margin maximizing boostings
-    LPBoost,
     ERLPBoost,
     SoftBoost,
 
