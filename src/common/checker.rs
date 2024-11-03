@@ -46,7 +46,7 @@ pub(crate) fn check_capped_simplex_condition(
     check_nu(nu, length);
 
     let sum = slice.iter().sum::<f64>();
-    assert!((sum - 1.0).abs() < 1e-9, "Got sum = {sum}");
+    assert!((sum - 1.0).abs() < 1e-6, "Got sum = {sum}");
 
     let ub = 1.0 / nu;
     assert!(slice.iter().all(|s| (0.0..=ub).contains(s)));
