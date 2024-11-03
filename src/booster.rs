@@ -13,6 +13,7 @@ mod graph_separation_boosting;
 mod madaboost;
 // mod branching_program;
 mod lpboost;
+mod mlpboost;
 
 #[cfg(feature="gurobi")]
 mod totalboost;
@@ -21,8 +22,6 @@ mod totalboost;
 mod erlpboost;
 #[cfg(feature="gurobi")]
 mod softboost;
-#[cfg(feature="gurobi")]
-mod mlpboost;
 
 
 
@@ -48,6 +47,7 @@ pub use self::totalboost::TotalBoost;
 
 // Soft Margin Maximization
 pub use self::lpboost::LPBoost;
+pub use self::mlpboost::MLPBoost;
 #[cfg(feature="gurobi")]
 pub use self::erlpboost::ERLPBoost;
 #[cfg(feature="gurobi")]
@@ -57,8 +57,6 @@ pub use self::smoothboost::SmoothBoost;
 
 pub use self::cerlpboost::CERLPBoost;
 
-#[cfg(feature="gurobi")]
-pub use self::mlpboost::MLPBoost;
 
 
 pub use self::gradient_boost::GBM;

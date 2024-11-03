@@ -3,7 +3,11 @@
 //! by Mitsuboshi et al.
 //! 
 
+#[cfg(not(feature="gurobi"))]
 use super::lp_model::LPModel;
+
+#[cfg(feature="gurobi")]
+use super::gurobi_lp_model::LPModel;
 
 
 use crate::{

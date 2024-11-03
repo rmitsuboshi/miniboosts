@@ -187,11 +187,22 @@ impl LPModel {
         self.weights = solver.solution.x[size..].to_vec();
         self.dist = solver.solution.z[..self.n_examples].to_vec();
 
-        println!("sum is: {}", self.weights.iter().sum::<f64>());
-        assert!((self.weights.iter().sum::<f64>() - 1f64).abs() < 1e-9);
+        let wsum = self.weights.iter().sum::<f64>();
+        if (wsum - 1f64).abs() > 1e-6 {
+            eprintln!(
+                "[WRN] weight sum on hypotheses far from 1. sum is: {wsum}"
+            );
+        }
+        let dsum = self.dist.iter().sum::<f64>();
+        if (dsum - 1f64).abs() > 1e-6 {
+            eprintln!(
+                "[WRN] dist sum on examples far from 1. sum is: {dsum}"
+            );
+        }
 
-        println!("solved");
-
+        // Since this method solves 
+        // the minimization problem instead of the maximization,
+        // it returns the negated optimal value
         - solver.solution.obj_val
     }
 

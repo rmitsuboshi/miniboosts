@@ -18,6 +18,7 @@ pub use crate::booster::{
     SmoothBoost,
     CERLPBoost,
     LPBoost,
+    MLPBoost,
 
 
     // Regression
@@ -36,7 +37,6 @@ pub use crate::booster::{
     ERLPBoost,
     SoftBoost,
 
-    MLPBoost,
 };
 
 
