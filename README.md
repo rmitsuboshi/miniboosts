@@ -25,14 +25,14 @@ Write the following in your `cargo.toml.`
 minibosts = { version = "0.3.4" }
 ```
 
-Some *Booster*s need to enable `extended` flag in `Cargo.toml` like this:  
+Some *Booster*s need to enable `gurobi` flag in `Cargo.toml` like this:  
 ```toml
 [dependencies]
-minibosts = { version = "0.3.4", features = ["extended"] }
+minibosts = { version = "0.3.4", features = ["gurobi"] }
 ```
 These boosting algorithms use [Gurobi][gurobi] to compute 
 a distribution over training examples.
-One can use the `extended` features for free if you are a student.
+One can use the `gurobi` features for free if you are a student.
 
 **Note:** _The compilation fails if you_ **do not** _have a Gurobi licenses._
 
@@ -43,24 +43,24 @@ Currently, following boosting algorithms are available:
 | [AdaBoost][adaboost]<br>by Freund and Schapire, 1997                                                 |                |
 | [MadaBoost][madaboost]<br>by Domingo and Watanabe, 2000                                              |                |
 | [GBM][gbm] (Gradient Boosting Machine)<br>by Jerome H. Friedman, 2001                                |                |
-| [LPBoost][lpboost]<br>by Demiriz, Bennett, and Shawe-Taylor, 2002                                    |   `extended`   |
+| [LPBoost][lpboost]<br>by Demiriz, Bennett, and Shawe-Taylor, 2002                                    |    `gurobi`    |
 | [SmoothBoost][smoothboost]<br>by Servedio, 2003                                                      |                |
 | [AdaBoostV][adaboostv]<br>by Rätsch and Warmuth, 2005                                                |                |
-| [TotalBoost][totalboost]<br>by Warmuth, Liao, and Rätsch, 2006                                       |   `extended`   |
-| [SoftBoost][softboost]<br>by Warmuth, Glocer, and Rätsch, 2007                                       |   `extended`   |
-| [ERLPBoost][erlpboost]<br>by Warmuth and Glocer, and Vishwanathan, 2008                              |   `extended`   |
-| [CERLPBoost][cerlpboost] (Corrective ERLPBoost)<br>by Shalev-Shwartz and Singer, 2010                |   `extended`   |
-| [MLPBoost][mlpboost]<br>by Mitsuboshi, Hatano, and Takimoto, 2022                                    |   `extended`   |
+| [TotalBoost][totalboost]<br>by Warmuth, Liao, and Rätsch, 2006                                       |    `gurobi`    |
+| [SoftBoost][softboost]<br>by Warmuth, Glocer, and Rätsch, 2007                                       |    `gurobi`    |
+| [ERLPBoost][erlpboost]<br>by Warmuth and Glocer, and Vishwanathan, 2008                              |    `gurobi`    |
+| [CERLPBoost][cerlpboost] (Corrective ERLPBoost)<br>by Shalev-Shwartz and Singer, 2010                |    `gurobi`    |
+| [MLPBoost][mlpboost]<br>by Mitsuboshi, Hatano, and Takimoto, 2022                                    |    `gurobi`    |
 | [GraphSepBoost][graphsepboost] (Graph Separation Boosting)<br>by Alon, Gonen, Hazan, and Moran, 2023 |                |
 
 
 If you invent a new boosting algorithm,
 you can introduce it by implementing `Booster` trait.
-See `cargo doc -F extended --open` for details.
+See `cargo doc -F gurobi --open` for details.
 
 
 Currently, no weak learners use [Gurobi][gurobi].
-So, you can use all weak learners without enabling `extended` flag.
+So, you can use all weak learners without enabling `gurobi` flag.
 
 |`WEAK LEARNER`                                           |
 | :---                                                    |
@@ -126,9 +126,9 @@ Write the following to `Cargo.toml`.
 miniboosts = { version = "0.3.4" }
 ```
 
-If you want to use `extended` features, enable the flag:
+If you want to use `gurobi` features, enable the flag:
 ```TOML
-miniboosts = { version = "0.3.4", features = ["extended"] }
+miniboosts = { version = "0.3.4", features = ["gurobi"] }
 ```
 
 Here is a sample code:
@@ -290,11 +290,11 @@ fn main() {
 - Some boosting algorithms use [Gurobi optimizer][gurobi], 
   so you must acquire a license to use this library. 
   If you have the license, you can use these boosting algorithms (boosters) 
-  by specifying `features = ["extended"]` in `Cargo.toml`.
+  by specifying `features = ["gurobi"]` in `Cargo.toml`.
   The compilation fails 
-  if you try to use the extended feature without a Gurobi license.
+  if you try to use the gurobi feature without a Gurobi license.
 - One can log your algorithm by implementing `Research` trait.
-- Run `cargo doc -F extended --open` to see more information.
+- Run `cargo doc -F gurobi --open` to see more information.
 - `GraphSepBoost` only supports the aggregation rule 
   shown in Lemma 4.2 of their paper.
 
@@ -318,7 +318,7 @@ fn main() {
 
 - Others
     - Parallelization
-    - LP/QP solver (This work allows you to use `extended` features without a license).
+    - LP/QP solver (This work allows you to use `gurobi` features without a license).
 
 
 
