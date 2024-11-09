@@ -25,7 +25,7 @@ impl QPModel {
         -> Self
     {
         let mut env = Env::empty()
-            .expect("Failed to construct a new `Env` for LPBoost");
+            .expect("Failed to construct a new `Env` for ERLPBoost");
         env.set(param::OutputFlag, 0)
             .expect("Failed to set `param::OutputFlag` to `0`");
         env.set(param::NumericFocus, 3)

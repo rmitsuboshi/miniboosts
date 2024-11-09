@@ -14,13 +14,9 @@ mod madaboost;
 // mod branching_program;
 mod lpboost;
 mod mlpboost;
-
-#[cfg(feature="gurobi")]
-mod totalboost;
-
 mod erlpboost;
-#[cfg(feature="gurobi")]
 mod softboost;
+mod totalboost;
 
 
 
@@ -40,7 +36,6 @@ pub use self::madaboost::MadaBoost;
 
 // Hard Margin Maximization
 pub use self::adaboostv::AdaBoostV;
-#[cfg(feature="gurobi")]
 pub use self::totalboost::TotalBoost;
 
 
@@ -49,7 +44,6 @@ pub use self::lpboost::LPBoost;
 pub use self::mlpboost::MLPBoost;
 pub use self::erlpboost::ERLPBoost;
 pub use self::cerlpboost::CERLPBoost;
-#[cfg(feature="gurobi")]
 pub use self::softboost::SoftBoost;
 
 pub use self::smoothboost::SmoothBoost;

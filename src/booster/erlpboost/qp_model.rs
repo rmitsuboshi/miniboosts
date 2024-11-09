@@ -197,7 +197,7 @@ impl QPModel {
         for (i, &di) in (1..).zip(dist) {
             col_ptr.push(i);
             row_val.push(i);
-            nonzero.push(1f64 / (2f64 * self.eta * di));
+            nonzero.push(1f64 / (self.eta * di));
         }
         col_ptr.push(row_val.len());
 
