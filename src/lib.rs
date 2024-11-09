@@ -165,12 +165,11 @@ pub use booster::{
 pub use booster::{
     LPBoost,
     MLPBoost,
+    ERLPBoost,
 };
 #[cfg(feature="gurobi")]
 pub use booster::{
-    LPBoost,
     TotalBoost,
-    ERLPBoost,
     SoftBoost,
 };
 

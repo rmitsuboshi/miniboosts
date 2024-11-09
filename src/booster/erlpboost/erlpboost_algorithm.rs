@@ -2,6 +2,12 @@
 //! "Entropy Regularized LPBoost"
 //! by Warmuth et al.
 //! 
+#[cfg(not(feature="gurobi"))]
+use super::qp_model::QPModel;
+
+#[cfg(feature="gurobi")]
+use super::gurobi_qp_model::QPModel;
+
 use crate::{
     Sample,
     Booster,
@@ -13,8 +19,6 @@ use crate::{
     common::checker,
     research::Research,
 };
-
-use super::qp_model::QPModel;
 
 
 use std::cell::RefCell;
