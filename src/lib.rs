@@ -149,27 +149,19 @@ pub use booster::{
 // Export the boosting algorithms that maximizes the hard margin.
 pub use booster::{
     AdaBoostV,
+    TotalBoost,
     // SparsiBoost,
-};
-
-
-// Export the boosting algorithms that maximizes the soft margin.
-pub use booster::{
-    SmoothBoost,
-    CERLPBoost,
 };
 
 
 // Export the boosting algorithms that maximizes the soft margin.
 // (These boosting algorithms use Gurobi)
 pub use booster::{
+    SmoothBoost,
+    CERLPBoost,
     LPBoost,
     MLPBoost,
     ERLPBoost,
-};
-#[cfg(feature="gurobi")]
-pub use booster::{
-    TotalBoost,
     SoftBoost,
 };
 

@@ -2,6 +2,11 @@
 //! "Boosting Algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
 //! 
+#[cfg(not(feature="gurobi"))]
+use super::qp_model::QPModel;
+
+#[cfg(feature="gurobi")]
+use super::gurobi_qp_model::QPModel;
 use crate::{
     Sample,
     Booster,
@@ -10,16 +15,12 @@ use crate::{
     Classifier,
     WeightedMajority,
     common::utils,
+    common::checker,
     research::Research,
 };
 
-
-use grb::prelude::*;
+use std::cell::RefCell;
 use std::ops::ControlFlow;
-
-
-const NUMERIC_TOLERANCE: f64 = 1e-200;
-
 
 
 /// The SoftBoost algorithm proposed in the following paper:  
@@ -131,8 +132,7 @@ pub struct SoftBoost<'a, F> {
     sub_tolerance: f64,
     nu: f64,
 
-    env: Env,
-
+    qp_model: Option<RefCell<QPModel>>,
 
     hypotheses: Vec<F>,
 
@@ -153,15 +153,6 @@ impl<'a, F> SoftBoost<'a, F>
         let n_sample = sample.shape().0;
         assert!(n_sample != 0);
 
-        let mut env = Env::empty()
-            .expect("Failed to construct a new `Env` for SoftBoost");
-        env.set(param::OutputFlag, 0)
-            .expect("Failed to set `param::OutputFlag` to `0`");
-        env.set(param::NumericFocus, 3)
-            .expect("Failed to set `NumericFocus` parameter to `3`");
-        let env = env.start()
-            .expect("Failed to construct a new `Env` for SoftBoost");
-
         // Set uni as an uniform weight
         let uni = 1.0 / n_sample as f64;
 
@@ -172,19 +163,15 @@ impl<'a, F> SoftBoost<'a, F>
         let tolerance = uni;
 
 
-        // Set gamma_hat
-        let gamma_hat = 1.0;
-
-
         SoftBoost {
             sample,
 
             dist,
-            gamma_hat,
+            gamma_hat: 1.0,
             tolerance,
             sub_tolerance: 1e-6,
             nu: 1.0,
-            env,
+            qp_model: None,
 
             hypotheses: Vec::new(),
             weights: Vec::new(),
@@ -218,6 +205,17 @@ impl<'a, F> SoftBoost<'a, F>
     }
 
 
+    fn init_solver(&mut self) {
+        let n_sample = self.sample.shape().0;
+        checker::check_nu(self.nu, n_sample);
+
+        let upper_bound = 1.0 / self.nu;
+        let qp_model = RefCell::new(QPModel::init(n_sample, upper_bound));
+
+        self.qp_model = Some(qp_model);
+    }
+
+
     /// `max_loop` returns the maximum iteration
     /// of the Adaboost to find a combined hypothesis
     /// that has error at most `tolerance`.
@@ -241,67 +239,14 @@ impl<F> SoftBoost<'_, F>
     /// Set the weight on the hypotheses.
     /// This function is called at the end of the boosting.
     fn set_weights(&self)
-        -> std::result::Result<Vec<f64>, grb::Error>
+        -> std::result::Result<Vec<f64>, ()>
     {
-        let mut model = Model::with_env("", &self.env)?;
-
-        let n_sample = self.sample.shape().0;
-        let n_hypotheses = self.hypotheses.len();
-
-        // Initialize GRBVars
-        let wt_vec = (0..n_hypotheses).map(|i| {
-                let name = format!("w[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0_f64..)
-            }).collect::<Result<Vec<_>, _>>()?;
-        let xi_vec = (0..n_sample).map(|i| {
-                let name = format!("xi[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0_f64..)
-            }).collect::<Result<Vec<_>, _>>()?;
-        let rho = add_ctsvar!(model, name: "rho", bounds: ..)?;
-
-
-        // Set constraints
-        let target = self.sample.target();
-        let iter = target.iter()
-            .zip(xi_vec.iter())
-            .enumerate();
-
-        for (i, (&y, &xi)) in iter {
-            let expr = wt_vec.iter()
-                .zip(&self.hypotheses[..])
-                .map(|(&w, h)| w * h.confidence(self.sample, i))
-                .grb_sum();
-            let name = format!("sample[{i}]");
-            model.add_constr(&name, c!(y * expr >= rho - xi))?;
-        }
-
-        model.add_constr(
-            "sum_is_1", c!(wt_vec.iter().grb_sum() == 1.0)
-        )?;
-        model.update()?;
-
-
-        // Set the objective function
-        let param = 1.0 / self.nu;
-        let objective = rho - param * xi_vec.iter().grb_sum();
-        model.set_objective(objective, Maximize)?;
-        model.update()?;
-
-
-        model.optimize()?;
-
-
-        let status = model.status()?;
-
-        if status != Status::Optimal {
-            panic!("Cannot solve the primal problem. Status: {status:?}");
-        }
-
-
         // Assign weights over the hypotheses
-        let weights = wt_vec.into_iter()
-            .map(|w| model.get_obj_attr(attr::X, &w))
-            .collect::<Result<Vec<_>, _>>()?;
+        let weights = self.qp_model.as_ref()
+            .expect("Failed to call `.as_ref()` to `self.qp_model`")
+            .borrow_mut()
+            .weights(self.sample, &self.hypotheses)
+            .collect::<Vec<_>>();
 
         Ok(weights)
     }
@@ -310,142 +255,11 @@ impl<F> SoftBoost<'_, F>
     /// Updates `self.dist`
     /// Returns `None` if the stopping criterion satisfied.
     fn update_params_mut(&mut self) -> Option<()> {
-        loop {
-            // Initialize GRBModel
-            let mut model = Model::with_env("SoftBoost", &self.env)
-                .expect(
-                    "Failed to construct a new model for `SoftBoost` \
-                    or `TotalBoost`"
-                );
-
-
-            // Set variables that are used in the optimization problem
-            let cap = 1.0 / self.nu;
-
-            let vars = self.dist.iter()
-                .copied()
-                .enumerate()
-                .map(|(i, d)| {
-                    let lb = - d;
-                    let ub = cap - d;
-                    let name = format!("delta[{i}]");
-                    add_ctsvar!(model, name: &name, bounds: lb..ub)
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .expect("Failed to add the Gurobi variables `delta[..]`");
-            model.update()
-                .expect(
-                    "Failed to update the model \
-                    after adding the variables `delta[..]`"
-                );
-
-
-            // Set constraints
-            self.hypotheses.iter()
-                .enumerate()
-                .for_each(|(j, h)| {
-                    let expr = vars.iter()
-                        .zip(self.dist.iter().copied())
-                        .zip(self.sample.target().iter())
-                        .enumerate()
-                        .map(|(i, ((v, d), y))| {
-                            let p = h.confidence(self.sample, i);
-                            y * p * (d + *v)
-                        })
-                        .grb_sum();
-
-                    let name = format!("h[{j}]");
-                    model.add_constr(
-                        &name, c!(expr <= self.gamma_hat - self.tolerance)
-                    ).expect(
-                        "Failed to add the new constraint \
-                        `edge <= gamma_hat - tolerance`"
-                    );
-                });
-
-
-            model.add_constr("zero_sum", c!(vars.iter().grb_sum() == 0.0))
-                .expect("Failed to add the constraint `sum( delta[..] ) = 0.0`");
-            model.update()
-                .expect(
-                    "Failed to update the model \
-                    after adding the constraint `sum( delta[..] ) = 0.0"
-                );
-
-
-            // Set objective function
-            let n_sample = self.sample.shape().0 as f64;
-            let objective = self.dist.iter()
-                .zip(vars.iter())
-                .map(|(&d, &v)| {
-                    let lin_coef = (n_sample * d).ln() + 1.0;
-                    lin_coef * v + (v * v) * (1.0 / (2.0 * d))
-                })
-                .grb_sum();
-
-            model.set_objective(objective, Minimize)
-                .expect("Failed to set the objective function");
-            model.update()
-                .expect("Failed to update the model after setting the objective");
-
-
-            // Optimize
-            model.optimize()
-                .expect("Failed to solve the SoftBoost QP");
-
-
-            // Check the status
-            let status = model.status()
-                .expect("Failed to get the model status");
-
-            // If the status is `Status::Infeasible`,
-            // it implies that a `tolerance`-optimality
-            // of the previous solution
-            match status {
-                Status::InfOrUnbd | Status::Infeasible => { return None; },
-                Status::Numeric => { break; }
-                Status::Optimal => {}
-                _ => {
-                    panic!("Status is {status:?}. something wrong.");
-                }
-            }
-
-
-            // // At this point, the status is not `Status::Infeasible`.
-            // // If the status is not `Status::Optimal`, something wrong.
-            // if status != Status::Optimal {
-            //     panic!("Status is {status:?}. something wrong.");
-            // }
-
-
-
-            // Check the stopping criterion
-            let mut l2 = 0.0;
-            for (v, d) in vars.iter().zip(self.dist.iter_mut()) {
-                let val = model.get_obj_attr(attr::X, v)
-                    .expect("Failed to get the optimal solution `delta`");
-                *d += val;
-                l2 += val * val;
-            }
-            let l2 = l2.sqrt();
-
-            if l2 < self.sub_tolerance {
-                break;
-            }
-        }
-
-
-        // Current solution is an `tolerance`-approximate solution
-        // if `self.dist` contains `0.0`,
-
-        // This code regards the number below `NUMERIC_TOLERANCE`
-        // as a zero.
-        if self.dist.iter().any(|&d| d < NUMERIC_TOLERANCE) {
-            return None;
-        }
-
-
-        Some(())
+        let h = self.hypotheses.last().unwrap();
+        self.qp_model.as_ref()
+            .expect("Failed to call `.as_ref()` to `self.qp_model`")
+            .borrow_mut()
+            .update(self.sample, &mut self.dist[..], self.gamma_hat, h)
     }
 }
 
@@ -497,6 +311,7 @@ impl<F> Booster<F> for SoftBoost<'_, F>
         self.hypotheses = Vec::new();
 
         self.gamma_hat = 1.0;
+        self.init_solver();
     }
 
 

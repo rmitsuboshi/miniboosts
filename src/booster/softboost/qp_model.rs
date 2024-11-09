@@ -18,13 +18,15 @@ const QP_TOLERANCE: f64 = 1e-9;
 /// `QPModel` solves the entropy regularized edge minimization problem:
 ///
 /// ```txt
-/// min γ + (1/η) Σ_i d_i ln( d_i )
-/// γ,d
+/// min Σ_i d_i ln( d_i )
+///  d
 /// s.t. Σ_i d_i y_i h_j (x_i) ≤ γ,   ∀j = 1, 2, ..., t
 ///      Σ_i d_i = 1,
 ///      d_1, d_2, ..., d_m ≤ 1/ν
 ///      d_1, d_2, ..., d_m ≥ 0.
 /// ```
+/// where `γ` is the estimation of the weak-learnability.
+///
 /// Since no solver can solve entropy minimization problem,
 /// we use the sequential quadratic programming technique:
 ///
@@ -32,8 +34,8 @@ const QP_TOLERANCE: f64 = 1e-9;
 /// in the **interior** of `m`-dimensional probability simplex.
 /// The following is the second-order approximation of the above problem:
 /// ```txt
-/// min γ + (1/η) Σ_i [ (1/(2q_i)) d_i^2 + ln( q_i ) d_i ]
-/// γ,d
+/// min Σ_i [ (1/(2q_i)) d_i^2 + ln( q_i ) d_i ]
+///  d
 /// s.t. Σ_i d_i y_i h_j (x_i) ≤ γ,   ∀j = 1, 2, ..., t
 ///      Σ_i d_i = 1,
 ///      d_1, d_2, ..., d_m ≤ 1/ν
@@ -44,43 +46,40 @@ const QP_TOLERANCE: f64 = 1e-9;
 /// To solve the problem we build the constraint matrix
 /// ```txt
 /// # of   
-/// rows    γ        d1        ...     dm
-///       ┏    ┃                                 ┓   ┏   ┓
-///   1   ┃  0 ┃      1        ...      1        ┃ = ┃ 1 ┃
-///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  . ┃     (-1) * Identity matrix      ┃ . ┃ . ┃
-///   m   ┃  . ┃              m x m              ┃ . ┃ . ┃
-///       ┃  . ┃                                 ┃ . ┃ . ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  . ┃                                 ┃ . ┃ . ┃
-///   m   ┃  . ┃         Identity matrix         ┃ . ┃ . ┃
-///       ┃  . ┃              m x m              ┃ . ┃ . ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-///       ┃ -1 ┃  y_1 h_1(x_1) ...  y_m h_1(x_m) ┃ ≤ ┃ 0 ┃
-///       ┃ -1 ┃  y_1 h_2(x_1) ...  y_m h_2(x_m) ┃ ≤ ┃ 0 ┃
-///       ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
-///   H   ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
-///       ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
-///       ┃ -1 ┃  y_1 h_T(x_1) ...  y_m h_T(x_m) ┃ ≤ ┃ 0 ┃
-///       ┗    ┃                                 ┛   ┗   ┛
+/// rows        d1        ...     dm
+///       ┏                                 ┓   ┏   ┓
+///   1   ┃      1        ...      1        ┃ = ┃ 1 ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃     (-1) * Identity matrix      ┃ . ┃ . ┃
+///   m   ┃              m x m              ┃ . ┃ . ┃
+///       ┃                                 ┃ . ┃ . ┃
+///       ┃                                 ┃ ≤ ┃ 0 ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃                                 ┃ . ┃ . ┃
+///   m   ┃         Identity matrix         ┃ . ┃ . ┃
+///       ┃              m x m              ┃ . ┃ . ┃
+///       ┃                                 ┃ ≤ ┃ 0 ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃  y_1 h_1(x_1) ...  y_m h_1(x_m) ┃ ≤ ┃ 0 ┃
+///       ┃  y_1 h_2(x_1) ...  y_m h_2(x_m) ┃ ≤ ┃ 0 ┃
+///       ┃      .        ...      .        ┃ . ┃ . ┃
+///   H   ┃      .        ...      .        ┃ . ┃ . ┃
+///       ┃      .        ...      .        ┃ . ┃ . ┃
+///       ┃  y_1 h_T(x_1) ...  y_m h_T(x_m) ┃ ≤ ┃ 0 ┃
+///       ┗                                 ┛   ┗   ┛
 ///
 /// # of
-/// cols    1 ┃               m
+/// cols                   m
 /// ```
 pub(super) struct QPModel {
     pub(self) n_examples: usize,        // number of columns
     pub(self) n_hypotheses: usize,      // number of rows
     pub(self) margins: Vec<Vec<f64>>,   // margin vectors
-    pub(self) weights: Vec<f64>,        // weight on hypothesis
-    pub(self) dist: Vec<f64>,           // distribution over examples
     pub(self) cap_inv: f64,             // the capping parameter, `1/ν.`
-    pub(self) eta: f64,                 // regularization parameter
 }
 
 
@@ -89,16 +88,13 @@ impl QPModel {
     /// arguments.
     /// - `size`: Number of variables (Number of examples).
     /// - `upper_bound`: Capping parameter. `[1, size]`.
-    pub(super) fn init(eta: f64, size: usize, upper_bound: f64) -> Self {
+    pub(super) fn init(size: usize, upper_bound: f64) -> Self {
         let margins = vec![vec![]; size];
         Self {
             n_examples:   size,
             n_hypotheses: 0usize,
             margins,
-            weights:      Vec::with_capacity(0usize),
-            dist:         Vec::with_capacity(0usize),
             cap_inv:      upper_bound,
-            eta,
         }
     }
 
@@ -110,8 +106,9 @@ impl QPModel {
         &mut self,
         sample: &Sample,
         dist: &mut [f64],
+        ghat: f64,
         clf: &F
-    )
+    ) -> Option<()>
         where F: Classifier
     {
         self.n_hypotheses += 1;
@@ -121,7 +118,7 @@ impl QPModel {
             .for_each(|(mvec, yh)| { mvec.push(yh); });
         let constraint_matrix = self.build_constraint_matrix();
         let sense = self.build_sense();
-        let rhs = self.build_rhs();
+        let rhs = self.build_rhs(ghat);
 
 
         let mut old_objval = 1e9;
@@ -143,22 +140,21 @@ impl QPModel {
             );
 
             solver.solve();
-            let solution = &solver.solution.x[1..];
+            let solution = &solver.solution.x[..];
 
-            let objval = solver.solution.obj_val;
-            if !self.all_positive(solution) 
-                || old_objval - objval < QP_TOLERANCE
-            {
-                self.dist = solver.solution.x[1..].to_vec();
-                let start = 1 + 2 * self.n_examples;
-                self.weights = solver.solution.z[start..].to_vec();
-                break;
-            }
-            old_objval = objval;
+            // breaks if there is a zero-valued coordinate in the solution.
+            if !self.all_positive(solution) { return None; }
             dist.iter_mut()
                 .zip(solution)
                 .for_each(|(di, s)| { *di = *s; });
+
+            let objval = solver.solution.obj_val;
+            if old_objval - objval < QP_TOLERANCE {
+                break;
+            }
+            old_objval = objval;
         }
+        return Some(())
     }
 
 
@@ -171,12 +167,20 @@ impl QPModel {
 
 
     pub(self) fn build_linear_part_objective(&self, dist: &[f64]) -> Vec<f64> {
-        let mut linear = Vec::with_capacity(1 + self.n_examples);
-        linear.push(0f64);
+        let mut linear = Vec::with_capacity(self.n_examples);
         let iter = dist.into_iter()
             .copied()
-            .map(|di| (1f64 / self.eta) * di.ln());
+            .map(|di| di.ln());
         linear.extend(iter);
+        linear
+    }
+
+
+    pub(self) fn build_linear_part_objective_lp(&self)
+        -> Vec<f64>
+    {
+        let mut linear = vec![0f64; 1 + self.n_examples];
+        linear[0] = 1f64;
         linear
     }
 
@@ -184,20 +188,17 @@ impl QPModel {
     pub(self) fn build_quadratic_part_objective(&self, dist: &[f64])
         -> CscMatrix::<f64>
     {
-        let n_rows = 1 + self.n_examples;
+        let n_rows = self.n_examples;
         let n_cols = n_rows;
 
         let mut col_ptr = Vec::with_capacity(n_cols);
         let mut row_val = Vec::with_capacity(n_cols);
         let mut nonzero = Vec::with_capacity(n_cols);
 
-        col_ptr.push(0usize);
-        row_val.push(0usize);
-        nonzero.push(1f64);
-        for (i, &di) in (1..).zip(dist) {
+        for (i, &di) in (0..).zip(dist) {
             col_ptr.push(i);
             row_val.push(i);
-            nonzero.push(1f64 / (self.eta * di));
+            nonzero.push(1f64 / di);
         }
         col_ptr.push(row_val.len());
 
@@ -213,6 +214,50 @@ impl QPModel {
 
     /// Build the constraint matrix in the 0-indexed CSC form.
     pub(self) fn build_constraint_matrix(&self) -> CscMatrix::<f64> {
+        let n_rows = 1 + 2*self.n_examples + self.n_hypotheses;
+        let n_cols = self.n_examples;
+
+        let mut col_ptr = Vec::new();
+        let mut row_val = Vec::new();
+        let mut nonzero = Vec::new();
+
+        // the first index of margin constraints
+        let gam = 1 + 2 * self.n_examples;
+
+        for (j, margins) in self.margins.iter().enumerate() {
+            col_ptr.push(row_val.len());
+            // the sum constraint: `Σ_i d_i = 1`
+            row_val.push(0);
+            nonzero.push(1f64);
+
+            // non-negative constraint: `d_i ≥ 0`
+            row_val.push(j + 1);
+            nonzero.push(-1f64);
+
+            // capping constraint: `d_i ≤ 1/ν`
+            row_val.push(self.n_examples + j + 1);
+            nonzero.push(1f64);
+
+            // margin constraints of `i`-th column
+            for (i, &yh) in (0..).zip(margins) {
+                row_val.push(gam + i);
+                nonzero.push(yh);
+            }
+        }
+        col_ptr.push(row_val.len());
+
+        CscMatrix::new(
+            n_rows,
+            n_cols,
+            col_ptr,
+            row_val,
+            nonzero,
+        )
+    }
+
+
+    /// Build the constraint matrix in the 0-indexed CSC form.
+    pub(self) fn build_constraint_matrix_lp(&self) -> CscMatrix::<f64> {
         let n_rows = 1 + 2*self.n_examples + self.n_hypotheses;
         let n_cols = 1 + self.n_examples;
 
@@ -268,8 +313,26 @@ impl QPModel {
     }
 
 
+    /// Build the vector of constraint sense: `[=, ≤, ≥, ...].`
+    pub(self) fn build_sense_lp(&self) -> Vec<SupportedConeT<f64>> {
+        self.build_sense()
+    }
+
+
     /// Build the right-hand-side of the constraints.
-    pub(self) fn build_rhs(&self) -> Vec<f64> {
+    pub(self) fn build_rhs(&self, ghat: f64) -> Vec<f64> {
+        let n_constraints = 1 + 2*self.n_examples + self.n_hypotheses;
+        let mut rhs = Vec::with_capacity(n_constraints);
+        rhs.push(1f64);
+        rhs.extend(iter::repeat(0f64).take(self.n_examples));
+        rhs.extend(iter::repeat(self.cap_inv).take(self.n_examples));
+        rhs.extend(iter::repeat(ghat).take(self.n_hypotheses));
+        rhs
+    }
+
+
+    /// Build the right-hand-side of the constraints.
+    pub(self) fn build_rhs_lp(&self) -> Vec<f64> {
         let n_constraints = 1 + 2*self.n_examples + self.n_hypotheses;
         let mut rhs = Vec::with_capacity(n_constraints);
         rhs.push(1f64);
@@ -279,18 +342,40 @@ impl QPModel {
         rhs
     }
 
-    /// Returns the distribution over examples.
-    pub(super) fn distribution(&self)
-        -> Vec<f64>
-    {
-        self.dist.clone()
-    }
-
 
     /// Returns the weights over the hypotheses.
-    pub(super) fn weight(&self) -> impl Iterator<Item=f64> + '_
+    pub(super) fn weights<F>(
+        &self,
+        _sample: &Sample,
+        _hypotheses: &[F]
+    ) -> impl Iterator<Item=f64> + '_
+        where F: Classifier
     {
-        self.weights.iter().copied()
+        let n_variables = self.n_examples + 1;
+        let constraint_matrix = self.build_constraint_matrix_lp();
+        let sense = self.build_sense_lp();
+        let rhs = self.build_rhs_lp();
+
+
+        let settings = DefaultSettingsBuilder::default()
+            .equilibrate_enable(true)
+            .verbose(false)
+            .build()
+            .unwrap();
+        let linear = self.build_linear_part_objective_lp();
+        let mut solver = DefaultSolver::new(
+            &CscMatrix::zeros((n_variables, n_variables)),
+            &linear,
+            &constraint_matrix,
+            &rhs,
+            &sense[..],
+            settings
+        );
+
+        solver.solve();
+        let start = 1 + 2*self.n_examples;
+        let solution = solver.solution.z[start..].to_vec();
+        solution.into_iter()
     }
 }
 

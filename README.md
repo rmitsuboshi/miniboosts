@@ -22,19 +22,18 @@ that performs significantly better on training examples.
 Write the following in your `cargo.toml.`
 ```toml
 [dependencies]
-minibosts = { version = "0.3.4" }
+minibosts = { version = "0.3.5" }
 ```
-
-Some *Booster*s need to enable `gurobi` flag in `Cargo.toml` like this:  
+All boosting algorithms are implemented without [Gurobi][gurobi].
+but, if you have a [Gurobi][gurobi] license, 
+you can use the Gurobi version of the algorithms by setting:
 ```toml
 [dependencies]
-minibosts = { version = "0.3.4", features = ["gurobi"] }
+minibosts = { version = "0.3.5", features = ["gurobi"] }
 ```
-These boosting algorithms use [Gurobi][gurobi] to compute 
-a distribution over training examples.
-One can use the `gurobi` features for free if you are a student.
 
-**Note:** _The compilation fails if you_ **do not** _have a Gurobi licenses._
+> [!CAUTION]
+> Since I am no longer a student, I cannot check whether the compilation succeeded with the `"gurobi"` flag.
 
 Currently, following boosting algorithms are available:
 
@@ -58,9 +57,6 @@ If you invent a new boosting algorithm,
 you can introduce it by implementing `Booster` trait.
 See `cargo doc -F gurobi --open` for details.
 
-
-Currently, no weak learners use [Gurobi][gurobi].
-So, you can use all weak learners without enabling `gurobi` flag.
 
 |`WEAK LEARNER`                                           |
 | :---                                                    |
@@ -123,12 +119,12 @@ See [Research feature](#research-feature) section for detail.
 
 Write the following to `Cargo.toml`.
 ```TOML
-miniboosts = { version = "0.3.4" }
+miniboosts = { version = "0.3.5" }
 ```
 
 If you want to use `gurobi` features, enable the flag:
 ```TOML
-miniboosts = { version = "0.3.4", features = ["gurobi"] }
+miniboosts = { version = "0.3.5", features = ["gurobi"] }
 ```
 
 Here is a sample code:
@@ -314,11 +310,6 @@ fn main() {
     - Bag of words
     - TF-IDF
     - [RBF-Net](https://link.springer.com/content/pdf/10.1023/A:1007618119488.pdf)
-
-
-- Others
-    - Parallelization
-    - LP/QP solver (This work allows you to use `gurobi` features without a license).
 
 
 
