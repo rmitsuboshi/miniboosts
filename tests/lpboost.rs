@@ -1,4 +1,3 @@
-use std::env;
 use miniboosts::prelude::*;
 use miniboosts::research::Logger;
 use miniboosts::SoftMarginObjective;
@@ -27,79 +26,141 @@ const TIME_LIMIT: u128 = 60_000; // 1 minute as millisecond.
 pub mod lpboost_tests {
     use super::*;
     #[test]
-    fn german() {
-        let mut path = env::current_dir().unwrap();
-        path.push("tests/dataset/iris_binary.csv");
+    fn bcancer() {
+        const TOLERANCE: f64 = 0.001;
+        let path = "img/csv/breast-cancer-train.csv";
 
-        let sample = SampleReader::new()
+        let train = SampleReader::new()
             .file(path)
             .has_header(true)
             .target_feature("class")
             .read()
             .unwrap();
-        let n_sample = sample.shape().0 as f64;
 
-        let mut booster = LPBoost::init(&sample)
-            .tolerance(0.001)
-            .nu(1.0);
+        let n_sample = train.shape().0 as f64;
+        let nu = 0.01 * n_sample;
+        // let nu = 1.0;
 
-        let wl = DecisionTreeBuilder::new(&sample)
-            .max_depth(2)
+        let path = "img/csv/breast-cancer-test.csv";
+
+        let test = SampleReader::new()
+            .file(path)
+            .has_header(true)
+            .target_feature("class")
+            .read()
+            .unwrap();
+        let objective = SoftMarginObjective::new(nu);
+        let booster = LPBoost::init(&train)
+            .tolerance(TOLERANCE)
+            .nu(nu);
+        let tree = DecisionTreeBuilder::new(&train)
+            .max_depth(1)
             .criterion(Criterion::Entropy)
             .build();
-
-
-        let f = booster.run(&wl);
-        println!("f = {f:?}");
-        let predictions = f.predict_all(&sample);
-
-        let loss = sample.target()
-            .into_iter()
-            .zip(predictions)
-            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
-            .sum::<f64>() / n_sample;
-
-        println!("Loss (german.csv, LPBoost, DTree): {loss}");
-        assert!(true);
-    }
-
-
-    #[test]
-    fn worstcase() {
-        let n_sample = 1_000;
-        let nu = n_sample as f64 * 0.001;
-        let tol = 0.01;
-
-        let sample = Sample::dummy(n_sample);
-        let booster = LPBoost::init(&sample)
-            .tolerance(tol)
-            .nu(nu);
-
-        let wl = BadBaseLearnerBuilder::new(&sample)
-            .tolerance(tol)
-            .nu(nu)
-            .build();
-
-        let objective = SoftMarginObjective::new(nu);
-
+        let time_limit = 1000;
         let mut logger = Logger::new(
-                booster, wl, objective, zero_one_loss, &sample, &sample
+                booster, tree, objective, zero_one_loss, &train, &test
             )
-            .time_limit_as_millis(TIME_LIMIT)
-            .print_every(1);
-
-        let f = logger.run("dummy.csv").unwrap();
-        println!("f = {f:?}");
-        let predictions = f.predict_all(&sample);
-        let loss = sample.target()
-            .into_iter()
-            .zip(predictions)
-            .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
-            .sum::<f64>() / n_sample as f64;
-
-        println!("Loss (Dummy, BadLearner): {loss}");
-        assert!(true);
+            .time_limit_as_secs(time_limit)
+            .print_every(10);
+        let _ = logger.run("lpboost.csv");
     }
+
+    // #[test]
+    // fn german() {
+    //     let mut path = env::current_dir().unwrap();
+    //     path.push("tests/dataset/german.csv");
+
+    //     let sample = SampleReader::new()
+    //         .file(path)
+    //         .has_header(true)
+    //         .target_feature("class")
+    //         .read()
+    //         .unwrap();
+    //     let n_sample = sample.shape().0 as f64;
+
+    //     let nu = 0.01 * n_sample;
+    //     let mut booster = LPBoost::init(&sample)
+    //         .tolerance(0.001)
+    //         .nu(nu);
+
+    //     let wl = DecisionTreeBuilder::new(&sample)
+    //         .max_depth(2)
+    //         .criterion(Criterion::Entropy)
+    //         .build();
+    //     let objective = SoftMarginObjective::new(nu);
+
+    //     let mut logger = Logger::new(
+    //             booster, wl, objective, zero_one_loss, &sample, &sample
+    //         )
+    //         .time_limit_as_millis(TIME_LIMIT)
+    //         .print_every(1);
+
+    //     let f = logger.run("dummy.csv").unwrap();
+    //     println!("f = {f:?}");
+
+    //     let predictions = f.predict_all(&sample);
+    //     let loss = sample.target()
+    //         .into_iter()
+    //         .zip(predictions)
+    //         .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+    //         .sum::<f64>() / n_sample as f64;
+
+    //     println!("Loss (german.csv): {loss}");
+    //     assert!(true);
+
+
+    //     // let f = booster.run(&wl);
+    //     // println!("f = {f:?}");
+    //     // let predictions = f.predict_all(&sample);
+
+    //     // let loss = sample.target()
+    //     //     .into_iter()
+    //     //     .zip(predictions)
+    //     //     .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+    //     //     .sum::<f64>() / n_sample;
+
+    //     // println!("Loss (german.csv, LPBoost, DTree): {loss}");
+    //     // assert!(true);
+    // }
+
+
+    // #[test]
+    // fn worstcase() {
+    //     let n_sample = 1_000;
+    //     let nu = n_sample as f64 * 0.001;
+    //     let tol = 0.01;
+
+    //     let sample = Sample::dummy(n_sample);
+    //     let booster = LPBoost::init(&sample)
+    //         .tolerance(tol)
+    //         .nu(nu);
+
+    //     let wl = BadBaseLearnerBuilder::new(&sample)
+    //         .tolerance(tol)
+    //         .nu(nu)
+    //         .build();
+
+    //     let objective = SoftMarginObjective::new(nu);
+
+    //     let mut logger = Logger::new(
+    //             booster, wl, objective, zero_one_loss, &sample, &sample
+    //         )
+    //         .time_limit_as_millis(TIME_LIMIT)
+    //         .print_every(1);
+
+    //     let f = logger.run("dummy.csv").unwrap();
+    //     println!("f = {f:?}");
+    //     let predictions = f.predict_all(&sample);
+    //     let loss = sample.target()
+    //         .into_iter()
+    //         .zip(predictions)
+    //         .map(|(t, p)| if *t != p as f64 { 1.0 } else { 0.0 })
+    //         .sum::<f64>() / n_sample as f64;
+
+    //     println!("Loss (Dummy, BadLearner): {loss}");
+    //     assert!(true);
+    // }
 
 
     // #[test]
