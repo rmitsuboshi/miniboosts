@@ -18,7 +18,6 @@ mod mlpboost;
 #[cfg(feature="gurobi")]
 mod totalboost;
 
-#[cfg(feature="gurobi")]
 mod erlpboost;
 #[cfg(feature="gurobi")]
 mod softboost;
@@ -48,14 +47,13 @@ pub use self::totalboost::TotalBoost;
 // Soft Margin Maximization
 pub use self::lpboost::LPBoost;
 pub use self::mlpboost::MLPBoost;
-#[cfg(feature="gurobi")]
 pub use self::erlpboost::ERLPBoost;
+pub use self::cerlpboost::CERLPBoost;
 #[cfg(feature="gurobi")]
 pub use self::softboost::SoftBoost;
 
 pub use self::smoothboost::SmoothBoost;
 
-pub use self::cerlpboost::CERLPBoost;
 
 
 

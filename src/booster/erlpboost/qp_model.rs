@@ -1,69 +1,104 @@
-use grb::prelude::*;
+use clarabel::{
+    algebra::*,
+    solver::*,
+};
 
+use crate::{
+    Sample,
+    common::utils,
+};
 
-use crate::Sample;
 use crate::hypothesis::Classifier;
+
+use std::iter;
 
 const QP_TOLERANCE: f64 = 1e-9;
 
-/// A linear programming model for edge minimization. 
+/// A quadratic programming model for edge minimization. 
+/// `QPModel` solves the entropy regularized edge minimization problem:
+///
+/// ```txt
+/// min γ + (1/η) Σ_i d_i ln( d_i )
+/// γ,d
+/// s.t. Σ_i d_i y_i h_j (x_i) ≤ γ,   ∀j = 1, 2, ..., t
+///      Σ_i d_i = 1,
+///      d_1, d_2, ..., d_m ≤ 1/ν
+///      d_1, d_2, ..., d_m ≥ 0.
+/// ```
+/// Since no solver can solve entropy minimization problem,
+/// we use the sequential quadratic programming technique:
+///
+/// Let `q` be the current solution 
+/// in the **interior** of `m`-dimensional probability simplex.
+/// The following is the second-order approximation of the above problem:
+/// ```txt
+/// min γ + (1/η) Σ_i [ (1/(2q_i)) d_i^2 + ln( q_i ) d_i ]
+/// γ,d
+/// s.t. Σ_i d_i y_i h_j (x_i) ≤ γ,   ∀j = 1, 2, ..., t
+///      Σ_i d_i = 1,
+///      d_1, d_2, ..., d_m ≤ 1/ν
+///      d_1, d_2, ..., d_m ≥ 0.
+/// ```
+/// `QPModel` solves this approximated problem untile convergent.
+///
+/// To solve the problem we build the constraint matrix
+/// ```txt
+/// # of   
+/// rows    γ        d1        ...     dm
+///       ┏    ┃                                 ┓   ┏   ┓
+///   1   ┃  0 ┃      1        ...      1        ┃ = ┃ 1 ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃  . ┃     (-1) * Identity matrix      ┃ . ┃ . ┃
+///   m   ┃  . ┃              m x m              ┃ . ┃ . ┃
+///       ┃  . ┃                                 ┃ . ┃ . ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
+///       ┃  . ┃                                 ┃ . ┃ . ┃
+///   m   ┃  . ┃         Identity matrix         ┃ . ┃ . ┃
+///       ┃  . ┃              m x m              ┃ . ┃ . ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃ -1 ┃  y_1 h_1(x_1) ...  y_m h_1(x_m) ┃ ≤ ┃ 0 ┃
+///       ┃ -1 ┃  y_1 h_2(x_1) ...  y_m h_2(x_m) ┃ ≤ ┃ 0 ┃
+///       ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
+///   H   ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
+///       ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
+///       ┃ -1 ┃  y_1 h_T(x_1) ...  y_m h_T(x_m) ┃ ≤ ┃ 0 ┃
+///       ┗    ┃                                 ┛   ┗   ┛
+///
+/// # of
+/// cols    1 ┃               m
+/// ```
 pub(super) struct QPModel {
-    pub(self) eta: f64,
-    pub(self) model: Model,
-    pub(self) gamma: Var,
-    pub(self) dist: Vec<Var>,
-    pub(self) constrs: Vec<Constr>,
+    pub(self) n_examples: usize,        // number of columns
+    pub(self) n_hypotheses: usize,      // number of rows
+    pub(self) margins: Vec<Vec<f64>>,   // margin vectors
+    pub(self) weights: Vec<f64>,        // weight on hypothesis
+    pub(self) dist: Vec<f64>,           // distribution over examples
+    pub(self) cap_inv: f64,             // the capping parameter, `1/ν.`
+    pub(self) eta: f64,                 // regularization parameter
 }
 
 
 impl QPModel {
-    /// Initialize the LP model.
+    /// Initialize the QP model.
     /// arguments.
     /// - `size`: Number of variables (Number of examples).
     /// - `upper_bound`: Capping parameter. `[1, size]`.
-    pub(super) fn init(eta: f64, size: usize, upper_bound: f64)
-        -> Self
-    {
-        let mut env = Env::empty()
-            .expect("Failed to construct a new `Env` for LPBoost");
-        env.set(param::OutputFlag, 0)
-            .expect("Failed to set `param::OutputFlag` to `0`");
-        env.set(param::NumericFocus, 3)
-            .expect("Failed to set `NumericFocus` parameter to `3`");
-        let env = env.start()
-            .expect("Failed to construct a new `Env` for ERLPBoost");
-
-        let mut model = Model::with_env("ERLPBoost", env)
-            .expect("Failed to construct a new model for `ERLPBoost`");
-
-
-        // Set GRBVars
-        let gamma = add_ctsvar!(model, name: "gamma", bounds: ..)
-            .expect("Failed to add a new variable `gamma`");
-
-        let dist = (0..size).map(|i| {
-                let name = format!("d[{i}]");
-                add_ctsvar!(model, name: &name, bounds: 0_f64..upper_bound)
-            }).collect::<Result<Vec<_>, _>>()
-            .expect("Failed to add new variables `d[..]`");
-
-
-        // Set a constraint
-        model.add_constr("sum_is_1", c!(dist.iter().grb_sum() == 1.0))
-            .expect("Failed to set the constraint `sum( d[..] ) = 1.0`");
-
-
-        // Update the model
-        model.update()
-            .expect("Faild to update the model after the initialization");
-
-
+    pub(super) fn init(eta: f64, size: usize, upper_bound: f64) -> Self {
+        let margins = vec![vec![]; size];
         Self {
+            n_examples:   size,
+            n_hypotheses: 0usize,
+            margins,
+            weights:      Vec::with_capacity(0usize),
+            dist:         Vec::with_capacity(0usize),
+            cap_inv:      upper_bound,
             eta,
-            model,
-            gamma,
-            dist,
-            constrs: Vec::new(),
         }
     }
 
@@ -75,129 +110,187 @@ impl QPModel {
         &mut self,
         sample: &Sample,
         dist: &mut [f64],
-        clf: &F,
+        clf: &F
     )
         where F: Classifier
     {
-        // If we got a new hypothesis,
-        // 1. append a constraint, and
-        // 2. optimize the model.
-        let edge = sample.target()
-            .iter()
-            .enumerate()
-            .map(|(i, y)| y * clf.confidence(sample, i))
-            .zip(self.dist.iter().copied())
-            .map(|(yh, d)| d * yh)
-            .grb_sum();
-
-
-        let name = format!("{t}-th hypothesis", t = self.constrs.len());
-
-
-        self.constrs.push(
-            self.model.add_constr(&name, c!(edge <= self.gamma))
-                .expect("Failed to add a new constraint `edge <= gamma`")
-        );
-        self.model.update()
-            .expect("Failed to update the model after adding a new constraint");
+        self.n_hypotheses += 1;
+        let margins = utils::margins_of_hypothesis(sample, clf);
+        self.margins.iter_mut()
+            .zip(margins)
+            .for_each(|(mvec, yh)| { mvec.push(yh); });
+        let constraint_matrix = self.build_constraint_matrix();
+        let sense = self.build_sense();
+        let rhs = self.build_rhs();
 
 
         let mut old_objval = 1e9;
-
         loop {
-            // Set objective function
-            let regularizer = dist.iter()
-                .copied()
-                .zip(self.dist.iter())
-                .map(|(d, &grb_d)| {
-                    let l_term = d.ln() * grb_d;
-                    let q_term = (0.5_f64 / d) * (grb_d * grb_d);
+            let settings = DefaultSettingsBuilder::default()
+                .equilibrate_enable(true)
+                .verbose(false)
+                .build()
+                .unwrap();
+            let linear = self.build_linear_part_objective(dist);
+            let quad   = self.build_quadratic_part_objective(dist);
+            let mut solver = DefaultSolver::new(
+                &quad,
+                &linear,
+                &constraint_matrix,
+                &rhs,
+                &sense[..],
+                settings
+            );
 
-                    l_term + q_term
-                })
-                .grb_sum();
-            let objective = self.gamma
-                + ((1.0_f64 / self.eta) * regularizer);
-            self.model.set_objective(objective, Minimize)
-                .expect("Failed to set the objective function");
+            solver.solve();
+            let solution = &solver.solution.x[1..];
 
-
-            self.model.optimize()
-                .expect("Failed to optimize the problem");
-
-
-            let status = self.model.status()
-                .expect("Failed to get the model status");
-            if status != Status::Optimal && status != Status::SubOptimal {
+            let objval = solver.solution.obj_val;
+            if !self.all_positive(solution) 
+                || old_objval - objval < QP_TOLERANCE
+            {
+                self.dist = solver.solution.x[1..].to_vec();
+                let start = 1 + 2 * self.n_examples;
+                self.weights = solver.solution.z[start..].to_vec();
                 break;
             }
-
-
-            // At this point, there exists an optimal solution in `vars`
-            // Check the stopping criterion 
-            let objval = self.model.get_attr(attr::ObjVal)
-                .expect("Failed to attain the optimal value");
-
-
-            let mut any_zero = false;
-            dist.iter_mut()
-                .zip(&self.dist[..])
-                .for_each(|(d, grb_d)| {
-                    let g = self.model.get_obj_attr(attr::X, grb_d)
-                        .expect("Failed to get the optimal solution");
-                    any_zero |= g == 0.0;
-                    *d = g;
-                });
-
-
-            if any_zero || old_objval - objval < QP_TOLERANCE {
-                break;
-            }
-
             old_objval = objval;
+            dist.iter_mut()
+                .zip(solution)
+                .for_each(|(di, s)| { *di = *s; });
         }
+    }
+
+
+    /// Returns `true` if `dist[i] > 0` holds for all `i = 1, 2, ..., m.` 
+    pub(self) fn all_positive(&self, dist: &[f64]) -> bool {
+        dist.into_iter()
+            .copied()
+            .all(|d| d > 0f64)
+    }
+
+
+    pub(self) fn build_linear_part_objective(&self, dist: &[f64]) -> Vec<f64> {
+        let mut linear = Vec::with_capacity(1 + self.n_examples);
+        linear.push(0f64);
+        let iter = dist.into_iter()
+            .copied()
+            .map(|di| (1f64 / self.eta) * di.ln());
+        linear.extend(iter);
+        linear
+    }
+
+
+    pub(self) fn build_quadratic_part_objective(&self, dist: &[f64])
+        -> CscMatrix::<f64>
+    {
+        let n_rows = 1 + self.n_examples;
+        let n_cols = n_rows;
+
+        let mut col_ptr = Vec::with_capacity(n_cols);
+        let mut row_val = Vec::with_capacity(n_cols);
+        let mut nonzero = Vec::with_capacity(n_cols);
+
+        col_ptr.push(0usize);
+        row_val.push(0usize);
+        nonzero.push(1f64);
+        for (i, &di) in (1..).zip(dist) {
+            col_ptr.push(i);
+            row_val.push(i);
+            nonzero.push(1f64 / (2f64 * self.eta * di));
+        }
+        col_ptr.push(row_val.len());
+
+        CscMatrix::new(
+            n_rows,
+            n_cols,
+            col_ptr,
+            row_val,
+            nonzero,
+        )
+    }
+
+
+    /// Build the constraint matrix in the 0-indexed CSC form.
+    pub(self) fn build_constraint_matrix(&self) -> CscMatrix::<f64> {
+        let n_rows = 1 + 2*self.n_examples + self.n_hypotheses;
+        let n_cols = 1 + self.n_examples;
+
+        let mut col_ptr = Vec::new();
+        let mut row_val = Vec::new();
+        let mut nonzero = Vec::new();
+
+        // the first index of margin constraints
+        let gam = 1 + 2 * self.n_examples;
+        col_ptr.push(0);
+        row_val.extend(gam..n_rows);
+        nonzero.extend(iter::repeat(-1f64).take(n_rows - gam));
+
+        for (j, margins) in (1..).zip(&self.margins) {
+            col_ptr.push(row_val.len());
+            // the sum constraint: `Σ_i d_i = 1`
+            row_val.push(0);
+            nonzero.push(1f64);
+
+            // non-negative constraint: `d_i ≥ 0`
+            row_val.push(j);
+            nonzero.push(-1f64);
+
+            // capping constraint: `d_i ≤ 1/ν`
+            row_val.push(self.n_examples + j);
+            nonzero.push(1f64);
+
+            // margin constraints of `i`-th column
+            for (i, &yh) in (0..).zip(margins) {
+                row_val.push(gam + i);
+                nonzero.push(yh);
+            }
+        }
+        col_ptr.push(row_val.len());
+
+        CscMatrix::new(
+            n_rows,
+            n_cols,
+            col_ptr,
+            row_val,
+            nonzero,
+        )
+    }
+
+
+    /// Build the vector of constraint sense: `[=, ≤, ≥, ...].`
+    pub(self) fn build_sense(&self) -> Vec<SupportedConeT<f64>> {
+        let n_ineq = 2*self.n_examples + self.n_hypotheses;
+        vec![
+            ZeroConeT(1),
+            NonnegativeConeT(n_ineq),
+        ]
+    }
+
+
+    /// Build the right-hand-side of the constraints.
+    pub(self) fn build_rhs(&self) -> Vec<f64> {
+        let n_constraints = 1 + 2*self.n_examples + self.n_hypotheses;
+        let mut rhs = Vec::with_capacity(n_constraints);
+        rhs.push(1f64);
+        rhs.extend(iter::repeat(0f64).take(self.n_examples));
+        rhs.extend(iter::repeat(self.cap_inv).take(self.n_examples));
+        rhs.extend(iter::repeat(0f64).take(self.n_hypotheses));
+        rhs
     }
 
     /// Returns the distribution over examples.
     pub(super) fn distribution(&self)
         -> Vec<f64>
     {
-        self.dist.iter()
-            .map(|d| self.model.get_obj_attr(attr::X, d))
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Failed to get the optimal solutions `d[..]`")
+        self.dist.clone()
     }
 
 
     /// Returns the weights over the hypotheses.
-    pub(super) fn weight(&mut self) -> impl Iterator<Item=f64> + '_
+    pub(super) fn weight(&self) -> impl Iterator<Item=f64> + '_
     {
-        let objective = self.gamma;
-        self.model.set_objective(objective, Minimize)
-            .expect("Failed to set the LP objective `gamma`");
-
-        self.model.update()
-            .expect(
-                "Failed to update the model after setting the LP objective"
-            );
-
-        self.model.optimize()
-            .expect("Failed to solve the LP");
-
-        let status = self.model.status()
-            .expect("Failed to get the model status");
-
-        if status != Status::Optimal {
-            panic!("Cannot solve the primal problem. Status: {status:?}");
-        }
-
-
-        self.constrs[0..].iter()
-            .map(|c|
-                self.model.get_obj_attr(attr::Pi, c)
-                    .map(f64::abs)
-                    .unwrap()
-            )
+        self.weights.iter().copied()
     }
 }
 

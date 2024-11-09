@@ -19,6 +19,7 @@ pub use crate::booster::{
     CERLPBoost,
     LPBoost,
     MLPBoost,
+    ERLPBoost,
 
 
     // Regression
@@ -32,9 +33,7 @@ pub use crate::booster::{
 #[cfg(feature="gurobi")]
 pub use crate::booster::{
     TotalBoost,
-
     // Soft margin maximizing boostings
-    ERLPBoost,
     SoftBoost,
 
 };
