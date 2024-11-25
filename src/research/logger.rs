@@ -126,8 +126,9 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
     }
 
 
+    /// print current settings.
     #[inline(always)]
-    fn print_stats(&self) {
+    pub fn print_stats(&self) {
         let limit = if self.time_limit != u128::MAX {
             time_format(self.time_limit)
         } else {
