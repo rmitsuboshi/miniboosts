@@ -125,7 +125,9 @@ impl QPModel {
 
 
         let mut old_objval = 1e9;
+        let mut loop_count = 0;
         loop {
+            loop_count += 1;
             let settings = DefaultSettingsBuilder::default()
                 .equilibrate_enable(true)
                 .verbose(false)
@@ -159,6 +161,7 @@ impl QPModel {
                 .zip(solution)
                 .for_each(|(di, s)| { *di = *s; });
         }
+        println!("# of inner loops: {loop_count}");
     }
 
 
