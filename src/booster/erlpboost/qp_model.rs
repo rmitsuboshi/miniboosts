@@ -12,7 +12,7 @@ use crate::hypothesis::Classifier;
 
 use std::iter;
 
-const QP_TOLERANCE: f64 = 1e-9;
+const QP_TOLERANCE: f64 = 1e-300;
 
 /// A quadratic programming model for edge minimization. 
 /// `QPModel` solves the entropy regularized edge minimization problem:
@@ -71,7 +71,7 @@ const QP_TOLERANCE: f64 = 1e-9;
 ///       ┗    ┃                                 ┛   ┗   ┛
 ///
 /// # of
-/// cols    1 ┃               m
+/// cols     1 ┃               m
 /// ```
 pub(super) struct QPModel {
     pub(self) n_examples: usize,        // number of columns

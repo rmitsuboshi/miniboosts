@@ -343,7 +343,6 @@ impl<F> MLPBoost<'_, F>
     /// 
     /// Time complexity: `O( # of training examples )`.
     fn objval(&self, weights: &[f64]) -> f64 {
-
         let dist = utils::exp_distribution(
             self.eta, self.nu, self.sample, weights, &self.hypotheses,
         );
