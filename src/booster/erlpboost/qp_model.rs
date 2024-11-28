@@ -45,30 +45,30 @@ const QP_TOLERANCE: f64 = 1e-9;
 /// ```txt
 /// # of   
 /// rows    γ        d1        ...     dm
-///       ┏    ┃                                 ┓   ┏   ┓
-///   1   ┃  0 ┃      1        ...      1        ┃ = ┃ 1 ┃
-///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  . ┃     (-1) * Identity matrix      ┃ . ┃ . ┃
-///   m   ┃  . ┃              m x m              ┃ . ┃ . ┃
-///       ┃  . ┃                                 ┃ . ┃ . ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///       ┃  . ┃                                 ┃ . ┃ . ┃
-///   m   ┃  . ┃         Identity matrix         ┃ . ┃ . ┃
-///       ┃  . ┃              m x m              ┃ . ┃ . ┃
-///       ┃  0 ┃                                 ┃ ≤ ┃ 0 ┃
-///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-///       ┃ -1 ┃  y_1 h_1(x_1) ...  y_m h_1(x_m) ┃ ≤ ┃ 0 ┃
-///       ┃ -1 ┃  y_1 h_2(x_1) ...  y_m h_2(x_m) ┃ ≤ ┃ 0 ┃
-///       ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
-///   H   ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
-///       ┃  . ┃      .        ...      .        ┃ . ┃ . ┃
-///       ┃ -1 ┃  y_1 h_T(x_1) ...  y_m h_T(x_m) ┃ ≤ ┃ 0 ┃
-///       ┗    ┃                                 ┛   ┗   ┛
+///       ┏    ┃                                 ┓   ┏     ┓
+///   1   ┃  0 ┃      1        ...      1        ┃ = ┃  1  ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃  0 ┃                                 ┃ ≤ ┃  0  ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃  0  ┃
+///       ┃  . ┃     (-1) * Identity matrix      ┃ . ┃  .  ┃
+///   m   ┃  . ┃              m x m              ┃ . ┃  .  ┃
+///       ┃  . ┃                                 ┃ . ┃  .  ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃  0  ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃  0 ┃                                 ┃ ≤ ┃ 1/ν ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃ 1/ν ┃
+///   m   ┃  . ┃         Identity matrix         ┃ . ┃  .  ┃
+///       ┃  . ┃              m x m              ┃ . ┃  .  ┃
+///       ┃  . ┃                                 ┃ . ┃  .  ┃
+///       ┃  0 ┃                                 ┃ ≤ ┃ 1/ν ┃
+///      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///       ┃ -1 ┃  y_1 h_1(x_1) ...  y_m h_1(x_m) ┃ ≤ ┃  0  ┃
+///       ┃ -1 ┃  y_1 h_2(x_1) ...  y_m h_2(x_m) ┃ ≤ ┃  0  ┃
+///       ┃  . ┃      .        ...      .        ┃ . ┃  .  ┃
+///   H   ┃  . ┃      .        ...      .        ┃ . ┃  .  ┃
+///       ┃  . ┃      .        ...      .        ┃ . ┃  .  ┃
+///       ┃ -1 ┃  y_1 h_T(x_1) ...  y_m h_T(x_m) ┃ ≤ ┃  0  ┃
+///       ┗    ┃                                 ┛   ┗     ┛
 ///
 /// # of
 /// cols    1 ┃               m
@@ -124,10 +124,14 @@ impl QPModel {
         let rhs = self.build_rhs();
 
 
-        let mut old_objval = 1e9;
-        let mut loop_count = 0;
+        let mut old_objval = 1e3;
+
+        // Initialize `dist` as the uniform distribution.
+        dist.iter_mut()
+            .for_each(|di| {
+                *di = 1f64 / self.n_examples as f64;
+            });
         loop {
-            loop_count += 1;
             let settings = DefaultSettingsBuilder::default()
                 .equilibrate_enable(true)
                 .verbose(false)
@@ -161,7 +165,6 @@ impl QPModel {
                 .zip(solution)
                 .for_each(|(di, s)| { *di = *s; });
         }
-        println!("# of inner loops: {loop_count}");
     }
 
 
@@ -175,7 +178,7 @@ impl QPModel {
 
     pub(self) fn build_linear_part_objective(&self, dist: &[f64]) -> Vec<f64> {
         let mut linear = Vec::with_capacity(1 + self.n_examples);
-        linear.push(0f64);
+        linear.push(1f64);
         let iter = dist.into_iter()
             .copied()
             .map(|di| (1f64 / self.eta) * di.ln());
@@ -197,10 +200,13 @@ impl QPModel {
         col_ptr.push(0usize);
         row_val.push(0usize);
         nonzero.push(1f64);
+        // NOTE:
+        // we do not need to multiply 0.5f64 
+        // since clarabel add it automatically.
         for (i, &di) in (1..).zip(dist) {
             col_ptr.push(i);
             row_val.push(i);
-            nonzero.push(0.5f64 / (self.eta * di));
+            nonzero.push(1f64 / (self.eta * di));
         }
         col_ptr.push(row_val.len());
 
@@ -241,7 +247,7 @@ impl QPModel {
 
             // capping constraint: `d_i ≤ 1/ν`
             row_val.push(self.n_examples + j);
-            nonzero.push(1f64);
+            nonzero.push(self.cap_inv);
 
             // margin constraints of `i`-th column
             for (i, &yh) in (0..).zip(margins) {
