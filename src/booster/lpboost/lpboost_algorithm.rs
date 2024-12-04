@@ -60,14 +60,6 @@ use std::ops::ControlFlow;
 /// - [`ERLPBoost`](crate::booster::ERLPBoost), 
 /// A stabilized version of `LPBoost` is 
 /// proposed by Warmuth et al. (2008).
-/// - This code uses Gurobi optimizer,
-/// so you need to do the followings:
-///     1. Install Gurobi and put its license to your home directory.
-///     2. Enable `extended` flag.
-///     ```toml
-///     miniboosts = { version = "0.3.3", features = ["extended"] }
-///     ```
-///
 /// 
 /// # Example
 /// The following code shows a small example for running [`LPBoost`].  
