@@ -70,13 +70,6 @@ use std::ops::ControlFlow;
 ///
 /// # Related information
 /// - Every round, `MLPBoost` solves a linear program.
-/// - This code uses Gurobi optimizer,
-///   so you need to do the followings:
-///     1. Install Gurobi and put its license to your home directory.
-///     2. Enable `extended` flag.
-///     ```toml
-///     miniboosts = { version = "0.3.3", features = ["extended"] }
-///     ```
 /// - By default, `MLPBoost` sets 
 ///   [`FWType::ShortStep`](crate::FWType)
 ///   as the primary strategy.
@@ -343,7 +336,6 @@ impl<F> MLPBoost<'_, F>
     /// 
     /// Time complexity: `O( # of training examples )`.
     fn objval(&self, weights: &[f64]) -> f64 {
-
         let dist = utils::exp_distribution(
             self.eta, self.nu, self.sample, weights, &self.hypotheses,
         );
