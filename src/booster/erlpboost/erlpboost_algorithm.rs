@@ -53,13 +53,6 @@ use std::ops::ControlFlow;
 ///   by the sequential quadratic minimization technique.
 ///   So, running time per round is slow 
 ///   compared to [`LPBoost`](crate::booster::LPBoost).
-/// - This code uses Gurobi optimizer,
-///   so you need to do the followings:
-///     1. Install Gurobi and put its license to your home directory.
-///     2. Enable `extended` flag.
-///     ```toml
-///     miniboosts = { version = "0.3.3", features = ["extended"] }
-///     ```
 /// 
 /// # Example
 /// The following code shows a small example 

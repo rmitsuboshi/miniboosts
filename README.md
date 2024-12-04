@@ -22,14 +22,14 @@ that performs significantly better on training examples.
 Write the following in your `cargo.toml.`
 ```toml
 [dependencies]
-minibosts = { version = "0.3.5" }
+minibosts = { version = "0.3.6" }
 ```
 All boosting algorithms are implemented without [Gurobi][gurobi].
 but, if you have a [Gurobi][gurobi] license, 
 you can use the Gurobi version of the algorithms by setting:
 ```toml
 [dependencies]
-minibosts = { version = "0.3.5", features = ["gurobi"] }
+minibosts = { version = "0.3.6", features = ["gurobi"] }
 ```
 
 > [!CAUTION]
@@ -119,12 +119,12 @@ See [Research feature](#research-feature) section for detail.
 
 Write the following to `Cargo.toml`.
 ```TOML
-miniboosts = { version = "0.3.5" }
+miniboosts = { version = "0.3.6" }
 ```
 
 If you want to use `gurobi` features, enable the flag:
 ```TOML
-miniboosts = { version = "0.3.5", features = ["gurobi"] }
+miniboosts = { version = "0.3.6", features = ["gurobi"] }
 ```
 
 Here is a sample code:
