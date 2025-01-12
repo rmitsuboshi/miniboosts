@@ -58,7 +58,7 @@ use std::collections::HashMap;
 ///     .criterion(Criterion::Entropy)
 ///     .build();
 ///
-/// let n_sample = sample.shape().0;
+/// let n_sample = sample.shape()f64;
 /// let dist = vec![1f64 / n_sample as f64; n_sample];
 /// let f = tree.produce(&sample, &dist);
 /// 
@@ -67,7 +67,7 @@ use std::collections::HashMap;
 /// let loss = sample.target()
 ///     .into_iter()
 ///     .zip(predictions)
-///     .map(|(ty, py)| if *ty == py as f64 { 0.0 } else { 1.0 })
+///     .map(|(ty, py)| if *ty == py as f64 { 0f64 } else { 1f64 })
 ///     .sum::<f64>()
 ///     / n_sample as f64;
 /// println!("loss (train) is: {loss}");
@@ -116,7 +116,7 @@ impl<'a> DecisionTree<'a> {
 
 
         // If sum of `dist` over `train` is zero, construct a leaf node.
-        if loss == 0.0 || depth < 1 {
+        if loss == 0f64 || depth < 1 {
             return TrainNode::leaf(conf, total_weight, loss);
         }
 
@@ -194,7 +194,7 @@ impl<'a> WeakLearner for DecisionTree<'a> {
     {
         let n_sample = sample.shape().0;
 
-        let indices = (0..n_sample).filter(|&i| dist[i] > 0.0)
+        let indices = (0..n_sample).filter(|&i| dist[i] > 0f64)
             .collect::<Vec<usize>>();
         assert_ne!(indices.len(), 0);
 
@@ -238,7 +238,7 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
 
     for &i in indices {
         let l = target[i] as i64;
-        let cnt = counter.entry(l).or_insert(0.0);
+        let cnt = counter.entry(l).or_insert(0f64);
         *cnt += dist[i];
     }
 
@@ -253,13 +253,13 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
 
     // From the update rule of boosting algorithm,
     // the sum of `dist` over `indices` may become zero,
-    let loss = if total > 0.0 { total * (1.0 - (p / total)) } else { 0.0 };
+    let loss = if total > 0f64 { total * (1f64 - (p / total)) } else { 0f64 };
 
     // `label` takes value in `{-1, +1}`.
-    let confidence = if total > 0.0 {
-        (label as f64 * (2.0 * (p / total) - 1.0)).clamp(-1.0, 1.0)
+    let confidence = if total > 0f64 {
+        (label as f64 * (2f64 * (p / total) - 1f64)).clamp(-1f64, 1f64)
     } else {
-        (label as f64).clamp(-1.0, 1.0)
+        (label as f64).clamp(-1f64, 1f64)
     };
 
     let confidence = Confidence::from(confidence);

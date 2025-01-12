@@ -6,6 +6,7 @@ use rayon::prelude::*;
 use crate::{Sample, Classifier};
 use crate::common::checker;
 
+
 /// Returns the edge of a single hypothesis for the given distribution.
 /// Here `edge` is the weighted training loss.
 /// 
@@ -167,53 +168,6 @@ pub fn exp_distribution_from_margins<I>(
 }
 
 
-// /// Projects the given distribution onto the capped simplex.
-// /// Capped simplex with parameter `ν (nu)` is defined as
-// /// 
-// /// ```txt
-// /// Δ_{m, ν} := { d ∈ [0, 1/ν]^m | sum( d[i] ) = 1 }
-// /// ```
-// /// 
-// /// That is, each coordinate takes at most `1/ν`.
-// /// Specifying `ν = 1` yields the no-capped simplex.
-// #[inline(always)]
-// pub fn project_distribution_to_capped_simplex<I>(
-//     nu: f64,
-//     iter: I,
-// ) -> Vec<f64>
-//     where I: Iterator<Item = f64>,
-// {
-//     let mut dist: Vec<_> = iter.collect();
-//     let n_sample = dist.len();
-// 
-//     // Construct a vector of indices sorted in descending order of `dist`.
-//     let mut ix = (0..n_sample).collect::<Vec<usize>>();
-//     ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
-// 
-//     let mut sum = dist.iter().sum::<f64>();
-// 
-//     let ub = 1.0 / nu;
-// 
-// 
-//     let mut ix = ix.into_iter().enumerate();
-//     for (k, i) in ix.by_ref() {
-//         let xi = (1.0 - ub * k as f64) / sum;
-//         if xi * dist[i] <= ub {
-//             dist[i] = xi * dist[i];
-//             for (_, j) in ix {
-//                 dist[j] = xi * dist[j];
-//             }
-//             break;
-//         }
-//         sum -= dist[i];
-//         dist[i] = ub;
-//     }
-// 
-//     checker::check_capped_simplex_condition(&dist, nu);
-//     dist
-// }
-
-
 /// Projects the given logarithmic distribution onto the capped simplex.
 /// Capped simplex with parameter `ν (nu)` is defined as
 /// 
@@ -233,35 +187,10 @@ pub fn project_log_distribution_to_capped_simplex<I>(
     let mut dist: Vec<_> = iter.collect();
     let n_sample = dist.len();
 
-    // Construct a vector of indices sorted in descending order of `dist`.
+    // Construct a vector of indices `ix.`
     let mut ix = (0..n_sample).collect::<Vec<usize>>();
+    // sort `ix` in the descending order of `dist`.
     ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
-
-
-    // let mut ln_z = dist[ix[0]];
-    // for &i in &ix[1..] {
-    //     let ln_d = dist[i];
-    //     let small = ln_z.min(ln_d);
-    //     let large = ln_z.max(ln_d);
-    //     ln_z = large + (1f64 + (small - large).exp()).ln();
-    // }
-
-    // let v = 1f64 / nu;
-    // let ln_v = v.ln();
-
-    // for i in 0..n_sample {
-    //     let ln_xi = (1f64 - v * i as f64).ln() - ln_z;
-    //     let ln_di = dist[ix[i]];
-    //     if ln_xi + ln_di <= ln_v {
-    //         for j in i..n_sample {
-    //             let ln_dj = dist[ix[j]];
-    //             dist[ix[j]] = (ln_xi + ln_dj).exp();
-    //         }
-    //         break;
-    //     }
-    //     dist[ix[i]] = v;
-    //     ln_z = ln_z + (1f64 - (ln_di - ln_z).exp()).ln();
-    // }
 
 
     // `logsums[k] = ln( sum_{i=0}^{k-1} exp( -η (Aw)i ) )
@@ -288,6 +217,18 @@ pub fn project_log_distribution_to_capped_simplex<I>(
     let mut ix_with_logsum = ix.into_iter().zip(logsums).enumerate();
 
 
+    // NOTE:
+    // The following is the efficient projection 
+    // onto the probability simplex capped by `1/ν.`
+    // This code comes from the paper:
+    //
+    // Shai Shalev-Shwartz and Yoram Singer.
+    // On the equivalence of weak learnability and linear separability:
+    // new relaxations and efficient boosting algorithms.
+    // [Journal of Machine Learning 2010]
+    //
+    // Note that the parameter `ν` in the paper corresponds to
+    // `1/nu` in this code.
     for (i, (i_sorted, logsum)) in ix_with_logsum.by_ref() {
         let log_xi = (1.0 - ub * i as f64).ln() - logsum;
         // TODO replace this line by `get_unchecked`
