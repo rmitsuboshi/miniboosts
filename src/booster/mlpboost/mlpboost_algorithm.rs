@@ -4,7 +4,7 @@
 //! 
 
 #[cfg(not(feature="gurobi"))]
-use super::lp_model::LPModel;
+use super::perturbed_lp_model::LPModel;
 
 #[cfg(feature="gurobi")]
 use super::gurobi_lp_model::LPModel;
@@ -271,7 +271,7 @@ impl<'a, F> MLPBoost<'a, F> {
         // `ub` is the upper-bound of distribution for each example.
         let ub = 1.0 / self.nu;
 
-        let lp_model = RefCell::new(LPModel::init(self.n_sample, ub));
+        let lp_model = RefCell::new(LPModel::init(self.eta, self.n_sample, ub));
 
         self.secondary = Some(lp_model);
     }
