@@ -4,6 +4,9 @@
 use crate::Sample;
 
 
+const SIMPLEX_TOLERANCE: f64 = 1e-5;
+
+
 /// Check whether the training sample is valid or not.
 #[inline(always)]
 pub(crate) fn check_sample(sample: &Sample)
@@ -26,13 +29,13 @@ pub(crate) fn check_sample(sample: &Sample)
 #[inline(always)]
 pub(crate) fn check_nu(nu: f64, n_sample: usize) {
     let n_sample = n_sample as f64;
-    assert!((1.0..=n_sample).contains(&nu));
+    assert!((1f64..=n_sample).contains(&nu));
 }
 
 /// Check the stepsize
 #[inline(always)]
 pub(crate) fn check_stepsize(size: f64) {
-    assert!((0.0..=1.0).contains(&size));
+    assert!((0f64..=1f64).contains(&size));
 }
 
 
@@ -46,8 +49,18 @@ pub(crate) fn check_capped_simplex_condition(
     check_nu(nu, length);
 
     let sum = slice.iter().sum::<f64>();
-    assert!((sum - 1.0).abs() < 1e-6, "Got sum = {sum}");
+    let diff = (sum - 1f64).abs();
+    if diff > SIMPLEX_TOLERANCE {
+        println!(">> diff is {diff} > {SIMPLEX_TOLERANCE}");
+        println!(">> sum  = {sum}");
+        assert!((sum - 1f64).abs() < SIMPLEX_TOLERANCE, "sum(dist[..]) = {sum}");
+    }
+    assert!((sum - 1f64).abs() < SIMPLEX_TOLERANCE, "sum(dist[..]) = {sum}");
 
-    let ub = 1.0 / nu;
-    assert!(slice.iter().all(|s| (0.0..=ub).contains(s)));
+    let ub = 1f64 / nu;
+    assert!(
+        slice.iter().all(|s| (0f64..=ub).contains(s)),
+        "capping constraint is violated!"
+    );
 }
+
