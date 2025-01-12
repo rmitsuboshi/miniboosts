@@ -330,7 +330,6 @@ impl FrankWolfe {
             // Pairwise update!
             let max_stepsize = weights[position_of_worst_one];
 
-            // TODO
             // Find the best stepsize by line-search
             let local_best_margins = utils::margins_of_hypothesis(
                 sample, &hypotheses[position_of_local_best_one]

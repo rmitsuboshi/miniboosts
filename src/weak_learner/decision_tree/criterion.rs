@@ -186,13 +186,13 @@ fn split_by_entropy(pack: Vec<(Bin, LabelToWeight)>)
 
 
     let mut left_weight = LabelToWeight::new();
-    let mut left_weight_sum = 0.0;
+    let mut left_weight_sum = 0f64;
     let mut right_weight = LabelToWeight::new();
-    let mut right_weight_sum = 0.0;
+    let mut right_weight_sum = 0f64;
 
     for (_, mp) in pack.iter() {
         for (y, w) in mp.iter() {
-            let entry = right_weight.entry(*y).or_insert(0.0);
+            let entry = right_weight.entry(*y).or_insert(0f64);
             *entry += w;
             right_weight_sum += w;
         }
@@ -203,7 +203,7 @@ fn split_by_entropy(pack: Vec<(Bin, LabelToWeight)>)
 
     for (bin, map) in pack {
         for (y, w) in map {
-            let entry = left_weight.entry(y).or_insert(0.0);
+            let entry = left_weight.entry(y).or_insert(0f64);
             *entry += w;
             left_weight_sum += w;
             let entry = right_weight.get_mut(&y).unwrap();
@@ -211,7 +211,7 @@ fn split_by_entropy(pack: Vec<(Bin, LabelToWeight)>)
             right_weight_sum -= w;
         }
         let lp = left_weight_sum / weight_sum;
-        let rp = (1.0 - lp).max(0.0);
+        let rp = (1f64 - lp).max(0f64);
 
         let left_impurity = entropic_impurity(&left_weight);
         let right_impurity = entropic_impurity(&right_weight);
@@ -244,7 +244,7 @@ fn split_by_edge(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
 
 
     for (bin, map) in pack {
-        edge -= 2.0 * map.into_iter()
+        edge -= 2f64 * map.into_iter()
             .map(|(y, d)| y as f64 * d)
             .sum::<f64>();
 
@@ -266,13 +266,13 @@ fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
 
 
     let mut left_weight = LabelToWeight::new();
-    let mut left_weight_sum = 0.0;
+    let mut left_weight_sum = 0f64;
     let mut right_weight = LabelToWeight::new();
-    let mut right_weight_sum = 0.0;
+    let mut right_weight_sum = 0f64;
 
     for (_, mp) in pack.iter() {
         for (y, w) in mp.iter() {
-            let entry = right_weight.entry(*y).or_insert(0.0);
+            let entry = right_weight.entry(*y).or_insert(0f64);
             *entry += w;
             right_weight_sum += w;
         }
@@ -283,7 +283,7 @@ fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
 
     for (bin, map) in pack {
         for (y, w) in map {
-            let entry = left_weight.entry(y).or_insert(0.0);
+            let entry = left_weight.entry(y).or_insert(0f64);
             *entry += w;
             left_weight_sum += w;
             let entry = right_weight.get_mut(&y).unwrap();
@@ -291,10 +291,10 @@ fn split_by_gini(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
             right_weight_sum -= w;
 
 
-            if *entry <= 0.0 { right_weight.remove(&y); }
+            if *entry <= 0f64 { right_weight.remove(&y); }
         }
         let lp = left_weight_sum / weight_sum;
-        let rp = (1.0 - lp).max(0.0);
+        let rp = (1f64 - lp).max(0f64);
 
         let left_impurity = gini_impurity(&left_weight);
         let right_impurity = gini_impurity(&right_weight);
@@ -318,26 +318,26 @@ fn split_by_twoing(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
     let mut labels = HashSet::new();
     for (_, mp) in pack.iter() {
         for (y, w) in mp.iter() {
-            let entry = right_weight.entry(*y).or_insert(0.0);
+            let entry = right_weight.entry(*y).or_insert(0f64);
             *entry += w;
 
             labels.insert(*y);
         }
     }
 
-    let mut best_score = 0.0;
+    let mut best_score = 0f64;
     let mut best_threshold = f64::MIN;
 
     for (bin, map) in pack {
         // Move the weights in a `pack` from right to left.
         for (y, w) in map {
-            let entry = left_weight.entry(y).or_insert(0.0);
+            let entry = left_weight.entry(y).or_insert(0f64);
             *entry += w;
             if let Some(entry) = right_weight.get_mut(&y) {
                 *entry -= w;
             }
 
-            if *entry <= 0.0 { right_weight.remove(&y); }
+            if *entry <= 0f64 { right_weight.remove(&y); }
         }
 
 
@@ -358,12 +358,12 @@ fn split_by_twoing(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
 #[inline(always)]
 pub(self) fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
-    if total <= 0.0 || map.is_empty() { return 0.0.into(); }
+    if total <= 0f64 || map.is_empty() { return 0f64.into(); }
 
     map.par_iter()
         .map(|(_, &p)| {
             let r = p / total;
-            if r <= 0.0 { 0.0 } else { -r * r.ln() }
+            if r <= 0f64 { 0f64 } else { -r * r.ln() }
         })
         .sum::<f64>()
 }
@@ -373,13 +373,13 @@ pub(self) fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
 #[inline(always)]
 pub(self) fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
-    if total <= 0.0 || map.is_empty() { return 0.0.into(); }
+    if total <= 0f64 || map.is_empty() { return 0f64.into(); }
 
     let correct = map.par_iter()
         .map(|(_, &w)| (w / total).powi(2))
         .sum::<f64>();
 
-    (1.0 - correct).max(0.0)
+    (1f64 - correct).max(0f64)
 }
 
 
@@ -395,17 +395,17 @@ pub(self) fn twoing_score(
     let pr = right.values().sum::<f64>();
     let pt = pl + pr;
 
-    if pl == 0.0 || pr == 0.0 { return 0.0; }
-    assert!(pt > 0.0);
+    if pl == 0f64 || pr == 0f64 { return 0f64; }
+    assert!(pt > 0f64);
 
-    let mut score = 0.0;
+    let mut score = 0f64;
     for y in labels {
-        let l = left.get(y).unwrap_or(&0.0);
-        let r = right.get(y).unwrap_or(&0.0);
+        let l = left.get(y).unwrap_or(&0f64);
+        let r = right.get(y).unwrap_or(&0f64);
 
         score += ((l / pl) - (r / pr)).abs();
     }
-    score = score.powi(2) * pl * pr / (2.0 * pt).powi(2);
+    score = score.powi(2) * pl * pr / (2f64 * pt).powi(2);
 
     score
 }
