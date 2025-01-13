@@ -43,7 +43,6 @@ pub use self::naive_bayes::{
 
 
 pub use self::regression_tree::{
-    LossType,
     RegressionTree,
     RegressionTreeBuilder,
     RegressionTreeRegressor,

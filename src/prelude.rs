@@ -64,7 +64,6 @@ pub use crate::weak_learner::{
     RegressionTree,
     RegressionTreeBuilder,
     RegressionTreeRegressor,
-    LossType,
 };
 
 
@@ -81,6 +80,7 @@ pub use crate::{
 
 pub use crate::common::{
     loss_functions::GBMLoss,
+    loss_functions::LossFunction,
     frank_wolfe::FWType,
 };
 

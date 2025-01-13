@@ -57,13 +57,12 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = data.shape().0` is 
 /// // the number of training examples in `data`.
-/// let booster = GBM::init(&sample)
-///     .loss(GBMLoss::L1);
+/// let booster = GBM::init_with_loss(&sample, GBMLoss::L2);
 /// 
 /// // Set the weak learner with setting parameters.
 /// let weak_learner = RegressionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .loss(LossType::L1)
+///     .loss(LossType::L2)
 ///     .build();
 /// 
 /// // Run `GBM` and obtain the resulting hypothesis `f`.
@@ -80,7 +79,7 @@ use std::ops::ControlFlow;
 /// let training_loss = sample.target()
 ///     .into_iter()
 ///     .zip(predictions)
-///     .map(|(y, fx)| (y - fx).abs())
+///     .map(|(y, fx)| (y - fx).powi(2))
 ///     .sum::<f64>()
 ///     / n_sample;
 /// 
