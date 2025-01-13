@@ -20,8 +20,14 @@ pub trait LossFunction {
             / n_items as f64
     }
 
-    /// Gradient vector at current point.
+    /// Gradient vector at the current point.
     fn gradient(&self, predictions: &[f64], target: &[f64]) -> Vec<f64>;
+
+
+    /// Hessian at the current point.
+    /// Here, this method assumes that the Hessian is diagonal,
+    /// so that it returns a diagonal vector.
+    fn hessian(&self, predictions: &[f64], target: &[f64]) -> Vec<f64>;
 
 
     /// Best coffecient for the newly-attained hypothesis.
@@ -45,6 +51,17 @@ pub enum GBMLoss {
     /// This loss function is also known as
     /// **Mean Squared Error (MSE)**.
     L2,
+
+
+    // /// Huber loss with parameter `delta`.
+    // /// Huber loss maps the given scalar `z` to
+    // /// `0.5 * z.powi(2)` if `z.abs() < delta`,
+    // /// `delta * (z.abs() - 0.5 * delta)`, otherwise.
+    // Huber(f64),
+
+
+    // /// Quantile loss
+    // Quantile(f64),
 }
 
 
@@ -53,6 +70,7 @@ impl LossFunction for GBMLoss {
         match self {
             Self::L1 => "L1 loss",
             Self::L2 => "L2 loss",
+            // Self::Huber(_) => "Huber loss",
         }
     }
 
@@ -61,6 +79,14 @@ impl LossFunction for GBMLoss {
         match self {
             Self::L1 => (prediction - true_value).abs(),
             Self::L2 => (prediction - true_value).powi(2),
+            // Self::Huber(delta) => {
+            //     let diff = (prediction - true_value).abs();
+            //     if diff < *delta {
+            //         0.5 * diff.powi(2)
+            //     } else {
+            //         delta * (diff - 0.5 * delta)
+            //     }
+            // },
         }
     }
 
@@ -73,17 +99,59 @@ impl LossFunction for GBMLoss {
 
         match self {
             Self::L1 => {
-                predictions.iter()
-                    .zip(target)
-                    .map(|(p, y)| (p - y).signum() / n_sample)
+                target.iter()
+                    .zip(predictions)
+                    .map(|(y, p)| (y - p).signum())
                     .collect()
             },
             Self::L2 => {
-                predictions.iter()
-                    .zip(target)
-                    .map(|(p, y)| 2.0 * (p - y) / n_sample)
+                target.iter()
+                    .zip(predictions)
+                    .map(|(y, p)| p - y)
                     .collect()
             },
+            // Self::Huber(delta) => {
+            //     target.iter()
+            //         .zip(predictions)
+            //         .map(|(y, p)| {
+            //             let diff = y - p;
+            //             if diff.abs() < *delta {
+            //                 -diff
+            //             } else {
+            //                 delta * diff.signum()
+            //             }
+            //         })
+            //         .collect::<Vec<_>>()
+            // },
+        }
+    }
+
+
+    fn hessian(&self, predictions: &[f64], target: &[f64]) -> Vec<f64>
+    {
+        let n_sample = predictions.len();
+        assert_eq!(n_sample as usize, target.len());
+
+        match self {
+            Self::L1 => {
+                std::iter::repeat(0f64)
+                    .take(n_sample)
+                    .collect()
+            },
+            Self::L2 => {
+                std::iter::repeat(1f64)
+                    .take(n_sample)
+                    .collect()
+            },
+            // Self::Huber(delta) => {
+            //     target.iter()
+            //         .zip(predictions)
+            //         .map(|(y, p)| {
+            //             let diff = (y - p).abs();
+            //             if diff < *delta { 1f64 } else { 0f64 }
+            //         })
+            //         .collect::<Vec<_>>()
+            // },
         }
     }
 

@@ -216,7 +216,6 @@ pub use weak_learner::{
     RegressionTree,
     RegressionTreeBuilder,
     RegressionTreeRegressor,
-    LossType,
 };
 
 /// Some useful functions / traits

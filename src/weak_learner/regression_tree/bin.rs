@@ -18,19 +18,8 @@ const EPS: f64 = 0.001;
 const NUM_TOLERANCE: f64 = 1e-9;
 
 
-/// A struct that stores the first/second order derivative information.
-#[derive(Clone,Default)]
-pub(crate) struct GradientHessian {
-    pub(crate) grad: f64,
-    pub(crate) hess: f64,
-}
-
-
-impl GradientHessian {
-    pub(super) fn new(grad: f64, hess: f64) -> Self {
-        Self { grad, hess }
-    }
-}
+type Gradient = f64;
+type Hessian  = f64;
 
 
 /// Binning: A feature processing.
@@ -209,11 +198,13 @@ impl Bins {
         &self,
         indices: &[usize],
         feat: &Feature,
-        gh: &[GradientHessian],
-    ) -> Vec<(Bin, GradientHessian)>
+        gradient: &[Gradient],
+        hessian: &[Hessian],
+    ) -> Vec<(Bin, Gradient, Hessian)>
     {
         let n_bins = self.0.len();
-        let mut packed = vec![GradientHessian::default(); n_bins];
+        let mut grad_pack = vec![0f64; n_bins];
+        let mut hess_pack = vec![0f64; n_bins];
 
         for &i in indices {
             let xi = feat[i];
@@ -226,10 +217,10 @@ impl Bins {
                     range.0.start.partial_cmp(&xi).unwrap()
                 })
                 .unwrap();
-            packed[pos].grad += gh[i].grad;
-            packed[pos].hess += gh[i].hess;
+            grad_pack[pos] += gradient[i];
+            hess_pack[pos] += hessian[i];
         }
-        self.remove_zero_weight_pack_and_normalize(packed)
+        self.remove_zero_weight_pack_and_normalize(grad_pack, hess_pack)
     }
 
 
@@ -254,42 +245,45 @@ impl Bins {
     /// - 
     fn remove_zero_weight_pack_and_normalize(
         &self,
-        pack: Vec<GradientHessian>,
-    ) -> Vec<(Bin, GradientHessian)>
+        grad_pack: Vec<Gradient>,
+        hess_pack: Vec<Hessian>,
+    ) -> Vec<(Bin, Gradient, Hessian)>
     {
-        let mut iter = self.0.iter().zip(pack);
+        let mut iter = self.0.iter().zip(grad_pack.into_iter().zip(hess_pack));
 
-        let (prev_bin, mut prev_gh) = iter.next().unwrap();
+        let (prev_bin, (mut prev_grad, mut prev_hess)) = iter.next().unwrap();
 
         let mut prev_bin = Bin::new(prev_bin.0.clone());
-        let mut iter = iter.filter(|(_, gh)| {
-            gh.grad != 0.0 || gh.hess != 0.0
+        let mut iter = iter.filter(|(_, (grad, hess))| {
+            *grad != 0.0 || *hess != 0.0
         });
 
         // The left-most bin might have zero weight.
         // In this case, find the next non-zero weight bin and merge.
-        if prev_gh.grad == 0.0 && prev_gh.hess == 0.0 {
-            let (next_bin, next_gh) = iter.next().unwrap();
+        if prev_grad == 0.0 && prev_hess == 0.0 {
+            let (next_bin, (next_grad, next_hess)) = iter.next().unwrap();
 
             let start = prev_bin.0.start;
             let end = next_bin.0.end;
             prev_bin = Bin::new(start..end);
-            prev_gh = next_gh;
+            prev_grad = next_grad;
+            prev_hess = next_hess;
         }
 
         let mut bin_and_gh = Vec::new();
-        for (next_bin, next_gh) in iter {
+        for (next_bin, (next_grad, next_hess)) in iter {
             let start = prev_bin.0.start;
             let end = (prev_bin.0.end + next_bin.0.start) / 2.0;
             let bin = Bin::new(start..end);
-            bin_and_gh.push((bin, prev_gh));
+            bin_and_gh.push((bin, prev_grad, prev_hess));
 
 
             prev_bin = Bin::new(next_bin.0.clone());
             prev_bin.0.start = end;
-            prev_gh = next_gh;
+            prev_grad = next_grad;
+            prev_hess = next_hess;
         }
-        bin_and_gh.push((prev_bin, prev_gh));
+        bin_and_gh.push((prev_bin, prev_grad, prev_hess));
 
         bin_and_gh
     }
@@ -310,7 +304,7 @@ impl fmt::Display for Bins {
             let tail = bins.last()
                 .map(|bin| format!("{bin}"))
                 .unwrap();
-            write!(f, "{head},      ...     , {tail}")
+            write!(f, "{head}, ... , {tail}")
         } else {
             let line = bins.iter()
                 .map(|bin| format!("{}", bin))
@@ -335,7 +329,7 @@ impl fmt::Display for Bin {
                 ' '
             };
             let start = start.abs();
-            format!("{sgn}{start: >.2}")
+            format!("{sgn}{start: >.1}")
         };
         let end = if self.0.end == f64::MAX {
             String::from("+Inf")
@@ -349,9 +343,9 @@ impl fmt::Display for Bin {
                 ' '
             };
             let end = end.abs();
-            format!("{sgn}{end: >.2}")
+            format!("{sgn}{end: >.1}")
         };
 
-        write!(f, "[{start}, {end})")
+        write!(f, "[{start: >8}, {end: >8})")
     }
 }
