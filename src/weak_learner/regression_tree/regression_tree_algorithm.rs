@@ -1,15 +1,19 @@
 use crate::{Sample, WeakLearner};
 use super::bin::*;
 
+use crate::common::loss_functions::LossFunction;
+
 
 use crate::weak_learner::common::{
     split_rule::*,
+    type_and_struct::*,
 };
+
+use rayon::prelude::*;
 
 use super::{
     node::*,
     train_node::*,
-    loss::LossType,
     regression_tree_regressor::RegressionTreeRegressor,
 };
 
@@ -18,6 +22,10 @@ use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
+
+
+type Gradient = f64;
+type Hessian  = f64;
 
 
 /// `RegressionTree` is the factory that generates
@@ -42,7 +50,7 @@ use std::collections::HashMap;
 /// // Further, this example uses `Criterion::Edge` for splitting rule.
 /// let tree = RegressionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .loss(LossType::L2)
+///     .loss(GBMLoss::L2)
 ///     .build();
 /// 
 /// let n_sample = sample.shape().0;
@@ -59,7 +67,7 @@ use std::collections::HashMap;
 ///     / n_sample as f64;
 /// println!("loss (train) is: {loss}");
 /// ```
-pub struct RegressionTree<'a> {
+pub struct RegressionTree<'a, L> {
     bins: HashMap<&'a str, Bins>,
     // The maximal depth of the output trees
     max_depth: usize,
@@ -70,23 +78,22 @@ pub struct RegressionTree<'a> {
     // Regularization parameter
     lambda_l2: f64,
 
-
-    // LossType function
-    loss_type: LossType,
+    // Loss function
+    loss_func: L,
 }
 
 
-impl<'a> RegressionTree<'a> {
+impl<'a, L> RegressionTree<'a, L> {
     #[inline]
     pub(super) fn from_components(
         bins: HashMap<&'a str, Bins>,
         n_sample: usize,
         max_depth: usize,
         lambda_l2: f64,
-        loss_type: LossType,
+        loss_func: L,
     ) -> Self
     {
-        Self { bins, n_sample, max_depth, lambda_l2, loss_type, }
+        Self { bins, n_sample, max_depth, lambda_l2, loss_func, }
     }
 
 
@@ -94,15 +101,16 @@ impl<'a> RegressionTree<'a> {
     fn full_tree(
         &self,
         sample: &Sample,
-        gh: &[GradientHessian],
+        gradient: &[Gradient],
+        hessian: &[Hessian],
         indices: Vec<usize>,
         max_depth: usize,
     ) -> Rc<RefCell<TrainNode>>
     {
         // Compute the best prediction that minimizes the training error
         // on this node.
-        let (pred, loss) = self.loss_type.prediction_and_loss(
-            &indices, gh, self.lambda_l2,
+        let (pred, loss) = prediction_and_loss(
+            &indices[..], gradient, hessian, self.lambda_l2,
         );
 
 
@@ -113,8 +121,8 @@ impl<'a> RegressionTree<'a> {
 
 
         // Find the best splitting rule.
-        let (feature, threshold) = self.loss_type.best_split(
-            &self.bins, &sample, gh, &indices[..], self.lambda_l2,
+        let (feature, threshold) = best_split(
+            &self.bins, sample, gradient, hessian, &indices[..], self.lambda_l2,
         );
 
         let rule = Splitter::new(feature, threshold);
@@ -139,8 +147,8 @@ impl<'a> RegressionTree<'a> {
         // -----
         // At this point, `max_depth > 1` is guaranteed
         // so that one can grow the tree.
-        let ltree = self.full_tree(sample, gh, lindices, max_depth-1);
-        let rtree = self.full_tree(sample, gh, rindices, max_depth-1);
+        let ltree = self.full_tree(sample, gradient, hessian, lindices, max_depth-1);
+        let rtree = self.full_tree(sample, gradient, hessian, rindices, max_depth-1);
 
 
         TrainNode::branch(rule, ltree, rtree, pred, loss)
@@ -148,7 +156,9 @@ impl<'a> RegressionTree<'a> {
 }
 
 
-impl<'a> WeakLearner for RegressionTree<'a> {
+impl<'a, L> WeakLearner for RegressionTree<'a, L>
+    where L: LossFunction,
+{
     type Hypothesis = RegressionTreeRegressor;
 
 
@@ -165,30 +175,29 @@ impl<'a> WeakLearner for RegressionTree<'a> {
         let info = Vec::from([
             ("# of bins (max)", format!("{n_bins}")),
             ("Max depth", format!("{}", self.max_depth)),
-            ("Split criterion", format!("{}", self.loss_type)),
+            ("Split criterion", format!("{}", self.loss_func.name())),
             ("Regularization param.", format!("{}", self.lambda_l2)),
         ]);
         Some(info)
     }
 
-
     fn produce(&self, sample: &Sample, predictions: &[f64])
         -> Self::Hypothesis
     {
-        let gh = self.loss_type.gradient_and_hessian(
-            sample.target(),
-            predictions,
+        let gradient = self.loss_func.gradient(predictions, sample.target());
+        let hessian = self.loss_func.hessian(predictions, sample.target());
+
+
+        let indices = (0..self.n_sample).collect::<Vec<_>>();
+
+
+        let tree = self.full_tree(
+            sample,
+            &gradient[..],
+            &hessian[..],
+            indices,
+            self.max_depth,
         );
-
-
-        let indices = (0..self.n_sample).filter(|&i| {
-                gh[i].grad != 0.0 || gh[i].hess != 0.0
-            })
-            .collect::<Vec<usize>>();
-
-
-        let tree = self.full_tree(sample, &gh, indices, self.max_depth);
-
 
         let root = Node::from(
             Rc::try_unwrap(tree)
@@ -200,9 +209,9 @@ impl<'a> WeakLearner for RegressionTree<'a> {
     }
 }
 
-
-
-impl fmt::Display for RegressionTree<'_> {
+impl<L> fmt::Display for RegressionTree<'_, L>
+    where L: LossFunction,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
@@ -214,7 +223,7 @@ impl fmt::Display for RegressionTree<'_> {
             - Bins:\
             ",
             self.max_depth,
-            self.loss_type,
+            self.loss_func.name(),
         )?;
 
 
@@ -242,3 +251,99 @@ impl fmt::Display for RegressionTree<'_> {
         write!(f, "----------")
     }
 }
+
+
+/// Returns the best splitting rule based on the loss function.
+fn best_split<'a>(
+    bins_map: &HashMap<&'_ str, Bins>,
+    sample: &'a Sample,
+    gradient: &[Gradient],
+    hessian: &[Hessian],
+    idx: &[usize],
+    lambda_l2: f64,
+) -> (&'a str, Threshold)
+{
+
+    sample.features()
+        .par_iter()
+        .map(|feature| {
+            let name = feature.name();
+            let bin = bins_map.get(name).unwrap();
+            let pack = bin.pack(idx, feature, gradient, hessian);
+            let (score, threshold) = best_split_at(pack, lambda_l2);
+
+            (score, name, threshold)
+        })
+        .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+        .map(|(_, name, threshold)| (name, threshold))
+        .expect("No feature that maximizes the score.")
+}
+
+/// this code is implemented based on Algorithm 3 of the following paper:
+/// Tianqi Chen and Carlos Guestrin.
+/// XGBoost: A scalable tree boosting system [KDD '16]
+fn best_split_at(
+    pack: Vec<(Bin, Gradient, Hessian)>,
+    lambda_l2: f64,
+) -> (LossValue, Threshold)
+{
+    let mut right_grad_sum = pack.par_iter()
+        .map(|(_, grad, _)| grad)
+        .sum::<f64>();
+    let mut right_hess_sum = pack.par_iter()
+        .map(|(_, _, hess)| hess)
+        .sum::<f64>();
+
+
+    let mut left_grad_sum = 0.0;
+    let mut left_hess_sum = 0.0;
+
+
+    let mut best_score = f64::MIN;
+    let mut best_threshold = f64::MIN;
+
+
+    for (bin, grad, hess) in pack {
+        left_grad_sum  += grad;
+        left_hess_sum  += hess;
+        right_grad_sum -= grad;
+        right_hess_sum -= hess;
+
+
+        let score = 
+            left_grad_sum.powi(2) / (left_hess_sum + lambda_l2)
+            + right_grad_sum.powi(2) / (right_hess_sum + lambda_l2);
+        if best_score < score {
+            best_score = score;
+            best_threshold = bin.0.end;
+        }
+    }
+
+    (best_score.into(), best_threshold.into())
+}
+
+/// returns the prediction value and the loss value of a leaf.
+/// this function is implemented based on Eqs. (5), (6) of the following paper:
+/// Tianqi Chen and Carlos Guestrin.
+/// XGBoost: A scalable tree boosting system [KDD '16]
+fn prediction_and_loss(
+    indices: &[usize],
+    gradient: &[Gradient],
+    hessian: &[Hessian],
+    lambda_l2: f64,
+) -> (Prediction<f64>, LossValue)
+{
+    let grad_sum = indices.par_iter()
+        .map(|&i| gradient[i])
+        .sum::<f64>();
+
+    let hess_sum = indices.par_iter()
+        .map(|&i| hessian[i])
+        .sum::<f64>();
+
+    let prediction = - grad_sum / (hess_sum + lambda_l2);
+    let loss_value = -0.5 * grad_sum.powi(2) / (hess_sum + lambda_l2);
+
+    (prediction.into(), loss_value.into())
+}
+

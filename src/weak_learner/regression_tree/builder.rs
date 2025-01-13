@@ -1,6 +1,7 @@
 use crate::{Sample, RegressionTree};
 use super::bin::*;
-use super::loss::*;
+
+use crate::common::loss_functions::LossFunction;
 
 use std::collections::HashMap;
 
@@ -28,7 +29,7 @@ pub const DEFAULT_LAMBDA_L2: f64 = 0.01;
 ///     .build();
 /// ```
 #[derive(Clone)]
-pub struct RegressionTreeBuilder<'a> {
+pub struct RegressionTreeBuilder<'a, L> {
     sample: &'a Sample,
     /// Number of bins per feature.
     n_bins: HashMap<&'a str, usize>,
@@ -41,11 +42,11 @@ pub struct RegressionTreeBuilder<'a> {
     lambda_l2: f64,
 
     /// Loss function
-    loss: LossType,
+    loss: Option<L>,
 }
 
 
-impl<'a> RegressionTreeBuilder<'a> {
+impl<'a, L> RegressionTreeBuilder<'a, L> {
     /// Construct a new instance of `RegressionTreeBuilder`.
     /// By default, 
     /// `RegressionTreeBuilder` sets the parameters as follows;
@@ -66,15 +67,15 @@ impl<'a> RegressionTreeBuilder<'a> {
 
         let lambda_l2 = DEFAULT_LAMBDA_L2;
 
-        let loss = LossType::L2;
+        let loss = None;
 
         Self { sample, n_bins, max_depth, loss, lambda_l2, }
     }
 
 
     /// Specify the loss type. Default is `LossType::L2`.
-    pub fn loss(mut self, loss: LossType) -> Self {
-        self.loss = loss;
+    pub fn loss(mut self, loss: L) -> Self {
+        self.loss = Some(loss);
         self
     }
 
@@ -108,11 +109,15 @@ impl<'a> RegressionTreeBuilder<'a> {
             },
         }
     }
+}
 
 
+impl<'a, L> RegressionTreeBuilder<'a, L>
+    where L: LossFunction,
+{
     /// Build a `RegressionTree`.
     /// This method consumes `self`.
-    pub fn build(self) -> RegressionTree<'a> {
+    pub fn build(self) -> RegressionTree<'a, L> {
         let bins = self.sample.features()
             .iter()
             .map(|feature| {
@@ -123,10 +128,12 @@ impl<'a> RegressionTreeBuilder<'a> {
             })
             .collect::<HashMap<_, _>>();
 
+        let loss = self.loss
+            .expect("failed to get loss function. you need to specify a function that implements `LossFunction` trait");
 
         let n_sample = self.sample.shape().0;
         let regression_tree = RegressionTree::from_components(
-            bins, n_sample, self.max_depth, self.lambda_l2, self.loss,
+            bins, n_sample, self.max_depth, self.lambda_l2, loss,
         );
 
 
