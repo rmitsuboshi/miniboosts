@@ -9,19 +9,19 @@ pub mod gbm_boston {
     #[test]
     fn boston() {
         let mut path = env::current_dir().unwrap();
-        path.push("tests/dataset/boston_housing.csv");
+        path.push("tests/dataset/california-housing.csv");
 
         let sample = SampleReader::new()
             .file(path)
             .has_header(true)
-            .target_feature("target")
+            .target_feature("MedHouseVal")
             .read()
             .unwrap();
 
 
         let n_sample = sample.shape().0 as f64;
 
-        let mut gbm = GBM::init(&sample)
+        let mut gbm = GBM::init_with_loss(&sample, GBMLoss::L2)
             .loss(GBMLoss::L2);
         let tree = RegressionTreeBuilder::new(&sample)
             .max_depth(3)

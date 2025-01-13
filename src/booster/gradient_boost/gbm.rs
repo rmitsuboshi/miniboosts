@@ -87,7 +87,7 @@ use std::ops::ControlFlow;
 ///
 /// println!("Training Loss is: {training_loss}");
 /// ```
-pub struct GBM<'a, F> {
+pub struct GBM<'a, F, L> {
     // Training data
     sample: &'a Sample,
 
@@ -103,7 +103,7 @@ pub struct GBM<'a, F> {
 
 
     // Some struct that implements `LossFunction` trait
-    loss: GBMLoss,
+    loss: L,
 
 
     // Max iteration until GBM guarantees the optimality.
@@ -122,11 +122,11 @@ pub struct GBM<'a, F> {
 
 
 
-impl<'a, F> GBM<'a, F>
+impl<'a, F, L> GBM<'a, F, L>
 {
     /// Initialize the `GBM`.
     /// This method sets some parameters `GBM` holds.
-    pub fn init(sample: &'a Sample) -> Self {
+    pub fn init_with_loss(sample: &'a Sample, loss: L) -> Self {
 
         let n_sample = sample.shape().0;
         let predictions = vec![0.0; n_sample];
@@ -138,7 +138,7 @@ impl<'a, F> GBM<'a, F>
             weights: Vec::new(),
             hypotheses: Vec::new(),
 
-            loss: GBMLoss::L2,
+            loss,
 
             max_iter: 100,
 
@@ -150,7 +150,7 @@ impl<'a, F> GBM<'a, F>
 }
 
 
-impl<'a, F> GBM<'a, F> {
+impl<'a, F, L> GBM<'a, F, L> {
     /// Returns the maximum iteration
     /// of the `GBM` to find a combined hypothesis
     /// that has error at most `tolerance`.
@@ -170,15 +170,16 @@ impl<'a, F> GBM<'a, F> {
 
 
     /// Set the Loss Type.
-    pub fn loss(mut self, loss_type: GBMLoss) -> Self {
+    pub fn loss(mut self, loss_type: L) -> Self {
         self.loss = loss_type;
         self
     }
 }
 
 
-impl<F> Booster<F> for GBM<'_, F>
+impl<F, L> Booster<F> for GBM<'_, F, L>
     where F: Regressor + Clone,
+          L: LossFunction,
 {
     type Output = WeightedMajority<F>;
 
