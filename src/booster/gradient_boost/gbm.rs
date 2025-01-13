@@ -57,13 +57,12 @@ use std::ops::ControlFlow;
 /// // Note that the default tolerance parameter is set as `1 / n_sample`,
 /// // where `n_sample = data.shape().0` is 
 /// // the number of training examples in `data`.
-/// let booster = GBM::init(&sample)
-///     .loss(GBMLoss::L1);
+/// let booster = GBM::init_with_loss(&sample, GBMLoss::L2);
 /// 
 /// // Set the weak learner with setting parameters.
 /// let weak_learner = RegressionTreeBuilder::new(&sample)
 ///     .max_depth(2)
-///     .loss(LossType::L1)
+///     .loss(LossType::L2)
 ///     .build();
 /// 
 /// // Run `GBM` and obtain the resulting hypothesis `f`.
@@ -80,14 +79,14 @@ use std::ops::ControlFlow;
 /// let training_loss = sample.target()
 ///     .into_iter()
 ///     .zip(predictions)
-///     .map(|(y, fx)| (y - fx).abs())
+///     .map(|(y, fx)| (y - fx).powi(2))
 ///     .sum::<f64>()
 ///     / n_sample;
 /// 
 ///
 /// println!("Training Loss is: {training_loss}");
 /// ```
-pub struct GBM<'a, F> {
+pub struct GBM<'a, F, L> {
     // Training data
     sample: &'a Sample,
 
@@ -103,7 +102,7 @@ pub struct GBM<'a, F> {
 
 
     // Some struct that implements `LossFunction` trait
-    loss: GBMLoss,
+    loss: L,
 
 
     // Max iteration until GBM guarantees the optimality.
@@ -122,11 +121,11 @@ pub struct GBM<'a, F> {
 
 
 
-impl<'a, F> GBM<'a, F>
+impl<'a, F, L> GBM<'a, F, L>
 {
     /// Initialize the `GBM`.
     /// This method sets some parameters `GBM` holds.
-    pub fn init(sample: &'a Sample) -> Self {
+    pub fn init_with_loss(sample: &'a Sample, loss: L) -> Self {
 
         let n_sample = sample.shape().0;
         let predictions = vec![0.0; n_sample];
@@ -138,7 +137,7 @@ impl<'a, F> GBM<'a, F>
             weights: Vec::new(),
             hypotheses: Vec::new(),
 
-            loss: GBMLoss::L2,
+            loss,
 
             max_iter: 100,
 
@@ -150,7 +149,7 @@ impl<'a, F> GBM<'a, F>
 }
 
 
-impl<'a, F> GBM<'a, F> {
+impl<'a, F, L> GBM<'a, F, L> {
     /// Returns the maximum iteration
     /// of the `GBM` to find a combined hypothesis
     /// that has error at most `tolerance`.
@@ -170,15 +169,16 @@ impl<'a, F> GBM<'a, F> {
 
 
     /// Set the Loss Type.
-    pub fn loss(mut self, loss_type: GBMLoss) -> Self {
+    pub fn loss(mut self, loss_type: L) -> Self {
         self.loss = loss_type;
         self
     }
 }
 
 
-impl<F> Booster<F> for GBM<'_, F>
+impl<F, L> Booster<F> for GBM<'_, F, L>
     where F: Regressor + Clone,
+          L: LossFunction,
 {
     type Output = WeightedMajority<F>;
 
