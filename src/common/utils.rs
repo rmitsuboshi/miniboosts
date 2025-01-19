@@ -321,7 +321,7 @@ pub(crate) fn total_weight_for_label(
     weight: &[f64],
 ) -> f64
 {
-    target.into_iter()
+    target.iter()
         .copied()
         .zip(weight)
         .filter_map(|(t, w)| if t == y { Some(w) } else { None })

@@ -161,7 +161,7 @@ impl<'a> DecisionTree<'a> {
 }
 
 
-impl<'a> WeakLearner for DecisionTree<'a> {
+impl WeakLearner for DecisionTree<'_> {
     type Hypothesis = DecisionTreeClassifier;
 
 
@@ -222,7 +222,7 @@ impl<'a> WeakLearner for DecisionTree<'a> {
 
 
 /// This function returns a tuple `(c, l)` where
-/// - `c` is the **confidence** for some label `y`
+/// `c` is the **confidence** for some label `y`
 /// that minimizes the training loss.
 /// - `l` is the training loss when the confidence is `y`.
 /// 

@@ -30,7 +30,7 @@ pub mod lpboost_tests {
         const TOLERANCE: f64 = 0.001;
         let path = "img/csv/breast-cancer-train.csv";
 
-        let train = SampleReader::new()
+        let train = SampleReader::default()
             .file(path)
             .has_header(true)
             .target_feature("class")
@@ -43,7 +43,7 @@ pub mod lpboost_tests {
 
         let path = "img/csv/breast-cancer-test.csv";
 
-        let test = SampleReader::new()
+        let test = SampleReader::default()
             .file(path)
             .has_header(true)
             .target_feature("class")

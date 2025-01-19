@@ -92,7 +92,7 @@ use std::ops::ControlFlow;
 /// 
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
-/// let sample = SampleReader::new()
+/// let sample = SampleReader::default()
 ///     .file(path_to_file)
 ///     .has_header(true)
 ///     .target_feature("class")
@@ -388,7 +388,7 @@ impl<F> Booster<F> for MLPBoost<'_, F>
             ("Max iteration", format!("{}", self.max_iter)),
             ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)")),
             ("Primary", format!("{}", self.primary.current_type())),
-            ("Secondary", format!("LPBoost"))
+            ("Secondary", "LPBoost".to_string())
         ]);
         Some(info)
     }

@@ -112,8 +112,8 @@ impl Bins {
         // If the minimum value equals to the maximum one,
         // slightly perturb them.
         if min == max {
-            min = min - EPS;
-            max = max + EPS;
+            min -= EPS;
+            max += EPS;
         }
 
 
@@ -145,7 +145,7 @@ impl Bins {
         let mut min = f64::MAX;
         let mut max = f64::MIN;
         feature.sample[..]
-            .into_iter()
+            .iter()
             .copied()
             .for_each(|(_, val)| {
                 min = min.min(val);
@@ -166,8 +166,8 @@ impl Bins {
         // If the minimum value equals to the maximum one,
         // slightly perturb them.
         if min == max {
-            min = min - EPS;
-            max = max + EPS;
+            min -= EPS;
+            max += EPS;
         }
 
 

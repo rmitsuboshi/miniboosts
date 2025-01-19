@@ -22,7 +22,7 @@ use crate::weak_learner::common::{
 /// This is just a wrapper for `f64`.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub(self) struct Score(f64);
+struct Score(f64);
 
 
 impl From<f64> for Score {
@@ -110,7 +110,6 @@ impl Criterion {
     ) -> (&'a str, f64)
     {
         let target = sample.target();
-        let target = &target[..];
         match self {
             Criterion::Entropy => {
                 sample.features()
@@ -356,9 +355,9 @@ fn split_by_twoing(pack: Vec<(Bin, LabelToWeight)>) -> (f64, Score) {
 
 /// Returns the entropic-impurity of the given map.
 #[inline(always)]
-pub(self) fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
+fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
-    if total <= 0f64 || map.is_empty() { return 0f64.into(); }
+    if total <= 0f64 || map.is_empty() { return 0f64; }
 
     map.par_iter()
         .map(|(_, &p)| {
@@ -371,9 +370,9 @@ pub(self) fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
 
 /// Returns the gini-impurity of the given map.
 #[inline(always)]
-pub(self) fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
+fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
-    if total <= 0f64 || map.is_empty() { return 0f64.into(); }
+    if total <= 0f64 || map.is_empty() { return 0f64; }
 
     let correct = map.par_iter()
         .map(|(_, &w)| (w / total).powi(2))
@@ -385,7 +384,7 @@ pub(self) fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
 
 /// Returns the gini-impurity of the given map.
 #[inline(always)]
-pub(self) fn twoing_score(
+fn twoing_score(
     labels: &HashSet<i32>,
     left: &HashMap<i32, f64>,
     right: &HashMap<i32, f64>,

@@ -12,7 +12,7 @@ pub mod gbm_boston {
         let mut path = env::current_dir().unwrap();
         path.push(format!("tests/dataset/{file}"));
 
-        let sample = SampleReader::new()
+        let sample = SampleReader::default()
             .file(path)
             .has_header(true)
             .target_feature("MedHouseVal")

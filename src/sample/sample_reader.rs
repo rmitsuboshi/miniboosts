@@ -11,12 +11,13 @@ use super::sample_struct::Sample;
 /// The following code is a simple example to read a CSV file.
 /// ```no_run
 /// let filename = "/path/to/csv/file.csv";
-/// let sample = SampleReader::new()
+/// let sample = SampleReader::default()
 ///     .file(filename)
 ///     .has_header(true)
 ///     .target_feature("class")
 ///     .read()?;
 /// ```
+#[derive(Default)]
 pub struct SampleReader<P, S> {
     file: Option<P>,
     has_header: bool,
@@ -25,16 +26,6 @@ pub struct SampleReader<P, S> {
 
 
 impl<P, S> SampleReader<P, S> {
-    /// Construct a new instance of [`SampleReader`].
-    pub fn new() -> Self {
-        Self {
-            file: None,
-            has_header: false,
-            target: None,
-        }
-    }
-
-
     /// Set the flag whether the file has the header row or not.
     /// Default is `false.`
     pub fn has_header(mut self, flag: bool) -> Self {

@@ -58,8 +58,8 @@ use std::ops::ControlFlow;
 /// # Related information
 /// - Currently (2023), `LPBoost` has no convergence guarantee.
 /// - [`ERLPBoost`](crate::booster::ERLPBoost), 
-/// A stabilized version of `LPBoost` is 
-/// proposed by Warmuth et al. (2008).
+///   A stabilized version of `LPBoost` is 
+///   proposed by Warmuth et al. (2008).
 /// 
 /// # Example
 /// The following code shows a small example for running [`LPBoost`].  
@@ -70,7 +70,7 @@ use std::ops::ControlFlow;
 /// 
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
-/// let sample = SampleReader::new()
+/// let sample = SampleReader::default()
 ///     .file(path_to_file)
 ///     .has_header(true)
 ///     .target_feature("class")
@@ -262,7 +262,7 @@ impl<F> Booster<F> for LPBoost<'_, F>
             ("# of examples", format!("{n_sample}")),
             ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", self.tolerance)),
-            ("Max iteration", format!("-")),
+            ("Max iteration", "-".to_string()),
             ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)"))
         ]);
         Some(info)

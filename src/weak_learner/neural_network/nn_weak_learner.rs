@@ -13,7 +13,6 @@ use super::{
     nn_hypothesis::*,
 };
 
-use rand;
 use rand::seq::index;
 
 const N_EPOCH: usize = 100;

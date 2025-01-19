@@ -66,7 +66,7 @@ use std::ops::ControlFlow;
 /// 
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
-/// let sample = SampleReader::new()
+/// let sample = SampleReader::default()
 ///     .file(path_to_file)
 ///     .has_header(true)
 ///     .target_feature("class")

@@ -45,7 +45,7 @@ use std::collections::HashSet;
 /// 
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
-/// let sample = SampleReader::new()
+/// let sample = SampleReader::default()
 ///     .file(path_to_file)
 ///     .has_header(true)
 ///     .target_feature("class")
@@ -113,7 +113,7 @@ impl<'a, F> GraphSepBoost<'a, F> {
     }
 }
 
-impl<'a, F> GraphSepBoost<'a, F>
+impl<F> GraphSepBoost<'_, F>
     where F: Classifier
 {
     /// Returns a weight on the new hypothesis.
@@ -236,7 +236,7 @@ impl<F> Booster<F> for GraphSepBoost<'_, F>
         where W: WeakLearner<Hypothesis = F>
     {
         let hypotheses = std::mem::take(&mut self.hypotheses);
-        NaiveAggregation::new(hypotheses, &self.sample)
+        NaiveAggregation::new(hypotheses, self.sample)
     }
 }
 
@@ -246,6 +246,6 @@ impl<H> Research for GraphSepBoost<'_, H>
 {
     type Output = NaiveAggregation<H>;
     fn current_hypothesis(&self) -> Self::Output {
-        NaiveAggregation::from_slice(&self.hypotheses, &self.sample)
+        NaiveAggregation::from_slice(&self.hypotheses, self.sample)
     }
 }

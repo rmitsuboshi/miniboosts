@@ -422,7 +422,7 @@ impl SparseFeature {
     fn distinct_value_count(&self) -> usize {
     
         let values = self.sample[..]
-            .into_iter()
+            .iter()
             .map(|(_, v)| *v)
             .collect::<Vec<_>>();
         let mut uniq_value_count = inner_distinct_value_count(values);
@@ -526,7 +526,7 @@ impl Index<usize> for Feature {
 /// Count the number of items in `src` that has the same value.
 /// The given vector `src` is assumed to be sorted in ascending order.
 fn inner_distinct_value_count(mut src: Vec<f64>) -> usize {
-    src.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+    src.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mut iter = src.into_iter();
     let mut value = match iter.next() {
         Some(v) => v,

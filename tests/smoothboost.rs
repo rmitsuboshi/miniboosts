@@ -12,7 +12,7 @@ pub mod smoothboost_tests {
         println!("path: {:?}", path);
         path.push("tests/dataset/german.csv");
 
-        let sample = SampleReader::new()
+        let sample = SampleReader::default()
             .file(path)
             .has_header(true)
             .target_feature("class")

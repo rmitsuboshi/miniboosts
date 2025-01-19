@@ -152,7 +152,7 @@ impl<'a> CrossValidation<'a> {
 }
 
 
-impl<'a> Iterator for CrossValidation<'a> {
+impl Iterator for CrossValidation<'_> {
     type Item = (Sample, Sample);
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_fold >= self.n_folds { return None; }

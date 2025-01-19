@@ -73,12 +73,10 @@ impl Classifier for BadClassifier {
             } else {
                 (-1f64 + self.gap * self.eps) * y
             }
+        } else if row < self.index {
+            (-1f64 + self.eps) * y
         } else {
-            if row < self.index {
-                (-1f64 + self.eps) * y
-            } else {
-                (1f64 - self.eps) * y
-            }
+            (1f64 - self.eps) * y
         }
     }
 }

@@ -3,7 +3,6 @@ use clarabel::{
     solver::*,
 };
 
-use rand;
 use rand::rngs::StdRng;
 use rand::prelude::*;
 
