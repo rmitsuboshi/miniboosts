@@ -156,7 +156,7 @@ impl<'a, L> RegressionTree<'a, L> {
 }
 
 
-impl<'a, L> WeakLearner for RegressionTree<'a, L>
+impl<L> WeakLearner for RegressionTree<'_, L>
     where L: LossFunction,
 {
     type Hypothesis = RegressionTreeRegressor;
@@ -175,7 +175,7 @@ impl<'a, L> WeakLearner for RegressionTree<'a, L>
         let info = Vec::from([
             ("# of bins (max)", format!("{n_bins}")),
             ("Max depth", format!("{}", self.max_depth)),
-            ("Split criterion", format!("{}", self.loss_func.name())),
+            ("Split criterion", self.loss_func.name().to_string()),
             ("Regularization param.", format!("{}", self.lambda_l2)),
         ]);
         Some(info)

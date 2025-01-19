@@ -44,7 +44,7 @@ use std::ops::ControlFlow;
 /// 
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
-/// let sample = SampleReader::new()
+/// let sample = SampleReader::default()
 ///     .file(path_to_file)
 ///     .has_header(true)
 ///     .target_feature("class")
@@ -149,7 +149,7 @@ impl<'a, F, L> GBM<'a, F, L>
 }
 
 
-impl<'a, F, L> GBM<'a, F, L> {
+impl<F, L> GBM<'_, F, L> {
     /// Returns the maximum iteration
     /// of the `GBM` to find a combined hypothesis
     /// that has error at most `tolerance`.
@@ -194,7 +194,7 @@ impl<F, L> Booster<F> for GBM<'_, F, L>
             ("# of examples", format!("{n_sample}")),
             ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", self.tolerance)),
-            ("Loss", format!("{}", self.loss.name())),
+            ("Loss", self.loss.name().to_string()),
             ("Max iteration", format!("{}", self.max_iter)),
         ]);
         Some(info)
@@ -236,7 +236,7 @@ impl<F, L> Booster<F> for GBM<'_, F, L>
 
         let predictions = h.predict_all(self.sample);
         let coef = self.loss.best_coefficient(
-            &self.sample.target(), &predictions[..]
+            self.sample.target(), &predictions[..]
         );
 
         // If the best coefficient is zero,

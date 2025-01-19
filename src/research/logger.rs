@@ -62,7 +62,7 @@ impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
     }
 }
 
-impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
+impl<H, B, W, F, G, O> Logger<'_, B, W, F, G>
     where B: Booster<H, Output=O> + Research<Output=O>,
           O: Classifier,
           W: WeakLearner<Hypothesis = H>,
@@ -106,8 +106,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
     #[inline(always)]
     fn print_log_header(&self) {
         println!(
-            "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
-            "     ",
+            "      {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
             "".bold().red(),
             "OBJ.".bold().blue(),
             "TRAIN".bold().green(),
@@ -115,8 +114,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
             "ACC.".bold().cyan(),
         );
         println!(
-            "{} {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\n",
-            "     ",
+            "      {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\n",
             "ROUND".bold().red(),
             "VALUE".bold().blue(),
             "ERROR".bold().green(),
@@ -184,7 +182,7 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
             "\
             + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}\n\
             + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}\n\
-            {:=^FULL_WIDTH$}\
+            {:=^FULL_WIDTH$}\n\
             ",
             "Objective".bold(),
             self.objective_func.name().bold().green(),
@@ -192,7 +190,6 @@ impl<'a, H, B, W, F, G, O> Logger<'a, B, W, F, G>
             limit.bold().green(),
             "".bold(),
         );
-        println!("");
     }
 
 

@@ -16,7 +16,7 @@ use super::nbayes_classifier::*;
 pub struct GaussianNB {}
 
 
-impl<'a> GaussianNB {
+impl GaussianNB {
     /// Initializes the GaussianNB instance.
     pub fn init() -> Self {
         Self {}

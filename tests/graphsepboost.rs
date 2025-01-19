@@ -13,7 +13,7 @@ pub mod graphsepboost_tests {
         path.push("tests/dataset/german.csv");
         // path.push("tests/dataset/iris_binary.csv");
 
-        let sample = SampleReader::new()
+        let sample = SampleReader::default()
             .file(path)
             .has_header(true)
             .target_feature("class")

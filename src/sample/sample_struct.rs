@@ -4,6 +4,7 @@ use std::io::{self, BufRead, BufReader};
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 use std::mem;
+use std::cmp::Ordering;
 
 use polars::prelude::*;
 use rayon::prelude::*;
@@ -39,8 +40,7 @@ impl Sample {
         let mut target = vec![1f64; n_sample];
         target[half..].iter_mut()
             .for_each(|y| { *y = -1f64; });
-        let mut features = Vec::with_capacity(1);
-        features.push(Feature::new_sparse("dummy"));
+        let features = vec![Feature::new_sparse("dummy")];
         Self {
             name_to_index: HashMap::from([("dummy".to_string(), 0)]),
             features,
@@ -184,7 +184,7 @@ impl Sample {
     /// Returns the unique target values.
     pub fn unique_target(&self) -> Vec<f64> {
         let mut target = self.target().to_vec();
-        target.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+        target.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         target.dedup();
         target
@@ -408,16 +408,20 @@ impl Sample {
             .map(|yi| yi as i32)
             .collect::<HashSet<_>>();
         let n_label = set.len();
-        if n_label > 2 {
-            panic!(
-                "The target values take more than 2 kinds. \
-                 Expected 2 kinds, got {n_label} kinds."
-            );
-        } else if n_label < 2 {
-            panic!(
-                "The target values take less than 2 kinds. \
-                 Expected 2 kinds, got {n_label} kinds."
-            );
+        match set.len().cmp(&2) {
+            Ordering::Greater => {
+                panic!(
+                    "The target values take more than 2 kinds. \
+                     Expected 2 kinds, got {n_label} kinds."
+                );
+            },
+            Ordering::Less => {
+                panic!(
+                    "The target values take less than 2 kinds. \
+                     Expected 2 kinds, got {n_label} kinds."
+                );
+            },
+            Ordering::Equal => {},
         }
 
 
@@ -541,7 +545,7 @@ impl Sample {
         let name_to_ix = self.name_to_index.clone();
         let mut train = Self {
             n_sample: train_size,
-            n_feature: n_feature,
+            n_feature,
             name_to_index: name_to_ix.clone(),
             features: vec![Feature::new_sparse("dummy"); n_feature],
             target: Vec::with_capacity(train_size),
@@ -549,7 +553,7 @@ impl Sample {
 
         let mut test = Self {
             n_sample: test_size,
-            n_feature: n_feature,
+            n_feature,
             name_to_index: name_to_ix,
             features: vec![Feature::new_sparse("dummy"); n_feature],
             target: Vec::with_capacity(test_size),
@@ -567,22 +571,17 @@ impl Sample {
             }
         }
 
-        for i in 0..start {
-            let ii = ix[i];
+        for (i, &ii) in ix.iter().enumerate().take(start) {
             let (x, y) = self.at(ii);
             train.append(i, x, y);
         }
 
-
-        for i in start..end {
-            let ii = ix[i];
+        for (i, &ii) in ix.iter().enumerate().take(end).skip(start) {
             let (x, y) = self.at(ii);
             test.append(i, x, y);
         }
 
-
-        for i in end..self.n_sample {
-            let ii = ix[i];
+        for (i, &ii) in ix.iter().enumerate().take(self.n_sample).skip(end) {
             let (x, y) = self.at(ii);
             train.append(i, x, y);
         }
@@ -594,7 +593,7 @@ impl Sample {
 
 /// Parse the following type of `str` to the pair of `(usize, f64)`.
 /// `index:value`, where `index: usize` and `value: f64`.
-pub(self) fn index_and_feature(word: &str) -> (usize, f64) {
+fn index_and_feature(word: &str) -> (usize, f64) {
     let mut i_x = word.split(':');
     let i = i_x.next()
         .unwrap()

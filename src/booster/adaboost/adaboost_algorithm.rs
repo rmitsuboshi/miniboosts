@@ -38,10 +38,10 @@ use std::ops::ControlFlow;
 /// 
 /// # Related information
 /// - As some papers proved, 
-/// `AdaBoost` **approximately maximizes the hard margin.**
+///   `AdaBoost` **approximately maximizes the hard margin.**
 /// 
 /// - [`AdaBoostV`](crate::booster::AdaBoostV), 
-/// a successor of AdaBoost, maximizes the hard margin.
+///   a successor of AdaBoost, maximizes the hard margin.
 /// 
 /// 
 /// ```no_run
@@ -49,7 +49,7 @@ use std::ops::ControlFlow;
 /// 
 /// // Read the training sample from the CSV file.
 /// // We use the column named `class` as the label.
-/// let sample = SampleReader::new()
+/// let sample = SampleReader::default()
 ///     .file(path_to_file)
 ///     .has_header(true)
 ///     .target_feature("class")
@@ -259,7 +259,7 @@ impl<F> Booster<F> for AdaBoost<'_, F>
         let quit = if let Some(it) = self.force_quit_at {
             format!("At round {it}")
         } else {
-            format!("-")
+            "-".to_string()
         };
         let info = Vec::from([
             ("# of examples", format!("{}", n_sample)),

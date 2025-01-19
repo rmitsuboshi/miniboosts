@@ -170,7 +170,7 @@ impl QPModel {
 
     /// Returns `true` if `dist[i] > 0` holds for all `i = 1, 2, ..., m.` 
     pub(self) fn all_positive(&self, dist: &[f64]) -> bool {
-        dist.into_iter()
+        dist.iter()
             .copied()
             .all(|d| d > 0f64)
     }
@@ -179,7 +179,7 @@ impl QPModel {
     pub(self) fn build_linear_part_objective(&self, dist: &[f64]) -> Vec<f64> {
         let mut linear = Vec::with_capacity(1 + self.n_examples);
         linear.push(1f64);
-        let iter = dist.into_iter()
+        let iter = dist.iter()
             .copied()
             .map(|di| (1f64 / self.eta) * di.ln());
         linear.extend(iter);

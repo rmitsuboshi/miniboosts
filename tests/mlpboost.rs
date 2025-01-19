@@ -29,7 +29,7 @@ pub mod mlpboost_tests {
         const TIME_LIMIT: u128 = 60_000; // 1 minute as millisecond.
         let path = "img/csv/breast-cancer-train.csv";
 
-        let train = SampleReader::new()
+        let train = SampleReader::default()
             .file(path)
             .has_header(true)
             .target_feature("class")
@@ -41,7 +41,7 @@ pub mod mlpboost_tests {
         // let nu = 1.0;
 
         let path = "img/csv/breast-cancer-test.csv";
-        let test = SampleReader::new()
+        let test = SampleReader::default()
             .file(path)
             .has_header(true)
             .target_feature("class")

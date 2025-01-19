@@ -130,7 +130,7 @@ impl LossFunction for GBMLoss {
     fn hessian(&self, predictions: &[f64], target: &[f64]) -> Vec<f64>
     {
         let n_sample = predictions.len();
-        assert_eq!(n_sample as usize, target.len());
+        assert_eq!(n_sample, target.len());
 
         match self {
             Self::L1 => {
