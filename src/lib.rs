@@ -165,6 +165,10 @@ pub use booster::{
     SoftBoost,
 };
 
+// Other boosting algorithms
+pub use booster::{
+    TAdaBoost,
+};
 
 
 // Export the boosting algorithms for regression

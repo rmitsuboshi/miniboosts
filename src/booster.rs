@@ -18,6 +18,8 @@ mod erlpboost;
 mod softboost;
 mod totalboost;
 
+mod tadaboost;
+
 
 
 /// Booster trait
@@ -48,7 +50,8 @@ pub use self::softboost::SoftBoost;
 
 pub use self::smoothboost::SmoothBoost;
 
-
+// Other Boostings
+pub use self::tadaboost::TAdaBoost;
 
 
 pub use self::gradient_boost::GBM;

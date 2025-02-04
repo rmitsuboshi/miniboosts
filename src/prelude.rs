@@ -4,12 +4,9 @@ pub use crate::booster::{
     // Booster trait
     Booster,
 
-
-    // Classification ---------------------------
     // ERM boostings
     AdaBoost,
     MadaBoost,
-
 
     // Hard margin maximizing boostings
     AdaBoostV,
@@ -23,10 +20,11 @@ pub use crate::booster::{
     ERLPBoost,
     SoftBoost,
 
+    // Other Boosting algorithms
+    TAdaBoost,
 
     // Regression
     GBM,
-
 
     // Others
     GraphSepBoost,
