@@ -1,86 +1,25 @@
-//! Exports the standard boosting algorithms and traits.
-//! 
-pub use crate::booster::{
-    // Booster trait
-    Booster,
+//! This module re-exports frequently used structs and traits.
 
-
-    // Classification ---------------------------
-    // ERM boostings
-    AdaBoost,
-    MadaBoost,
-
-
-    // Hard margin maximizing boostings
-    AdaBoostV,
-    TotalBoost,
-
-    // Soft margin optimization
-    SmoothBoost,
-    CERLPBoost,
-    LPBoost,
-    MLPBoost,
-    ERLPBoost,
-    SoftBoost,
-
-
-    // Regression
-    GBM,
-
-
-    // Others
-    GraphSepBoost,
-};
-
-
-pub use crate::weak_learner::{
-    // Base Learner trait
-    WeakLearner,
-
-
-    // Classification ---------------------------
-    DecisionTree,
-    DecisionTreeBuilder,
-    DecisionTreeClassifier,
-    Criterion,
-
-
-    GaussianNB,
-    NBayesClassifier,
-
-
-    NeuralNetwork,
-    NNHypothesis,
-    Activation,
-    NNLoss,
-
-
-    BadClassifier,
-    BadBaseLearner,
-    BadBaseLearnerBuilder,
-
-
-    // Regression -------------------------------
-    RegressionTree,
-    RegressionTreeBuilder,
-    RegressionTreeRegressor,
-};
-
-
-pub use crate::hypothesis::{
-    Classifier,
-    Regressor,
-    WeightedMajority,
-};
-
-pub use crate::{
+pub use miniboosts_core::{
     SampleReader,
-    Sample,
+    Booster,
+    WeakLearner,
+    Classifier,
 };
 
-pub use crate::common::{
-    loss_functions::GBMLoss,
-    loss_functions::LossFunction,
-    frank_wolfe::FWType,
+pub use adaboost::AdaBoost;
+pub use adaboostv::AdaBoostV;
+pub use corrective_erlpboost::CorrectiveErlpBoost;
+pub use erlpboost::ErlpBoost;
+pub use graph_separation_boosting::GraphSeparationBoosting;
+pub use lpboost::LpBoost;
+pub use madaboost::MadaBoost;
+pub use mlpboost::MlpBoost;
+pub use smoothboost::SmoothBoost;
+pub use softboost::SoftBoost;
+pub use totalboost::TotalBoost;
+pub use decision_tree::{
+    DecisionTreeBuilder,
+    SplitBy,
 };
 

@@ -1,32 +1,49 @@
+[workspace]
+members = [
+    "miniboosts-core",
+    "boosters/adaboost",
+    "boosters/adaboostv",
+    "boosters/corrective-erlpboost",
+    "boosters/erlpboost",
+#     "boosters/gradient-boosting-machine",
+    "boosters/graph-separation-boosting",
+    "boosters/lpboost",
+    "boosters/madaboost",
+    "boosters/mlpboost",
+    "boosters/smoothboost",
+    "boosters/softboost",
+    "boosters/totalboost",
+    "weak-learners/decision-tree",
+#     "weak-learners/regression-tree",
+    "optimization",
+    "hypotheses",
+    "logging",
+]
+
 [package]
-name = "miniboosts"
-version = "0.4.0"
-authors = ["rmitsuboshi <rmitsuboshi.github@gmail.com>"]
-edition = "2021"
-
-description = "MiniBoosts: A collection of boosting algorithms written in Rust 🦀"
-repository  = "https://github.com/rmitsuboshi/miniboosts"
-categories  = ["science"]
-keywords    = ["boosting", "machine-learning"]
-
-exclude = ["/tests", "/img", "TODO.txt"]
-license = "MIT"
-
-[package.metadata.docs.rs]
-all-features = true
-
+name    = "miniboosts"
+version = "0.1.0"
+edition = "2024"
 
 [dependencies]
-grb         = { version = "2.0.1", optional = true }
-clarabel    = { version = "0.9.0" }
-rand        = { version = "0.8.5" }
-rand_distr  = { version = "0.4.3" }
-rayon       = { version = "1.10.0" }
-serde       = { version = "1.0.206", features = ["rc", "derive"] }
-serde_json  = { version = "1.0.124", default-features = false, features = ["alloc"] }
-polars      = { version = "0.41.3" }
-fixedbitset = { version = "0.5.7" }
-colored     = { version = "2.1.0" }
+miniboosts_core = { path = "./miniboosts-core" }
+logging         = { path = "./logging" }
+hypotheses      = { path = "./hypotheses" }
+optimization    = { path = "./optimization" }
 
-[features]
-gurobi = ["grb"]
+adaboost                  = { path = "./boosters/adaboost" }
+adaboostv                 = { path = "./boosters/adaboostv" }
+corrective_erlpboost      = { path = "./boosters/corrective-erlpboost" }
+erlpboost                 = { path = "./boosters/erlpboost" }
+# gradient_boosting_machine = { path = "./boosters/gradient-boosting-machine" }
+graph_separation_boosting = { path = "./boosters/graph-separation-boosting" }
+lpboost                   = { path = "./boosters/lpboost" }
+madaboost                 = { path = "./boosters/madaboost" }
+mlpboost                  = { path = "./boosters/mlpboost" }
+smoothboost               = { path = "./boosters/smoothboost" }
+softboost                 = { path = "./boosters/softboost" }
+totalboost                = { path = "./boosters/totalboost" }
+
+decision_tree   = { path = "./weak-learners/decision-tree" }
+# regression_tree = { path = "./weak-learners/regression-tree" }
+
