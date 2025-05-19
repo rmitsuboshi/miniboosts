@@ -1,0 +1,12 @@
+[package]
+name = "smoothboost"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rayon           = { version = "1.10.0" }
+logging         = { path = "../../logging" }
+miniboosts_core = { path = "../../miniboosts-core" }
+hypotheses      = { path = "../../hypotheses" }
+decision_tree   = { path = "../../weak-learners/decision-tree" }
+

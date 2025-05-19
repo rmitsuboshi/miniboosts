@@ -1,0 +1,13 @@
+[package]
+name = "softboost"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clarabel        = { version = "0.10.0" }
+logging         = { path = "../../logging" }
+miniboosts_core = { path = "../../miniboosts-core" }
+hypotheses      = { path = "../../hypotheses" }
+optimization    = { path = "../../optimization" }
+decision_tree   = { path = "../../weak-learners/decision-tree" }
+

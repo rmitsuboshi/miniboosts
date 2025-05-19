@@ -1,0 +1,10 @@
+[package]
+name = "optimization"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+miniboosts_core = { path    = "../miniboosts-core" }
+hypotheses      = { path    = "../hypotheses" }
+clarabel        = { version = "0.10.0" }
+

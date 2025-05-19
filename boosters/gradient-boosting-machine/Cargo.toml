@@ -1,0 +1,6 @@
+[package]
+name = "gradient_boosting_machine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
