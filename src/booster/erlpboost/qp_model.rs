@@ -12,6 +12,7 @@ use crate::hypothesis::Classifier;
 
 use std::iter;
 
+const EPS: f64 = 1e-100;
 const QP_TOLERANCE: f64 = 1e-9;
 
 /// A quadratic programming model for edge minimization. 
@@ -90,13 +91,18 @@ impl QPModel {
     /// - `size`: Number of variables (Number of examples).
     /// - `upper_bound`: Capping parameter. `[1, size]`.
     pub(super) fn init(eta: f64, size: usize, upper_bound: f64) -> Self {
+        let dist = {
+            let mut dist = vec![1f64 / size as f64; size];
+            dist.shrink_to_fit();
+            dist
+        };
         let margins = vec![vec![]; size];
         Self {
             n_examples:   size,
             n_hypotheses: 0usize,
             margins,
             weights:      Vec::with_capacity(0usize),
-            dist:         Vec::with_capacity(0usize),
+            dist,
             cap_inv:      upper_bound,
             eta,
         }
@@ -109,7 +115,6 @@ impl QPModel {
     pub(super) fn update<F>(
         &mut self,
         sample: &Sample,
-        dist: &mut [f64],
         clf: &F
     )
         where F: Classifier
@@ -127,7 +132,7 @@ impl QPModel {
         let mut old_objval = 1e3;
 
         // Initialize `dist` as the uniform distribution.
-        dist.iter_mut()
+        self.dist.iter_mut()
             .for_each(|di| {
                 *di = 1f64 / self.n_examples as f64;
             });
@@ -137,8 +142,8 @@ impl QPModel {
                 .verbose(false)
                 .build()
                 .unwrap();
-            let linear = self.build_linear_part_objective(dist);
-            let quad   = self.build_quadratic_part_objective(dist);
+            let linear = self.build_linear_part_objective(&self.dist[..]);
+            let quad   = self.build_quadratic_part_objective(&self.dist[..]);
             let mut solver = DefaultSolver::new(
                 &quad,
                 &linear,
@@ -149,30 +154,29 @@ impl QPModel {
             );
 
             solver.solve();
-            let solution = &solver.solution.x[1..];
+            assert!(
+                solver.solution.status == SolverStatus::Solved
+                || solver.solution.status == SolverStatus::AlmostSolved
+                || solver.solution.status == SolverStatus::InsufficientProgress,
+                "unexpected solver status. got {}",
+                solver.solution.status,
+            );
 
             let objval = solver.solution.obj_val;
-            if !self.all_positive(solution) 
-                || old_objval - objval < QP_TOLERANCE
+            if old_objval - objval < QP_TOLERANCE
+                || solver.solution.status == SolverStatus::InsufficientProgress
             {
-                self.dist = solver.solution.x[1..].to_vec();
-                let start = 1 + 2 * self.n_examples;
-                self.weights = solver.solution.z[start..].to_vec();
                 break;
             }
             old_objval = objval;
-            dist.iter_mut()
-                .zip(solution)
-                .for_each(|(di, s)| { *di = *s; });
+            self.dist = solver.solution.x[1..].into_iter()
+                .map(|di| di.max(0f64))
+                .collect();
+            let start = 1 + 2 * self.n_examples;
+            self.weights = solver.solution.z[start..].into_iter()
+                .map(|wi| wi.max(0f64))
+                .collect();
         }
-    }
-
-
-    /// Returns `true` if `dist[i] > 0` holds for all `i = 1, 2, ..., m.` 
-    pub(self) fn all_positive(&self, dist: &[f64]) -> bool {
-        dist.iter()
-            .copied()
-            .all(|d| d > 0f64)
     }
 
 
@@ -181,7 +185,11 @@ impl QPModel {
         linear.push(1f64);
         let iter = dist.iter()
             .copied()
-            .map(|di| (1f64 / self.eta) * di.ln());
+            .map(|di| {
+                let coef = (di + EPS).ln();
+                assert!(coef.is_finite());
+                coef / self.eta
+            });
         linear.extend(iter);
         linear
     }
@@ -190,33 +198,18 @@ impl QPModel {
     pub(self) fn build_quadratic_part_objective(&self, dist: &[f64])
         -> CscMatrix::<f64>
     {
-        let n_rows = 1 + self.n_examples;
+        let eta = self.eta;
+        let n_rows = dist.len() + 1;
         let n_cols = n_rows;
 
-        let mut col_ptr = Vec::with_capacity(n_cols);
-        let mut row_val = Vec::with_capacity(n_cols);
-        let mut nonzero = Vec::with_capacity(n_cols);
+        let n_examples = dist.len();
 
-        col_ptr.push(0usize);
-        row_val.push(0usize);
-        nonzero.push(1f64);
-        // NOTE:
-        // we do not need to multiply 0.5f64 
-        // since clarabel add it automatically.
-        for (i, &di) in (1..).zip(dist) {
-            col_ptr.push(i);
-            row_val.push(i);
-            nonzero.push(1f64 / (self.eta * di));
-        }
-        col_ptr.push(row_val.len());
-
-        CscMatrix::new(
-            n_rows,
-            n_cols,
-            col_ptr,
-            row_val,
-            nonzero,
-        )
+        let col_ptr = iter::once(0).chain(0..=n_examples).collect();
+        let row_idx = (1..=n_examples).collect();
+        let nonzero = dist.iter()
+            .map(|&d| 1f64 / ((d + EPS) * eta))
+            .collect();
+        CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
     }
 
 
@@ -226,42 +219,42 @@ impl QPModel {
         let n_cols = 1 + self.n_examples;
 
         let mut col_ptr = Vec::new();
-        let mut row_val = Vec::new();
+        let mut row_idx = Vec::new();
         let mut nonzero = Vec::new();
 
         // the first index of margin constraints
         let gam = 1 + 2 * self.n_examples;
         col_ptr.push(0);
-        row_val.extend(gam..n_rows);
+        row_idx.extend(gam..n_rows);
         nonzero.extend(iter::repeat(-1f64).take(n_rows - gam));
 
         for (j, margins) in (1..).zip(&self.margins) {
-            col_ptr.push(row_val.len());
+            col_ptr.push(row_idx.len());
             // the sum constraint: `Σ_i d_i = 1`
-            row_val.push(0);
+            row_idx.push(0);
             nonzero.push(1f64);
 
             // non-negative constraint: `d_i ≥ 0`
-            row_val.push(j);
+            row_idx.push(j);
             nonzero.push(-1f64);
 
             // capping constraint: `d_i ≤ 1/ν`
-            row_val.push(self.n_examples + j);
-            nonzero.push(self.cap_inv);
+            row_idx.push(self.n_examples + j);
+            nonzero.push(1f64);
 
             // margin constraints of `i`-th column
             for (i, &yh) in (0..).zip(margins) {
-                row_val.push(gam + i);
+                row_idx.push(gam + i);
                 nonzero.push(yh);
             }
         }
-        col_ptr.push(row_val.len());
+        col_ptr.push(row_idx.len());
 
         CscMatrix::new(
             n_rows,
             n_cols,
             col_ptr,
-            row_val,
+            row_idx,
             nonzero,
         )
     }
