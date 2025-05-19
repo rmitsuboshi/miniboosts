@@ -12,9 +12,11 @@ use crate::{
     Sample,
     Booster,
     WeakLearner,
-
     Classifier,
     WeightedMajority,
+
+    soft_margin_optimization,
+
     common::utils,
     common::checker,
     research::Research,
@@ -231,6 +233,7 @@ impl<'a, F> ERLPBoost<'a, F> {
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         self.half_tolerance = tolerance / 2.0;
+        self.regularization_param();
         self
     }
 
@@ -319,7 +322,7 @@ impl<F> ERLPBoost<'_, F>
         self.qp_model.as_ref()
             .expect("Failed to call `.as_ref()` to `self.qp_model`")
             .borrow_mut()
-            .update(self.sample, &mut self.dist[..], clf);
+            .update(self.sample, clf);
 
         self.dist = self.qp_model.as_ref()
             .expect("Failed to call `.as_ref()` to `self.qp_model`")
@@ -405,6 +408,8 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
         let diff = self.gamma_hat - self.gamma_star;
         if diff <= self.half_tolerance {
             self.terminated = iteration;
+            let (_, weights) = soft_margin_optimization(self.nu, &self.sample, &self.hypotheses[..]);
+            self.weights = weights;
             return ControlFlow::Break(iteration);
         }
 
@@ -431,12 +436,6 @@ impl<F> Booster<F> for ERLPBoost<'_, F>
     ) -> Self::Output
         where W: WeakLearner<Hypothesis = F>
     {
-        self.weights = self.qp_model.as_ref()
-            .expect("Failed to call `.as_ref()` to `self.qp_model`")
-            .borrow_mut()
-            .weight()
-            .collect::<Vec<_>>();
-
         WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
