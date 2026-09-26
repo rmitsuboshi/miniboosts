@@ -167,6 +167,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
             test,
             time_limit,
             round,
+            max_iterations: usize::MAX,
         }
     }
 }

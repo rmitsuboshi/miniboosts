@@ -1,7 +1,11 @@
 //! This file defines `CorrectiveErlpBoost` based on the paper
-//! "On the Equivalence of Weak Learnability and Linaer Separability:
+//! "On the Equivalence of Weak Learnability and Linear Separability:
 //!     New Relaxations and Efficient Boosting Algorithms"
-//! by Shai Shalev-Shwartz and Yoram Singer.
+//! by Shai Shalev-Shwartz and Yoram Singer, [Figure 1](https://home.ttic.edu/~shai/papers/ShalevSi08.pdf).
+//! The default ShortStep rule follows that update from zero coefficients.
+//! Classic and LineSearch are alternative Frank-Wolfe step strategies.
+//! Output coefficients retain their l1-ball scale (their sum can be below one),
+//! so confidence values and the logged objective match the trained model.
 //! I named this algorithm `CorrectiveErlpBoost`
 //! since it is referred as `the Corrective version of CorrectiveErlpBoost`
 //! in "Entropy Regularized LPBoost" by Warmuth et al.
@@ -170,13 +174,9 @@ where
     }
 
     fn update_params_mut(&mut self, h: H, mut cur_margins: Vec<f64>, mut new_margins: Vec<f64>) {
-        if self.weights.is_empty() {
-            self.weights.push(1f64);
-            self.hypotheses.push(h);
-            self.update_distribution_mut();
-            return;
-        }
-
+        // Shalev-Shwartz and Singer (2008), Fig. 1, starts at w=0 and
+        // applies the same update on every round. Forcing the first weight
+        // to one skips the short step and restarts Classic's schedule.
         cur_margins.iter_mut().for_each(|yf| {
             *yf *= -1f64;
         });
@@ -200,7 +200,10 @@ where
                 unreachable!("BlendedPairwise is rejected by update_rule")
             }
         }
-        checkers::capped_simplex_condition(&self.weights[..], 1f64);
+        // Fig. 1 optimizes over the l1 ball, not the simplex: a short step
+        // from zero can have total mass below one.
+        assert!(self.weights.iter().all(|w| w.is_finite() && *w >= 0.0));
+        assert!(self.weights.iter().sum::<f64>() <= 1.0 + 1e-10);
 
         self.update_distribution_mut();
     }
@@ -294,7 +297,10 @@ where
     }
 
     fn postprocess(&mut self) -> Self::Output {
-        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority {
+            weights: self.weights.clone(),
+            hypotheses: self.hypotheses.clone(),
+        }
     }
 }
 
@@ -304,7 +310,10 @@ where
 {
     type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
-        WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
+        WeightedMajority {
+            weights: self.weights.clone(),
+            hypotheses: self.hypotheses.clone(),
+        }
     }
 }
 
@@ -363,7 +372,7 @@ mod regression_tests {
     }
 
     #[test]
-    fn supported_rules_produce_finite_simplex_weights_over_multiple_rounds() {
+    fn supported_rules_produce_finite_l1_ball_weights_over_multiple_rounds() {
         let sample = Sample::dummy(3);
         for rule in [
             FwUpdateRule::Classic,
@@ -377,9 +386,93 @@ mod regression_tests {
             assert_eq!(booster.hypotheses.len(), 2);
             assert_eq!(booster.weights.len(), 2);
             assert!(booster.weights.iter().all(|w| w.is_finite() && *w >= 0.0));
-            assert!((booster.weights.iter().sum::<f64>() - 1.0).abs() < 1e-7);
+            assert!(booster.weights.iter().sum::<f64>() <= 1.0 + 1e-10);
         }
     }
+    #[test]
+    fn first_short_step_follows_the_bound_from_zero() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample);
+        booster.preprocess();
+        let expected = (1.0 / 3.0) / booster.eta;
+        assert!(booster.boost(&Margins([1.0, 1.0, -1.0]), 1).is_continue());
+        assert!((booster.weights[0] - expected).abs() < 1e-15);
+        let output = booster.current_hypothesis();
+        assert_eq!(output.weights, booster.weights);
+        assert_eq!(booster.postprocess().weights, booster.weights);
+        assert!((output.confidence(&sample, 0).abs() - expected).abs() < 1e-15);
+    }
+
+    #[test]
+    fn classic_counts_the_first_update() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample).update_rule(FwUpdateRule::Classic);
+        booster.preprocess();
+        assert!(booster.boost(&Margins([1.0, 1.0, -1.0]), 1).is_continue());
+        assert!(booster.boost(&Margins([-1.0, 1.0, 1.0]), 2).is_continue());
+        assert!((booster.weights[0] - 1.0 / 3.0).abs() < 1e-15);
+        assert!((booster.weights[1] - 2.0 / 3.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn zero_edge_returns_the_zero_model() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample);
+        let output = booster.run(&Margins([0.0, 0.0, 0.0]));
+        assert!(output.weights.is_empty());
+        assert_eq!(output.confidence(&sample, 0), 0.0);
+    }
+
+    #[test]
+    fn minimization_gradient_matches_finite_differences() {
+        for nu in [1.0, 2.0] {
+            let objective = CorrErlpFwObjective::new(ErlpSoftMarginObjective::new(nu, 2.0));
+            let point = [-0.7, 0.2, 0.9];
+            let gradient = objective.gradient(&point);
+            for i in 0..point.len() {
+                let mut lower = point;
+                let mut upper = point;
+                lower[i] -= 1e-6;
+                upper[i] += 1e-6;
+                let derivative =
+                    (objective.objective_value(&upper) - objective.objective_value(&lower)) / 2e-6;
+                assert!((derivative - gradient[i]).abs() < 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn short_steps_decrease_the_regularized_training_objective() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample);
+        booster.preprocess();
+        let atoms = [
+            Margins([1.0, 1.0, -1.0]),
+            Margins([-1.0, 1.0, 1.0]),
+            Margins([1.0, -1.0, 1.0]),
+        ];
+        let mut previous = 0.0;
+        for round in 1..=100 {
+            let best = atoms
+                .iter()
+                .max_by(|a, b| {
+                    helpers::inner_product(&a.0, &booster.dist)
+                        .total_cmp(&helpers::inner_product(&b.0, &booster.dist))
+                })
+                .unwrap();
+            let flow = booster.boost(best, round);
+            let model = booster.current_hypothesis();
+            let negative_margins: Vec<_> = helpers::margins(&sample, &model).map(|m| -m).collect();
+            let value = -booster.objective.objective_value(&negative_margins);
+            assert!(value <= previous + 1e-12);
+            previous = value;
+            if flow.is_break() {
+                break;
+            }
+        }
+        assert!(previous < -1e-4);
+    }
+
     #[test]
     fn full_capping_keeps_the_uniform_oracle_hypothesis() {
         let sample = Sample::dummy(3);

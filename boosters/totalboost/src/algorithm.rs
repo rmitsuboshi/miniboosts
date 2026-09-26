@@ -26,6 +26,11 @@ where
         Self { softboost }
     }
 
+    /// Numerical reason for early termination; `None` does not imply zero error.
+    pub fn numerical_stop_reason(&self) -> Option<&str> {
+        self.softboost.numerical_stop_reason()
+    }
+
     /// Set the tolerance parameter.
     ///
     /// Time complexity: `O(1)`.

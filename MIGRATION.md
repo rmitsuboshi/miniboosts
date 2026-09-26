@@ -52,3 +52,15 @@ External dependencies are declared once in the root workspace. The checked-in
 Cargo.lock records tested versions; use `--locked` when reproducing experiments.
 Clarabel 0.11 constructors are validated before solving. The numerical regression
 tests retain their existing tolerances across this solver upgrade.
+
+CorrectiveERLPBoost now applies its Frank-Wolfe update from zero coefficients on
+round one, following Shalev-Shwartz and Singer (2008),
+[Figure 1](https://home.ttic.edu/~shai/papers/ShalevSi08.pdf). Previously it forced
+the first coefficient to one and left the Classic step counter at zero. Returned
+models and logger snapshots now preserve coefficients with total mass at most one,
+instead of rescaling them to unit mass; confidence values and margin objectives
+therefore match training. A zero-edge initial oracle returns a zero model.
+The experiment runner uses the booster's default ShortStep rule; Classic remains
+available explicitly, but its fixed schedule need not improve the objective each
+round and can converge slowly for small tolerances. Regenerate earlier CERLPBoost
+CSVs before comparing runs.

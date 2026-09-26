@@ -9,3 +9,6 @@ img/example/target
 
 tests/dataset
 tests/output
+
+/img/plots/
+/img/__pycache__/
