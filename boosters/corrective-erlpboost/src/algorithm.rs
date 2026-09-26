@@ -1,0 +1,489 @@
+//! This file defines `CorrectiveErlpBoost` based on the paper
+//! "On the Equivalence of Weak Learnability and Linear Separability:
+//!     New Relaxations and Efficient Boosting Algorithms"
+//! by Shai Shalev-Shwartz and Yoram Singer, [Figure 1](https://home.ttic.edu/~shai/papers/ShalevSi08.pdf).
+//! The default ShortStep rule follows that update from zero coefficients.
+//! Classic and LineSearch are alternative Frank-Wolfe step strategies.
+//! Output coefficients retain their l1-ball scale (their sum can be below one),
+//! so confidence values and the logged objective match the trained model.
+//! I named this algorithm `CorrectiveErlpBoost`
+//! since it is referred as `the Corrective version of CorrectiveErlpBoost`
+//! in "Entropy Regularized LPBoost" by Warmuth et al.
+//!
+use hypotheses::{RefWeightedMajority, WeightedMajority};
+use miniboosts_core::CurrentHypothesis;
+use miniboosts_core::{
+    Booster, Classifier, Sample, WeakLearner,
+    constants::{DEFAULT_CAPPING, DEFAULT_TOLERANCE},
+    tools::checkers,
+    tools::helpers,
+};
+use optimization::{
+    ErlpSoftMarginObjective, FrankWolfe, FwUpdateRule, ObjectiveFunction, StepSize,
+};
+
+use std::ops::ControlFlow;
+
+pub struct CorrectiveErlpBoost<'a, H> {
+    // Training sample
+    sample: &'a Sample,
+
+    dist: Vec<f64>,
+    // A regularization parameter defined in the paper
+    eta: f64,
+
+    half_tolerance: f64,
+    nu: f64,
+
+    objective: ErlpSoftMarginObjective,
+    frank_wolfe: FrankWolfe<CorrErlpFwObjective>,
+    update_rule: FwUpdateRule,
+    weights: Vec<f64>,
+    hypotheses: Vec<H>,
+
+    max_iter: usize,
+    terminated: usize,
+}
+
+impl<'a, H> CorrectiveErlpBoost<'a, H> {
+    /// Construct a new instance of `CorrectiveErlpBoost`.
+    ///
+    /// Time complexity: `O(1)`.
+    pub fn init(sample: &'a Sample) -> Self {
+        let n_examples = sample.shape().0;
+
+        // Set tolerance, sub_tolerance
+        let half_tolerance = DEFAULT_TOLERANCE / 2f64;
+
+        // Set regularization parameter
+        let nu = DEFAULT_CAPPING;
+        let eta = (n_examples as f64 / nu).ln() / half_tolerance;
+
+        let objective = ErlpSoftMarginObjective::new(nu, eta);
+        let update_rule = FwUpdateRule::ShortStep;
+        let fw_objective = CorrErlpFwObjective::new(objective.clone());
+        let frank_wolfe = FrankWolfe::new(fw_objective, update_rule);
+
+        Self {
+            sample,
+
+            dist: Vec::new(),
+            half_tolerance,
+            eta,
+            nu,
+
+            objective,
+            frank_wolfe,
+            update_rule,
+
+            weights: Vec::new(),
+            hypotheses: Vec::new(),
+            max_iter: usize::MAX,
+            terminated: usize::MAX,
+        }
+    }
+
+    /// This method updates the capping parameter.
+    ///
+    /// Time complexity: `O(1)`.
+    pub fn nu(mut self, nu: f64) -> Self {
+        let n_examples = self.sample.shape().0;
+        checkers::capping_parameter(nu, n_examples);
+        self.nu = nu;
+        self
+    }
+
+    /// Set the soft-margin objective tolerance. The stopping gap uses half
+    /// this value; it is not a classification-error threshold.
+    ///
+    /// Time complexity: `O(1)`.
+    #[inline(always)]
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
+        self.half_tolerance = tolerance / 2.0;
+        self
+    }
+
+    /// Set an update strategy for the Frank-Wolfe algorithm.
+    #[inline(always)]
+    ///
+    /// # Panics
+    /// Blended-pairwise updates require coefficient-space atoms and are not
+    /// supported by this booster's margin-space implementation.
+    pub fn update_rule(mut self, update_rule: FwUpdateRule) -> Self {
+        assert!(
+            !matches!(update_rule, FwUpdateRule::BlendedPairwise),
+            "BlendedPairwise is not supported by this booster",
+        );
+        self.update_rule = update_rule;
+        self
+    }
+
+    /// Update regularization parameter.
+    /// (the regularization parameter on `self.tolerance` and `self.nu`.)
+    ///
+    /// Time complexity: `O(1)`.
+    #[inline(always)]
+    fn regularization_param(&mut self) {
+        let m = self.dist.len() as f64;
+        let ln_part = (m / self.nu).ln();
+        // At nu=m the feasible distribution is uniform and its relative
+        // entropy is zero. Any positive eta represents the same objective.
+        self.eta = if ln_part == 0.0 {
+            1.0
+        } else {
+            ln_part / self.half_tolerance
+        };
+    }
+
+    /// Returns the iteration budget for the configured soft-margin objective
+    /// tolerance after preprocessing. This is not a training-error guarantee.
+    ///
+    /// Time complexity: `O(1)`.
+    pub fn max_loop(&mut self) -> usize {
+        let m = self.dist.len() as f64;
+
+        let ln_m = (m / self.nu).ln();
+        let max_iter = 8.0 * ln_m / self.half_tolerance.powi(2);
+
+        (max_iter.ceil() as usize).max(1)
+    }
+
+    fn initialize_objective(&mut self) {
+        self.objective = ErlpSoftMarginObjective::new(self.nu, self.eta);
+    }
+
+    /// Initializes the Frank-Wolfe algorithm.
+    fn initialize_solver(&mut self) {
+        self.initialize_objective();
+        let objective = CorrErlpFwObjective::new(self.objective.clone());
+        self.frank_wolfe = FrankWolfe::new(objective, self.update_rule);
+    }
+}
+
+impl<H> CorrectiveErlpBoost<'_, H>
+where
+    H: Classifier + PartialEq,
+{
+    /// Updates weight on hypotheses and `self.dist` in this order.
+    fn update_distribution_mut(&mut self) {
+        let f = RefWeightedMajority::new(&self.weights[..], &self.hypotheses[..]);
+        let neg_margins = helpers::margins(self.sample, &f)
+            .map(|yf| -yf)
+            .collect::<Vec<_>>();
+        self.dist = self.objective.gradient(&neg_margins[..]);
+    }
+
+    fn update_params_mut(&mut self, h: H, mut cur_margins: Vec<f64>, mut new_margins: Vec<f64>) {
+        // Shalev-Shwartz and Singer (2008), Fig. 1, starts at w=0 and
+        // applies the same update on every round. Forcing the first weight
+        // to one skips the short step and restarts Classic's schedule.
+        cur_margins.iter_mut().for_each(|yf| {
+            *yf *= -1f64;
+        });
+
+        new_margins.iter_mut().for_each(|yh| {
+            *yh *= -1f64;
+        });
+
+        let stepsize = self
+            .frank_wolfe
+            .get_stepsize_mut(&cur_margins[..], &new_margins[..]);
+        match stepsize {
+            StepSize::Normal(stepsize) => {
+                self.weights.iter_mut().for_each(|w| {
+                    *w *= 1f64 - stepsize;
+                });
+                self.weights.push(stepsize);
+                self.hypotheses.push(h);
+            }
+            StepSize::BpfwMoveWeights { .. } => {
+                unreachable!("BlendedPairwise is rejected by update_rule")
+            }
+        }
+        // Fig. 1 optimizes over the l1 ball, not the simplex: a short step
+        // from zero can have total mass below one.
+        assert!(self.weights.iter().all(|w| w.is_finite() && *w >= 0.0));
+        assert!(self.weights.iter().sum::<f64>() <= 1.0 + 1e-10);
+
+        self.update_distribution_mut();
+    }
+}
+
+impl<H> Booster<H> for CorrectiveErlpBoost<'_, H>
+where
+    H: Classifier + Clone + PartialEq + std::fmt::Debug,
+{
+    type Output = WeightedMajority<H>;
+
+    fn name(&self) -> &str {
+        "Corrective ErlpBoost"
+    }
+
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let (n_examples, n_feature) = self.sample.shape();
+        let ratio = self.nu / n_examples as f64;
+        let nu = helpers::format_unit(self.nu);
+        let fw = self.frank_wolfe.current_update_rule();
+        let info = Vec::from([
+            ("# of examples", format!("{n_examples}")),
+            ("# of features", format!("{n_feature}")),
+            ("Tolerance", format!("{}", 2f64 * self.half_tolerance)),
+            ("Max iteration", format!("{}", self.max_iter)),
+            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)")),
+            ("Frank-Wolfe", format!("{fw}")),
+        ]);
+        Some(info)
+    }
+
+    fn preprocess(&mut self) {
+        self.sample.is_valid_binary_instance();
+        let n_examples = self.sample.shape().0;
+        let uni = 1f64 / n_examples as f64;
+
+        self.dist = vec![uni; n_examples];
+
+        self.regularization_param();
+        self.max_iter = self.max_loop();
+        self.terminated = self.max_iter;
+
+        // self.classifiers = Vec::new();
+        self.weights = Vec::new();
+        self.hypotheses = Vec::new();
+
+        self.initialize_solver();
+    }
+
+    fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
+    where
+        W: WeakLearner<Hypothesis = H>,
+    {
+        if self.max_iter < iteration {
+            return ControlFlow::Break(self.max_iter);
+        }
+
+        // Receive a hypothesis from the base learner
+        let h = weak_learner.produce(self.sample, &self.dist);
+
+        // With nu=m the dual feasible set is the singleton uniform distribution.
+        // One oracle call suffices; retain it even when its edge is nonpositive.
+        if self.nu == self.sample.shape().0 as f64 {
+            self.hypotheses.push(h);
+            self.weights = vec![1.0];
+            self.terminated = iteration;
+            return ControlFlow::Break(iteration);
+        }
+
+        let cur_margins = {
+            let f = RefWeightedMajority::new(&self.weights, &self.hypotheses[..]);
+            helpers::margins(self.sample, &f).collect::<Vec<_>>()
+        };
+        let new_margins = helpers::margins(self.sample, &h).collect::<Vec<_>>();
+
+        let duality_gap = {
+            let e1 = helpers::inner_product(&new_margins[..], &self.dist[..]);
+            let e2 = helpers::inner_product(&cur_margins[..], &self.dist[..]);
+            e1 - e2
+        };
+
+        // Update the parameters
+        if duality_gap <= self.half_tolerance {
+            self.terminated = iteration;
+            return ControlFlow::Break(iteration);
+        }
+
+        self.update_params_mut(h, cur_margins, new_margins);
+
+        ControlFlow::Continue(())
+    }
+
+    fn postprocess(&mut self) -> Self::Output {
+        WeightedMajority {
+            weights: self.weights.clone(),
+            hypotheses: self.hypotheses.clone(),
+        }
+    }
+}
+
+impl<H> CurrentHypothesis for CorrectiveErlpBoost<'_, H>
+where
+    H: Classifier + Clone,
+{
+    type Output = WeightedMajority<H>;
+    fn current_hypothesis(&self) -> Self::Output {
+        WeightedMajority {
+            weights: self.weights.clone(),
+            hypotheses: self.hypotheses.clone(),
+        }
+    }
+}
+
+pub struct CorrErlpFwObjective(ErlpSoftMarginObjective);
+
+impl CorrErlpFwObjective {
+    pub fn new(objective: ErlpSoftMarginObjective) -> Self {
+        Self(objective)
+    }
+}
+
+impl ObjectiveFunction for CorrErlpFwObjective {
+    fn name(&self) -> &str {
+        "The dual objective for ErlpBoost (minimization form)"
+    }
+
+    fn smooth(&self) -> (f64, f64) {
+        self.0.smooth()
+    }
+
+    /// returns the objective value `f^*(θ)` at given point `θ = -Aw.`
+    fn objective_value(&self, point: &[f64]) -> f64 {
+        -self.0.objective_value(point)
+    }
+
+    /// returns the gradient `∇f^*(θ)` at given point `θ = -Aw.`
+    fn gradient(&self, point: &[f64]) -> Vec<f64> {
+        self.0.gradient(point).into_iter().collect()
+    }
+}
+
+#[cfg(test)]
+mod regression_tests {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct Margins([f64; 3]);
+    impl Classifier for Margins {
+        fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+            self.0[row] * sample.target()[row]
+        }
+    }
+    impl WeakLearner for Margins {
+        type Hypothesis = Self;
+        fn produce(&self, _: &Sample, _: &[f64]) -> Self {
+            self.clone()
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "BlendedPairwise is not supported")]
+    fn unsupported_rule_is_rejected_at_configuration() {
+        let sample = Sample::dummy(3);
+        let _ = CorrectiveErlpBoost::<Margins>::init(&sample)
+            .update_rule(FwUpdateRule::BlendedPairwise);
+    }
+
+    #[test]
+    fn supported_rules_produce_finite_l1_ball_weights_over_multiple_rounds() {
+        let sample = Sample::dummy(3);
+        for rule in [
+            FwUpdateRule::Classic,
+            FwUpdateRule::ShortStep,
+            FwUpdateRule::LineSearch,
+        ] {
+            let mut booster = CorrectiveErlpBoost::init(&sample).update_rule(rule);
+            booster.preprocess();
+            assert!(booster.boost(&Margins([1.0, 1.0, -1.0]), 1).is_continue());
+            assert!(booster.boost(&Margins([-1.0, 1.0, 1.0]), 2).is_continue());
+            assert_eq!(booster.hypotheses.len(), 2);
+            assert_eq!(booster.weights.len(), 2);
+            assert!(booster.weights.iter().all(|w| w.is_finite() && *w >= 0.0));
+            assert!(booster.weights.iter().sum::<f64>() <= 1.0 + 1e-10);
+        }
+    }
+    #[test]
+    fn first_short_step_follows_the_bound_from_zero() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample);
+        booster.preprocess();
+        let expected = (1.0 / 3.0) / booster.eta;
+        assert!(booster.boost(&Margins([1.0, 1.0, -1.0]), 1).is_continue());
+        assert!((booster.weights[0] - expected).abs() < 1e-15);
+        let output = booster.current_hypothesis();
+        assert_eq!(output.weights, booster.weights);
+        assert_eq!(booster.postprocess().weights, booster.weights);
+        assert!((output.confidence(&sample, 0).abs() - expected).abs() < 1e-15);
+    }
+
+    #[test]
+    fn classic_counts_the_first_update() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample).update_rule(FwUpdateRule::Classic);
+        booster.preprocess();
+        assert!(booster.boost(&Margins([1.0, 1.0, -1.0]), 1).is_continue());
+        assert!(booster.boost(&Margins([-1.0, 1.0, 1.0]), 2).is_continue());
+        assert!((booster.weights[0] - 1.0 / 3.0).abs() < 1e-15);
+        assert!((booster.weights[1] - 2.0 / 3.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn zero_edge_returns_the_zero_model() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample);
+        let output = booster.run(&Margins([0.0, 0.0, 0.0]));
+        assert!(output.weights.is_empty());
+        assert_eq!(output.confidence(&sample, 0), 0.0);
+    }
+
+    #[test]
+    fn minimization_gradient_matches_finite_differences() {
+        for nu in [1.0, 2.0] {
+            let objective = CorrErlpFwObjective::new(ErlpSoftMarginObjective::new(nu, 2.0));
+            let point = [-0.7, 0.2, 0.9];
+            let gradient = objective.gradient(&point);
+            for i in 0..point.len() {
+                let mut lower = point;
+                let mut upper = point;
+                lower[i] -= 1e-6;
+                upper[i] += 1e-6;
+                let derivative =
+                    (objective.objective_value(&upper) - objective.objective_value(&lower)) / 2e-6;
+                assert!((derivative - gradient[i]).abs() < 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn short_steps_decrease_the_regularized_training_objective() {
+        let sample = Sample::dummy(3);
+        let mut booster = CorrectiveErlpBoost::init(&sample);
+        booster.preprocess();
+        let atoms = [
+            Margins([1.0, 1.0, -1.0]),
+            Margins([-1.0, 1.0, 1.0]),
+            Margins([1.0, -1.0, 1.0]),
+        ];
+        let mut previous = 0.0;
+        for round in 1..=100 {
+            let best = atoms
+                .iter()
+                .max_by(|a, b| {
+                    helpers::inner_product(&a.0, &booster.dist)
+                        .total_cmp(&helpers::inner_product(&b.0, &booster.dist))
+                })
+                .unwrap();
+            let flow = booster.boost(best, round);
+            let model = booster.current_hypothesis();
+            let negative_margins: Vec<_> = helpers::margins(&sample, &model).map(|m| -m).collect();
+            let value = -booster.objective.objective_value(&negative_margins);
+            assert!(value <= previous + 1e-12);
+            previous = value;
+            if flow.is_break() {
+                break;
+            }
+        }
+        assert!(previous < -1e-4);
+    }
+
+    #[test]
+    fn full_capping_keeps_the_uniform_oracle_hypothesis() {
+        let sample = Sample::dummy(3);
+        let hypothesis = Margins([-1.0, 0.0, 1.0]);
+        let mut booster = CorrectiveErlpBoost::init(&sample).nu(3.0);
+        let output = booster.run(&hypothesis);
+        assert_eq!(output.hypotheses.len(), 1);
+        assert!((output.weights[0] - 1.0).abs() < 1e-7);
+        let objective = booster.objective.objective_value(&[1.0, 0.0, -1.0]);
+        assert!(objective.is_finite() && objective.abs() < 1e-12);
+        assert!(booster.dist.iter().all(|d| (*d - 1.0 / 3.0).abs() < 1e-12));
+        assert_eq!(booster.terminated, 1);
+    }
+}

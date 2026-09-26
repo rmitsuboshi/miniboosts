@@ -1,0 +1,11 @@
+[package]
+name = "logging"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+
+[dependencies]
+colored         = { workspace = true }
+miniboosts_core = { path = "../miniboosts-core" }
+optimization    = { path = "../optimization" }
+

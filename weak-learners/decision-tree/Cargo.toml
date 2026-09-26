@@ -1,0 +1,11 @@
+[package]
+name = "decision_tree"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+
+[dependencies]
+serde           = { workspace = true, features = ["alloc", "derive"] }
+rayon           = { workspace = true }
+miniboosts_core = { path = "../../miniboosts-core" }
+

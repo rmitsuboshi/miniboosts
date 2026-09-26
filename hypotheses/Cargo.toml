@@ -1,0 +1,11 @@
+[package]
+name = "hypotheses"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+
+[dependencies]
+serde           = { workspace = true, features = ["rc", "derive"] }
+fixedbitset     = { workspace = true }
+miniboosts_core = { path = "../miniboosts-core" }
+
