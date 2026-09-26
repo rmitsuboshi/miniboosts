@@ -1,0 +1,11 @@
+[package]
+name = "optimization"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+
+[dependencies]
+miniboosts_core = { path    = "../miniboosts-core" }
+hypotheses      = { path    = "../hypotheses" }
+clarabel        = { workspace = true }
+

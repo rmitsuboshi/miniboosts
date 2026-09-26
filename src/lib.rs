@@ -1,242 +1,67 @@
 #![warn(missing_docs)]
-
-//! 
-//! A crate that provides some boosting algorithms.
-//! All the boosting algorithm in this crate, 
-//! except `LPBoost`, has theoretical iteration bound 
-//! until finding a combined hypothesis. 
-//! 
-//! This crate includes three types of boosting algorithms. 
-//! 
-//! * Empirical risk minimizing (ERM) boosting
-//!     - [`AdaBoost`],
-//!     - [`GraphSepBoost`].
-//! 
-//! 
-//! * Hard margin maximizing boosting
-//!     - [`AdaBoostV`],
-//!     - [`TotalBoost`](crate::booster::TotalBoost).
-//! 
-//! 
-//! * Soft margin maximizing boosting
-//!     - [`LPBoost`](crate::booster::LPBoost),
-//!     - [`SoftBoost`](crate::booster::SoftBoost),
-//!     - [`SmoothBoost`],
-//!     - [`ERLPBoost`](crate::booster::ERLPBoost),
-//!     - [`CERLPBoost`],
-//!     - [`MLPBoost`](crate::booster::MLPBoost).
-//! 
-//!
-//! This crate also includes some Weak Learners.
-//! * Classification
-//!     - [`DecisionTree`],
-//!     - [`NeuralNetwork`],
-//!     - [`GaussianNB`],
-//!     - [`BadBaseLearner`] (The bad base learner for LPBoost).
-//! * Regression
-//!     - [`RegressionTree`]. Note that the current implement is not efficient.
-//! 
-//! # Example
-//! The following code shows a small example for running [`LPBoost`].  
-//! See also:
-//! - [`LPBoost::nu`]
-//! - [`LPBoost::tolerance`]
-//! - [`DecisionTree`]
-//! - [`DecisionTreeClassifier`]
-//! 
-//! [`LPBoost::nu`]: LPBoost::nu
-//! [`LPBoost::tolerance`]: LPBoost::tolerance
-//! [`DecisionTree`]: crate::weak_learner::DecisionTree
-//! [`DecisionTreeClassifier`]: crate::weak_learner::DecisionTreeClassifier
-//! [`NeuralNetwork`]: crate::weak_learner::NeuralNetwork
-//! [`WeightedMajority<F>`]: crate::hypothesis::WeightedMajority
-//! [`GaussianNB`]: crate::weak_learner::GaussianNB
-//! [`BadBaseLearner`]: crate::weak_learner::BadBaseLearner
-//! 
-//! ```no_run
-//! use miniboosts::prelude::*;
-//! 
-//! // Read the training sample from the CSV file.
-//! // We use the column named `class` as the label.
-//! let path = "path/to/dataset.csv";
-//! let sample = SampleReader::new()
-//!     .file(path)
-//!     .has_header(true)
-//!     .target_feature("class")
-//!     .read()
-//!     .unwrap();
-//! 
-//! // Get the number of training examples.
-//! let n_sample = data.shape().0 as f64;
-//! 
-//! // Initialize `LPBoost` and set the tolerance parameter as `0.01`.
-//! // This means `booster` returns a hypothesis whose training error is
-//! // less than `0.01` if the traing examples are linearly separable.
-//! // Note that the default tolerance parameter is set as `1 / n_sample`,
-//! // where `n_sample = data.shape().0` is 
-//! // the number of training examples in `data`.
-//! // Further, at the end of this chain,
-//! // LPBoost calls `LPBoost::nu` to set the capping parameter 
-//! // as `0.1 * n_sample`, which means that, 
-//! // at most, `0.1 * n_sample` examples are regarded as outliers.
-//! let booster = LPBoost::init(&sample)
-//!     .tolerance(0.01)
-//!     .nu(0.1 * n_sample);
-//! 
-//! // Set the weak learner with setting parameters.
-//! let weak_learner = DecisionTreeBuilder::new(&sample)
-//!     .max_depth(2)
-//!     .criterion(Criterion::Entropy)
-//!     .build();
-//! 
-//! // Run `LPBoost` and obtain the resulting hypothesis `f`.
-//! let f = booster.run(&weak_learner);
-//! 
-//! // Get the predictions on the training set.
-//! let predictions = f.predict_all(&data);
-//! 
-//! // Calculate the training loss.
-//! let target = sample.target();
-//! let training_loss = target.into_iter()
-//!     .zip(predictions)
-//!     .map(|(&y, fx)| if y as i64 == fx { 0.0 } else { 1.0 })
-//!     .sum::<f64>()
-//!     / n_sample;
-//!
-//! println!("Training Loss is: {training_loss}");
-//! ```
-mod sample;
-mod common;
-mod hypothesis;
-mod booster;
-mod weak_learner;
+#![doc = include_str!("../README.md")]
+#![doc = include_str!("../logging/src/README.md")]
 
 pub mod prelude;
-pub mod research;
-// pub mod pywriter;
 
+pub use hypotheses::{NaiveAggregation, WeightedMajority};
+pub use logging::*;
+pub use miniboosts_core::{Booster, Classifier, Regressor, Sample, SampleReader, WeakLearner};
+pub use optimization::*;
 
-// Export the struct that represents batch sample
-pub use sample::{
-    SampleReader,
-    Sample,
-    Feature,
-};
+/// Exponential-loss boosting by Freund and Schapire.
+/// `tolerance` sets the iteration budget, not a measured-error stopping test.
+/// See [Boosting: Foundations and Algorithms](https://direct.mit.edu/books/oa-monograph/5342/BoostingFoundations-and-Algorithms).
+pub use adaboost::AdaBoost;
 
+/// Hard-margin boosting by Rätsch and Warmuth.
+/// `tolerance` controls the margin update and iteration budget.
+/// See [Efficient Margin Maximizing with Boosting](https://www.jmlr.org/papers/v6/ratsch05a.html).
+pub use adaboostv::AdaBoostV;
 
-// Export some traits and the combined hypothesis struct.
-pub use hypothesis::{
-    Classifier,
-    Regressor,
-    WeightedMajority,
-    NaiveAggregation,
-};
+/// Soft-margin column generation; `tolerance` controls the optimization gap.
+/// A guarantee against all hypotheses requires an appropriate weak-learning
+/// oracle and accurately solved LPs, not merely a small training loss.
+/// See [Linear Programming Boosting via Column Generation](https://link.springer.com/content/pdf/10.1023/A:1012470815092.pdf).
+pub use lpboost::LpBoost;
 
+/// Entropy-regularized soft-margin boosting. The tolerance is split between
+/// regularization accuracy and the optimization stopping criterion.
+/// See [Entropy Regularized LPBoost](https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf).
+pub use erlpboost::ErlpBoost;
 
+/// Graph-separation boosting using the aggregation rule in Lemma 4.2 of
+/// [Boosting Simple Learners](https://theoretics.episciences.org/10757).
+pub use graph_separation_boosting::GraphSeparationBoosting;
 
+/// Corrective entropy-regularized boosting using Frank-Wolfe updates.
+/// `tolerance` controls regularization and the duality-gap stopping criterion.
+/// See [On the equivalence of weak learnability and linear separability](https://link.springer.com/article/10.1007/s10994-010-5173-z).
+pub use corrective_erlpboost::CorrectiveErlpBoost;
 
-// Export the `Booster` trait.
-pub use booster::Booster;
+/// MadaBoost with capped-product example weights.
+/// `tolerance` sets the iteration budget; it is not a measured-error threshold.
+/// See [MadaBoost: A Modification of AdaBoost](https://www.learningtheory.org/colt2000/papers/DomingoWatanabe.pdf).
+pub use madaboost::MadaBoost;
 
-// Export the boosting algorithms that minimizes the empirical loss.
-pub use booster::{
-    AdaBoost,
-    MadaBoost,
-    // AdaBoostL,
-};
+/// Soft-margin boosting combining Frank-Wolfe and LP candidate updates.
+/// `tolerance` controls regularization and optimization accuracy.
+/// See [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831).
+pub use mlpboost::MlpBoost;
 
+/// Smooth boosting requiring a weak-learning advantage `gamma` on each
+/// requested distribution. `kappa` specifies the target error under that
+/// assumption; choosing a tree depth does not establish the assumption.
+/// See Figure 1 of [Smooth Boosting and Learning with Malicious Noise](https://link.springer.com/chapter/10.1007/3-540-44581-1_31).
+pub use smoothboost::SmoothBoost;
 
-// Export the boosting algorithms that maximizes the hard margin.
-pub use booster::{
-    AdaBoostV,
-    TotalBoost,
-    // SparsiBoost,
-};
+/// Soft-margin boosting with entropy projection implemented through exponential cones. `tolerance` is an optimization parameter, not a bound on the
+/// observed fraction of classification errors.
+/// See [Boosting Algorithms for Maximizing the Soft Margin](https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf).
+pub use softboost::SoftBoost;
 
+/// Hard-margin specialization of [`SoftBoost`] with `nu = 1`.
+/// See [Totally Corrective Boosting Algorithms That Maximize the Margin](https://dl.acm.org/doi/10.1145/1143844.1143970).
+pub use totalboost::TotalBoost;
 
-// Export the boosting algorithms that maximizes the soft margin.
-// (These boosting algorithms use Gurobi)
-pub use booster::{
-    SmoothBoost,
-    CERLPBoost,
-    LPBoost,
-    MLPBoost,
-    ERLPBoost,
-    SoftBoost,
-};
-
-
-
-// Export the boosting algorithms for regression
-pub use booster::{
-    GBM,
-};
-
-
-// Export other boosting algorithms
-pub use booster::GraphSepBoost;
-
-
-// Export the `WeakLearner` trait.
-pub use weak_learner::WeakLearner;
-
-
-// Export the instances of the `WeakLearner` trait.
-pub use weak_learner::{
-    DecisionTree,
-    DecisionTreeBuilder,
-    Criterion,
-
-    // WLUnion,
-
-    GaussianNB,
-    NeuralNetwork,
-    Activation,
-    NNLoss,
-
-    BadBaseLearner,
-    BadBaseLearnerBuilder,
-};
-
-
-// Export the instances of the `Classifier` trait.
-// The `CombinedClassifier` is the output of the `Boosting::run(..)`.
-pub use weak_learner::{
-    DecisionTreeClassifier,
-
-    NNHypothesis,
-    NNClassifier,
-    NNRegressor,
-
-    BadClassifier,
-    NBayesClassifier,
-};
-
-pub use weak_learner::{
-    RegressionTree,
-    RegressionTreeBuilder,
-    RegressionTreeRegressor,
-};
-
-/// Some useful functions / traits
-pub use common::{
-    frank_wolfe::{
-        FWType,
-    },
-    loss_functions::{
-        GBMLoss,
-        LossFunction,
-    },
-};
-
-
-pub use research::{
-    Logger,
-    LoggerBuilder,
-    CrossValidation,
-    objective_functions::{
-        SoftMarginObjective,
-        HardMarginObjective,
-        ExponentialLoss,
-    },
-};
+pub use decision_tree::*;
