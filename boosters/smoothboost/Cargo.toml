@@ -2,11 +2,13 @@
 name = "smoothboost"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [dependencies]
-rayon           = { version = "1.10.0" }
-logging         = { path = "../../logging" }
+rayon           = { workspace = true }
 miniboosts_core = { path = "../../miniboosts-core" }
 hypotheses      = { path = "../../hypotheses" }
-decision_tree   = { path = "../../weak-learners/decision-tree" }
 
+
+[dev-dependencies]
+decision_tree   = { path = "../../weak-learners/decision-tree" }

@@ -1,15 +1,11 @@
-use std::fmt;
-use std::ops::Range;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt;
+use std::ops::Range;
 
 use crate::{
-    constants::{
-        NUMERIC_TOLERANCE,
-        PERTURBATION,
-        PRINT_WIDTH_BINNING,
-    },
     Feature,
+    constants::{PERTURBATION, PRINT_WIDTH_BINNING},
 };
 
 /// Binning: A feature processing.
@@ -23,19 +19,23 @@ impl Bin {
         Self(range)
     }
 
-    /// Check whether the given `item` is conteined by `self.`
+    /// Test membership. A bin ending at `f64::MAX` also includes that value.
     #[inline(always)]
     pub fn contains(&self, item: &f64) -> bool {
-        self.0.contains(item)
+        self.0.contains(item) || (*item == f64::MAX && self.0.end == f64::MAX)
     }
 
-    pub fn start(&self) -> f64 { self.0.start }
+    pub fn start(&self) -> f64 {
+        self.0.start
+    }
 
     pub fn set_start(&mut self, s: f64) {
         self.0.start = s;
     }
 
-    pub fn end(&self) -> f64 { self.0.end }
+    pub fn end(&self) -> f64 {
+        self.0.end
+    }
 
     pub fn set_end(&mut self, e: f64) {
         self.0.end = e;
@@ -56,115 +56,55 @@ impl Bins {
         self.len() == 0
     }
 
-    /// Cut the given `Feature` into `n_bins` bins.
-    /// This method naively cut the given slice with same width.
-    #[inline(always)]
-    pub fn cut(feature: &Feature, n_bin: usize) -> Self
-    {
-        let mut bins = {
-            let has_zero = feature.has_zero();
-            match feature {
-                Feature::Dense { vals, .. } => {
-                    Self::cut_dense(&vals[..], n_bin)
-                },
-                Feature::Sparse { vals, .. } => {
-                    Self::cut_sparse(&vals[..], n_bin, has_zero)
-                },
-            }
+    /// Cut a nonempty, finite feature into exactly `n_bin` equal-width bins.
+    /// Sparse implicit zeros participate in the range. Constant values are
+    /// perturbed where representable; rounding may leave empty bins.
+    /// The outer bins cover all finite values, including `f64::MAX`.
+    /// Panics for zero bins, empty features, or non-finite values.
+    pub fn cut(feature: &Feature, n_bin: usize) -> Self {
+        assert!(n_bin > 0, "bin count must be positive");
+        let (mut min, mut max) = (f64::INFINITY, f64::NEG_INFINITY);
+        let mut include = |value: f64| {
+            assert!(value.is_finite(), "binning requires finite feature values");
+            min = min.min(value);
+            max = max.max(value);
         };
-
-        // The `start` of the left-most bin should be `f64::MIN`.
-        bins.0.first_mut().unwrap().0.start = f64::MIN;
-        // The `end` of the right-most bin should be `f64::MAX`.
-        bins.0.last_mut().unwrap().0.end = f64::MAX;
-
-        bins
-    }
-
-    fn cut_dense(vals: &[f64], n_bin: usize) -> Self
-    {
-        let mut min = f64::MAX;
-        let mut max = f64::MIN;
-        vals.iter()
-            .copied()
-            .for_each(|val| {
-                min = min.min(val);
-                max = max.max(val);
-            });
-
-        // If the minimum value equals to the maximum one,
-        // slightly perturb them.
+        match feature {
+            Feature::Dense { vals, .. } => {
+                assert!(!vals.is_empty(), "cannot bin an empty feature");
+                for &value in vals {
+                    include(value);
+                }
+            }
+            Feature::Sparse { vals, size, .. } => {
+                assert!(*size > 0, "cannot bin an empty feature");
+                for &(_, value) in vals {
+                    include(value);
+                }
+                if feature.has_zero() {
+                    include(0.0);
+                }
+            }
+        }
         if min == max {
             min -= PERTURBATION;
             max += PERTURBATION;
         }
-
-        let width = (max - min) / n_bin as f64;
-
         let mut bins = Vec::with_capacity(n_bin);
-
-        let mut left = min;
-        for i in 0..n_bin {
-            let l = if i == 0 { f64::MIN } else { left };
-            let r = if i == n_bin - 1 { f64::MAX } else { left + width };
-            bins.push(Bin::new(l..r));
-
-            left = r;
-        }
-
-        assert_eq!(bins.len(), n_bin);
-
-        Self(bins)
-    }
-
-    fn cut_sparse(
-        vals:     &[(usize, f64)],
-        n_bin:    usize,
-        has_zero: bool,
-    ) -> Self
-    {
-        let mut min = f64::MAX;
-        let mut max = f64::MIN;
-        vals.iter()
-            .copied()
-            .for_each(|(_, val)| {
-                min = min.min(val);
-                max = max.max(val);
-            });
-
-        if min > 0.0 && has_zero {
-            min = 0.0;
-        }
-
-        if max < 0.0 && has_zero {
-            max = 0.0;
-        }
-
-        // If the minimum value equals to the maximum one,
-        // slightly perturb them.
-        if min == max {
-            min -= PERTURBATION;
-            max += PERTURBATION;
-        }
-
-        let intercept = (max - min) / n_bin as f64;
-
-        let mut bins = Vec::with_capacity(n_bin);
-
-        let mut left = min;
-        while left < max {
-            let right = left + intercept;
+        let mut left = f64::MIN;
+        for i in 1..=n_bin {
+            let t = i as f64 / n_bin as f64;
+            let right = if i == n_bin {
+                f64::MAX
+            } else if min.signum() == max.signum() {
+                min + (max - min) * t
+            } else {
+                // Avoid overflow when the range spans both finite extremes.
+                min * (1.0 - t) + max * t
+            };
             bins.push(Bin::new(left..right));
-
-            // Numerical error leads an unexpected split.
-            // So, we ignore the bin with width smaller than 1e-9.
-            if (right - max).abs() < NUMERIC_TOLERANCE { break; }
-
             left = right;
         }
-
-        assert_eq!(bins.len(), n_bin);
-
         Self(bins)
     }
 
@@ -173,19 +113,22 @@ impl Bins {
         indices: &[usize],
         feature: &Feature,
         labels: &[f64],
-        dist: &[f64]
-    ) -> Vec<(Bin, HashMap::<i32,f64>)>
-    {
+        dist: &[f64],
+    ) -> Vec<(Bin, HashMap<i32, f64>)> {
         let n_bins = self.0.len();
-        let mut packed = vec![HashMap::<i32,f64>::new(); n_bins];
+        let mut packed = vec![HashMap::<i32, f64>::new(); n_bins];
 
         for &i in indices {
             let xi = feature[i];
             let yi = labels[i] as i32;
             let di = dist[i];
 
-            let pos = self.0.binary_search_by(|range| {
-                    if range.contains(&xi) { return Ordering::Equal; }
+            let pos = self
+                .0
+                .binary_search_by(|range| {
+                    if range.contains(&xi) {
+                        return Ordering::Equal;
+                    }
                     range.0.start.partial_cmp(&xi).unwrap()
                 })
                 .unwrap();
@@ -212,35 +155,36 @@ impl Bins {
     /// ```
     /// That is, this method
     /// - Change the bin bounds,
-    /// - 
+    /// -
     fn remove_zero_weight_pack_and_normalize(
         &self,
-        pack: Vec<HashMap::<i32,f64>>,
-    ) -> Vec<(Bin, HashMap::<i32,f64>)>
-    {
-        let mut pack = self.0.iter()
+        pack: Vec<HashMap<i32, f64>>,
+    ) -> Vec<(Bin, HashMap<i32, f64>)> {
+        let mut pack = self
+            .0
+            .iter()
             .cloned()
             .zip(pack)
             .filter(|(_, weightmap)| !weightmap.is_empty())
             .collect::<Vec<_>>();
 
         let n = pack.len();
-        for i in 0..n-1 {
+        for i in 0..n - 1 {
             let t = {
                 let left = &pack[i].0;
-                let righ = &pack[i+1].0;
+                let righ = &pack[i + 1].0;
 
                 let e = left.end();
                 let s = righ.start();
 
-                (s + e) / 2f64
+                s / 2.0 + e / 2.0
             };
             pack[i].0.set_end(t);
-            pack[i+1].0.set_start(t);
+            pack[i + 1].0.set_start(t);
         }
         let leftmost = &mut pack[0].0;
         leftmost.set_start(f64::MIN);
-        let rightmost = &mut pack[n-1].0;
+        let rightmost = &mut pack[n - 1].0;
         rightmost.set_end(f64::MAX);
         pack
     }
@@ -251,16 +195,16 @@ impl fmt::Display for Bins {
         let bins = &self.0;
         let n_bins = bins.len();
         if n_bins > PRINT_WIDTH_BINNING {
-            let head = bins[..2].iter()
+            let head = bins[..2]
+                .iter()
                 .map(|bin| format!("{bin}"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let tail = bins.last()
-                .map(|bin| format!("{bin}"))
-                .unwrap();
+            let tail = bins.last().map(|bin| format!("{bin}")).unwrap();
             write!(f, "{head}, ..., {tail}")
         } else {
-            let line = bins.iter()
+            let line = bins
+                .iter()
                 .map(|bin| format!("{}", bin))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -307,6 +251,59 @@ impl fmt::Display for Bin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dense_sparse_binning_parity_across_scales() {
+        for values in [
+            vec![1e-6, 2e-6],
+            vec![1e-300, 2e-300],
+            vec![0.0, 0.0],
+            vec![1e300, 1e300],
+            vec![f64::MIN, f64::MAX],
+        ] {
+            let mut dense = Feature::dense("x");
+            let mut sparse = Feature::sparse("x", values.len());
+            for (i, &v) in values.iter().enumerate() {
+                dense.append((i, v));
+                sparse.append((i, v));
+            }
+            for count in [1, 2, 5] {
+                let d = Bins::cut(&dense, count);
+                let s = Bins::cut(&sparse, count);
+                assert_eq!(d.len(), count);
+                for (a, b) in d.0.iter().zip(&s.0) {
+                    assert_eq!(a.0, b.0);
+                    assert!(a.start().is_finite() && a.end().is_finite());
+                    assert!(a.start() <= a.end());
+                }
+                for value in &values {
+                    assert!(s.0.iter().any(|bin| bin.contains(value)));
+                }
+                let packed = s.pack(&[0, 1], &sparse, &[1.0, -1.0], &[0.5, 0.5]);
+                assert_eq!(
+                    packed.iter().flat_map(|(_, m)| m.values()).sum::<f64>(),
+                    1.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_binning_inputs_are_rejected() {
+        assert!(std::panic::catch_unwind(|| Bins::cut(&Feature::dense("x"), 1)).is_err());
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut dense = Feature::dense("x");
+            let mut sparse = Feature::sparse("x", 1);
+            dense.append((0, value));
+            sparse.append((0, value));
+            for f in [dense, sparse] {
+                assert!(std::panic::catch_unwind(|| Bins::cut(&f, 1)).is_err());
+            }
+        }
+        let mut f = Feature::dense("x");
+        f.append((0, 1.0));
+        assert!(std::panic::catch_unwind(|| Bins::cut(&f, 0)).is_err());
+    }
 
     const NUMERIC_ERROR_TOLERANCE: f64 = 1e-9;
 
@@ -401,10 +398,7 @@ mod tests {
         feature.append((0, 1f64));
 
         let result = Bins::cut(&feature, 2);
-        let expect = vec![
-            Bin::new(f64::MIN..2f64),
-            Bin::new(2f64..f64::MAX),
-        ];
+        let expect = vec![Bin::new(f64::MIN..2f64), Bin::new(2f64..f64::MAX)];
 
         assert_eq!(result.0.len(), expect.len());
         for (r, e) in result.0.into_iter().zip(expect) {
@@ -416,15 +410,15 @@ mod tests {
     fn test_cut_02() {
         let mut feature = Feature::dense("dense");
         feature.append((0, -10f64));
-        feature.append((0,   4f64));
-        feature.append((0,  10f64));
+        feature.append((0, 4f64));
+        feature.append((0, 10f64));
 
         let result = Bins::cut(&feature, 4);
         let expect = vec![
-            Bin::new(f64::MIN..-5f64   ),
-            Bin::new(   -5f64..0f64    ),
-            Bin::new(    0f64..5f64    ),
-            Bin::new(    5f64..f64::MAX),
+            Bin::new(f64::MIN..-5f64),
+            Bin::new(-5f64..0f64),
+            Bin::new(0f64..5f64),
+            Bin::new(5f64..f64::MAX),
         ];
 
         assert_eq!(result.0.len(), expect.len());
@@ -441,10 +435,7 @@ mod tests {
         feature.append((12, 1f64));
 
         let result = Bins::cut(&feature, 2);
-        let expect = vec![
-            Bin::new(f64::MIN..2f64),
-            Bin::new(2f64..f64::MAX),
-        ];
+        let expect = vec![Bin::new(f64::MIN..2f64), Bin::new(2f64..f64::MAX)];
 
         assert_eq!(result.0.len(), expect.len());
         for (r, e) in result.0.into_iter().zip(expect) {
@@ -455,17 +446,17 @@ mod tests {
     #[test]
     fn test_cut_04() {
         let mut feature = Feature::sparse("sparse", 1_000);
-        feature.append((0,     0f64));
+        feature.append((0, 0f64));
         feature.append((100, -10f64));
-        feature.append((7,    10f64));
-        feature.append((12,    1f64));
+        feature.append((7, 10f64));
+        feature.append((12, 1f64));
 
         let result = Bins::cut(&feature, 4);
         let expect = vec![
-            Bin::new(f64::MIN..-5f64   ),
-            Bin::new(   -5f64..0f64    ),
-            Bin::new(    0f64..5f64    ),
-            Bin::new(    5f64..f64::MAX),
+            Bin::new(f64::MIN..-5f64),
+            Bin::new(-5f64..0f64),
+            Bin::new(0f64..5f64),
+            Bin::new(5f64..f64::MAX),
         ];
 
         assert_eq!(result.0.len(), expect.len());
@@ -480,10 +471,7 @@ mod tests {
         feature.append((0, 0f64));
 
         let result = Bins::cut(&feature, 2);
-        let expect = vec![
-            Bin::new(f64::MIN..0f64),
-            Bin::new(0f64..f64::MAX),
-        ];
+        let expect = vec![Bin::new(f64::MIN..0f64), Bin::new(0f64..f64::MAX)];
 
         assert_eq!(result.0.len(), expect.len());
         for (r, e) in result.0.into_iter().zip(expect) {
@@ -495,13 +483,10 @@ mod tests {
     fn test_cut_06() {
         let mut feature = Feature::sparse("dense", 1_000);
         feature.append((12, -10f64));
-        feature.append((12,   8f64));
+        feature.append((12, 8f64));
 
         let result = Bins::cut(&feature, 2);
-        let expect = vec![
-            Bin::new(f64::MIN..-1f64   ),
-            Bin::new(   -1f64..f64::MAX),
-        ];
+        let expect = vec![Bin::new(f64::MIN..-1f64), Bin::new(-1f64..f64::MAX)];
 
         assert_eq!(result.0.len(), expect.len());
         for (r, e) in result.0.into_iter().zip(expect) {
@@ -515,10 +500,7 @@ mod tests {
         feature.append((12, -10f64));
 
         let result = Bins::cut(&feature, 2);
-        let expect = vec![
-            Bin::new(f64::MIN..-5f64   ),
-            Bin::new(   -5f64..f64::MAX),
-        ];
+        let expect = vec![Bin::new(f64::MIN..-5f64), Bin::new(-5f64..f64::MAX)];
 
         assert_eq!(result.0.len(), expect.len());
         for (r, e) in result.0.into_iter().zip(expect) {
@@ -532,10 +514,7 @@ mod tests {
         feature.append((12, 10f64));
 
         let result = Bins::cut(&feature, 2);
-        let expect = vec![
-            Bin::new(f64::MIN..5f64    ),
-            Bin::new(    5f64..f64::MAX),
-        ];
+        let expect = vec![Bin::new(f64::MIN..5f64), Bin::new(5f64..f64::MAX)];
 
         assert_eq!(result.0.len(), expect.len());
         for (r, e) in result.0.into_iter().zip(expect) {
@@ -547,23 +526,23 @@ mod tests {
     fn test_pack_01() {
         let feature = {
             let mut feature = Feature::dense("dense");
-            feature.append((0,  0f64));
-            feature.append((0,  1f64));
-            feature.append((0,  1f64));
+            feature.append((0, 0f64));
+            feature.append((0, 1f64));
+            feature.append((0, 1f64));
             feature.append((0, 10f64));
-            feature.append((0,  2f64));
-            feature.append((0,  9f64));
-            feature.append((0,  5f64));
-            feature.append((0,  6f64));
-            feature.append((0,  3f64));
+            feature.append((0, 2f64));
+            feature.append((0, 9f64));
+            feature.append((0, 5f64));
+            feature.append((0, 6f64));
+            feature.append((0, 3f64));
             feature
         };
         let bins = Bins::cut(&feature, 4);
         let expect = vec![
-            Bin::new(f64::MIN..2.5f64  ),
-            Bin::new(  2.5f64..5.0f64  ),
-            Bin::new(  5.0f64..7.5f64  ),
-            Bin::new(  7.5f64..f64::MAX),
+            Bin::new(f64::MIN..2.5f64),
+            Bin::new(2.5f64..5.0f64),
+            Bin::new(5.0f64..7.5f64),
+            Bin::new(7.5f64..f64::MAX),
         ];
 
         assert_eq!(bins.0.len(), expect.len());
@@ -572,20 +551,18 @@ mod tests {
         }
 
         let indices = (0..9).collect::<Vec<usize>>();
-        let labels  = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0];
-        let dist    = [0.1,  0.1, 0.1, 0.1,  0.2, 0.1,  0.1,  0.1, 0.1];
+        let labels = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0];
+        let dist = [0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1];
 
         let result = bins.pack(&indices[..], &feature, &labels[..], &dist[..]);
         let expect = {
             let maps = vec![
-                HashMap::from([( 1, 0.2), (-1, 0.3)]),
-                HashMap::from([( 1, 0.1)]),
+                HashMap::from([(1, 0.2), (-1, 0.3)]),
+                HashMap::from([(1, 0.1)]),
                 HashMap::from([(-1, 0.2)]),
-                HashMap::from([( 1, 0.2)]),
+                HashMap::from([(1, 0.2)]),
             ];
-            expect.into_iter()
-                .zip(maps)
-                .collect::<Vec<_>>()
+            expect.into_iter().zip(maps).collect::<Vec<_>>()
         };
         for ((rpack, rmap), (epack, emap)) in result.iter().zip(expect) {
             assert_eq!(rpack.0, epack.0, "{result:?}");
@@ -610,22 +587,22 @@ mod tests {
     fn test_pack_02() {
         let feature = {
             let mut feature = Feature::dense("dense");
-            feature.append((0,  0f64));
-            feature.append((0,  1f64));
-            feature.append((0,  1f64));
+            feature.append((0, 0f64));
+            feature.append((0, 1f64));
+            feature.append((0, 1f64));
             feature.append((0, 10f64));
-            feature.append((0,  2f64));
-            feature.append((0,  9f64));
-            feature.append((0,  5f64));
-            feature.append((0,  6f64));
+            feature.append((0, 2f64));
+            feature.append((0, 9f64));
+            feature.append((0, 5f64));
+            feature.append((0, 6f64));
             feature
         };
         let bins = Bins::cut(&feature, 4);
         let expect = vec![
-            Bin::new(f64::MIN..2.5f64  ),
-            Bin::new(  2.5f64..5.0f64  ),
-            Bin::new(  5.0f64..7.5f64  ),
-            Bin::new(  7.5f64..f64::MAX),
+            Bin::new(f64::MIN..2.5f64),
+            Bin::new(2.5f64..5.0f64),
+            Bin::new(5.0f64..7.5f64),
+            Bin::new(7.5f64..f64::MAX),
         ];
 
         assert_eq!(bins.0.len(), expect.len());
@@ -634,24 +611,22 @@ mod tests {
         }
 
         let indices = (0..8).collect::<Vec<usize>>();
-        let labels  = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0];
-        let dist    = [0.1,  0.2, 0.1, 0.1,  0.2, 0.1,  0.1,  0.1];
+        let labels = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0];
+        let dist = [0.1, 0.2, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1];
 
         let result = bins.pack(&indices[..], &feature, &labels[..], &dist[..]);
         let expect = {
             let bins = vec![
-            Bin::new(f64::MIN..3.75f64 ),
-            Bin::new( 3.75f64..7.5f64  ),
-            Bin::new(  7.5f64..f64::MAX),
+                Bin::new(f64::MIN..3.75f64),
+                Bin::new(3.75f64..7.5f64),
+                Bin::new(7.5f64..f64::MAX),
             ];
             let maps = vec![
                 HashMap::from([(1, 0.2), (-1, 0.4)]),
                 HashMap::from([(-1, 0.2)]),
                 HashMap::from([(1, 0.2)]),
             ];
-            bins.into_iter()
-                .zip(maps)
-                .collect::<Vec<_>>()
+            bins.into_iter().zip(maps).collect::<Vec<_>>()
         };
         for ((rpack, rmap), (epack, emap)) in result.iter().zip(expect) {
             assert_eq!(rpack.0, epack.0, "{result:?}");
@@ -676,22 +651,22 @@ mod tests {
     fn test_pack_03() {
         let feature = {
             let mut feature = Feature::sparse("sparse", 9);
-            feature.append((1,  1f64));
-            feature.append((2,  1f64));
+            feature.append((1, 1f64));
+            feature.append((2, 1f64));
             feature.append((3, 10f64));
-            feature.append((4,  2f64));
-            feature.append((5,  9f64));
-            feature.append((6,  5f64));
-            feature.append((7,  6f64));
-            feature.append((8,  3f64));
+            feature.append((4, 2f64));
+            feature.append((5, 9f64));
+            feature.append((6, 5f64));
+            feature.append((7, 6f64));
+            feature.append((8, 3f64));
             feature
         };
         let bins = Bins::cut(&feature, 4);
         let expect = vec![
-            Bin::new(f64::MIN..2.5f64  ),
-            Bin::new(  2.5f64..5.0f64  ),
-            Bin::new(  5.0f64..7.5f64  ),
-            Bin::new(  7.5f64..f64::MAX),
+            Bin::new(f64::MIN..2.5f64),
+            Bin::new(2.5f64..5.0f64),
+            Bin::new(5.0f64..7.5f64),
+            Bin::new(7.5f64..f64::MAX),
         ];
 
         assert_eq!(bins.0.len(), expect.len());
@@ -700,20 +675,18 @@ mod tests {
         }
 
         let indices = (0..9).collect::<Vec<usize>>();
-        let labels  = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0];
-        let dist    = [0.1,  0.1, 0.1, 0.1,  0.2, 0.1,  0.1,  0.1, 0.1];
+        let labels = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0];
+        let dist = [0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1];
 
         let result = bins.pack(&indices[..], &feature, &labels[..], &dist[..]);
         let expect = {
             let maps = vec![
-                HashMap::from([( 1, 0.2), (-1, 0.3)]),
-                HashMap::from([( 1, 0.1)]),
+                HashMap::from([(1, 0.2), (-1, 0.3)]),
+                HashMap::from([(1, 0.1)]),
                 HashMap::from([(-1, 0.2)]),
-                HashMap::from([( 1, 0.2)]),
+                HashMap::from([(1, 0.2)]),
             ];
-            expect.into_iter()
-                .zip(maps)
-                .collect::<Vec<_>>()
+            expect.into_iter().zip(maps).collect::<Vec<_>>()
         };
         for ((rpack, rmap), (epack, emap)) in result.iter().zip(expect) {
             assert_eq!(rpack.0, epack.0, "{result:?}");
@@ -738,21 +711,21 @@ mod tests {
     fn test_pack_04() {
         let feature = {
             let mut feature = Feature::sparse("sparse", 8);
-            feature.append((1,  1f64));
-            feature.append((2,  1f64));
+            feature.append((1, 1f64));
+            feature.append((2, 1f64));
             feature.append((3, 10f64));
-            feature.append((4,  2f64));
-            feature.append((5,  9f64));
-            feature.append((6,  5f64));
-            feature.append((7,  6f64));
+            feature.append((4, 2f64));
+            feature.append((5, 9f64));
+            feature.append((6, 5f64));
+            feature.append((7, 6f64));
             feature
         };
         let bins = Bins::cut(&feature, 4);
         let expect = vec![
-            Bin::new(f64::MIN..2.5f64  ),
-            Bin::new(  2.5f64..5.0f64  ),
-            Bin::new(  5.0f64..7.5f64  ),
-            Bin::new(  7.5f64..f64::MAX),
+            Bin::new(f64::MIN..2.5f64),
+            Bin::new(2.5f64..5.0f64),
+            Bin::new(5.0f64..7.5f64),
+            Bin::new(7.5f64..f64::MAX),
         ];
 
         assert_eq!(bins.0.len(), expect.len());
@@ -761,24 +734,22 @@ mod tests {
         }
 
         let indices = (0..8).collect::<Vec<usize>>();
-        let labels  = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0];
-        let dist    = [0.1,  0.2, 0.1, 0.1,  0.2, 0.1,  0.1,  0.1];
+        let labels = [1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0];
+        let dist = [0.1, 0.2, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1];
 
         let result = bins.pack(&indices[..], &feature, &labels[..], &dist[..]);
         let expect = {
             let bins = vec![
-            Bin::new(f64::MIN..3.75f64 ),
-            Bin::new( 3.75f64..7.5f64  ),
-            Bin::new(  7.5f64..f64::MAX),
+                Bin::new(f64::MIN..3.75f64),
+                Bin::new(3.75f64..7.5f64),
+                Bin::new(7.5f64..f64::MAX),
             ];
             let maps = vec![
                 HashMap::from([(1, 0.2), (-1, 0.4)]),
                 HashMap::from([(-1, 0.2)]),
                 HashMap::from([(1, 0.2)]),
             ];
-            bins.into_iter()
-                .zip(maps)
-                .collect::<Vec<_>>()
+            bins.into_iter().zip(maps).collect::<Vec<_>>()
         };
         for ((rpack, rmap), (epack, emap)) in result.iter().zip(expect) {
             assert_eq!(rpack.0, epack.0, "{result:?}");
@@ -799,4 +770,3 @@ mod tests {
         }
     }
 }
-

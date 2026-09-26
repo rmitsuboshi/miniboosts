@@ -33,12 +33,14 @@ impl ObjectiveFunction for SoftMarginObjective {
         "Soft Margin Objective"
     }
 
-    fn smooth(&self) -> (f64, f64) { (0f64, 0f64) }
+    fn smooth(&self) -> (f64, f64) {
+        (0f64, 0f64)
+    }
 
     /// returns the objective value `f^*(θ)` at given point `θ = -Aw.`
     fn objective_value(&self, point: &[f64]) -> f64 {
         let dist = self.gradient(point);
-        - helpers::inner_product(point, &dist[..])
+        -helpers::inner_product(point, &dist[..])
     }
 
     /// returns the gradient `∇f^*(θ)` at given point `θ = -Aw.`
@@ -66,17 +68,17 @@ impl ObjectiveFunction for SoftMarginObjective {
     }
 }
 
-/// The objective function 
+/// The objective function
 /// for soft margin optimization with entropy regularization.
 #[derive(Clone)]
 pub struct ErlpSoftMarginObjective {
-    nu:  f64,
+    nu: f64,
     eta: f64,
 }
 
 impl ErlpSoftMarginObjective {
     pub fn new(nu: f64, eta: f64) -> Self {
-        Self { nu, eta, }
+        Self { nu, eta }
     }
 }
 
@@ -91,8 +93,8 @@ impl ObjectiveFunction for ErlpSoftMarginObjective {
 
     /// returns the objective value `f^*(θ)` at given point `θ = -Aw.`
     fn objective_value(&self, point: &[f64]) -> f64 {
-        let dist    = self.gradient(point);
-        let edge    = - helpers::inner_product(point, &dist[..]);
+        let dist = self.gradient(point);
+        let edge = -helpers::inner_product(point, &dist[..]);
         let entropy = helpers::entropy_from_uni_distribution(&dist[..]);
 
         edge + (entropy / self.eta)
@@ -112,32 +114,40 @@ impl ObjectiveFunction for ErlpSoftMarginObjective {
 pub struct Entropy;
 
 impl Entropy {
-    pub fn new() -> Self { Self {} }
+    pub fn new() -> Self {
+        Self {}
+    }
 }
 
 impl ObjectiveFunction for Entropy {
-    fn name(&self) -> &str { "Entropy" }
+    fn name(&self) -> &str {
+        "Entropy"
+    }
 
-    fn smooth(&self) -> (f64, f64) { (1f64, 1f64) }
+    fn smooth(&self) -> (f64, f64) {
+        (1f64, 1f64)
+    }
 
     fn objective_value(&self, point: &[f64]) -> f64 {
-        point.iter()
+        point
+            .iter()
             .map(|&p| if p == 0f64 { 0f64 } else { p * p.ln() })
             .sum::<f64>()
     }
 
     fn gradient(&self, point: &[f64]) -> Vec<f64> {
-        point.iter()
+        point
+            .iter()
             .map(|&p| if p != 0f64 { 1f64 + p.ln() } else { f64::MIN })
             .collect()
     }
 }
 
-/// The objective function 
+/// The objective function
 /// for soft margin optimization with deformed-entropy regularization.
 pub struct DeformedErlpSoftMarginObjective {
-    nu:  f64,
-    t:   f64,
+    nu: f64,
+    t: f64,
     eta: f64,
 }
 
@@ -147,7 +157,7 @@ impl DeformedErlpSoftMarginObjective {
             (0f64..=1f64).contains(&t),
             "the deformation parameter `t` must be in [0, 1]. got t = {t}",
         );
-        Self { nu, t, eta, }
+        Self { nu, t, eta }
     }
 }
 
@@ -164,8 +174,8 @@ impl ObjectiveFunction for DeformedErlpSoftMarginObjective {
 
     /// returns the objective value `f^*(θ)` at given point `θ = -Aw.`
     fn objective_value(&self, point: &[f64]) -> f64 {
-        let dist    = self.gradient(point);
-        let edge    = - helpers::inner_product(point, &dist[..]);
+        let dist = self.gradient(point);
+        let edge = -helpers::inner_product(point, &dist[..]);
         let entropy = helpers::deformed_entropy(self.t, &dist[..]);
 
         edge + (entropy / self.eta)
@@ -174,12 +184,6 @@ impl ObjectiveFunction for DeformedErlpSoftMarginObjective {
     /// returns the gradient `∇f^*(θ)` at given point `θ = -Aw.`
     fn gradient(&self, point: &[f64]) -> Vec<f64> {
         let point = point.iter().map(|&pi| -pi);
-        helpers::deformed_exp_distribution_from_margins(
-            self.t,
-            self.eta,
-            self.nu,
-            point,
-        )
+        helpers::deformed_exp_distribution_from_margins(self.t, self.eta, self.nu, point)
     }
 }
-

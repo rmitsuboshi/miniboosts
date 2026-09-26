@@ -1,16 +1,13 @@
 use rayon::prelude::*;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use std::fmt;
 use std::cmp::Ordering;
-use std::ops::{Mul, Add};
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::ops::{Add, Mul};
 
-use miniboosts_core::{
-    binning::*,
-    Sample,
-};
+use miniboosts_core::{Sample, binning::*};
 
 /// Score for a splitting.
 /// This is just a wrapper for `f64`.
@@ -87,81 +84,75 @@ impl SplitBy {
     pub(super) fn best_split<'a>(
         &self,
         bins_map: &HashMap<&'a str, Bins>,
-        sample:   &'a Sample,
-        dist:     &[f64],
-        idx:      &[usize],
-    ) -> (&'a str, f64)
-    {
+        sample: &'a Sample,
+        dist: &[f64],
+        idx: &[usize],
+    ) -> (&'a str, f64) {
         let target = sample.target();
         match self {
-            SplitBy::Entropy => {
-                sample.features()
-                    .par_iter()
-                    .map(|feature| {
-                        let name = feature.name();
-                        let bin = bins_map.get(name).unwrap();
-                        let pack = bin.pack(idx, feature, target, dist);
-                        let (threshold, score) = split_by_entropy(pack);
+            SplitBy::Entropy => sample
+                .features()
+                .par_iter()
+                .map(|feature| {
+                    let name = feature.name();
+                    let bin = bins_map.get(name).unwrap();
+                    let pack = bin.pack(idx, feature, target, dist);
+                    let (threshold, score) = split_by_entropy(pack);
 
-                        (score, name, threshold)
-                    })
-                    .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
-                    .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature minimizes entropic impurity")
-            },
-            SplitBy::Edge => {
-                sample.features()
-                    .par_iter()
-                    .map(|feature| {
-                        let name = feature.name();
-                        let bin = bins_map.get(name).unwrap();
-                        let pack = bin.pack(idx, feature, target, dist);
-                        let (threshold, score) = split_by_edge(pack);
+                    (score, name, threshold)
+                })
+                .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                .map(|(_, name, threshold)| (name, threshold))
+                .expect("No feature minimizes entropic impurity"),
+            SplitBy::Edge => sample
+                .features()
+                .par_iter()
+                .map(|feature| {
+                    let name = feature.name();
+                    let bin = bins_map.get(name).unwrap();
+                    let pack = bin.pack(idx, feature, target, dist);
+                    let (threshold, score) = split_by_edge(pack);
 
-                        (score, name, threshold)
-                    })
-                    .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
-                    .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature maximizes edge")
-            },
-            SplitBy::Gini => {
-                sample.features()
-                    .par_iter()
-                    .map(|feature| {
-                        let name = feature.name();
-                        let bin = bins_map.get(name).unwrap();
-                        let pack = bin.pack(idx, feature, target, dist);
-                        let (threshold, score) = split_by_gini(pack);
+                    (score, name, threshold)
+                })
+                .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                .map(|(_, name, threshold)| (name, threshold))
+                .expect("No feature maximizes edge"),
+            SplitBy::Gini => sample
+                .features()
+                .par_iter()
+                .map(|feature| {
+                    let name = feature.name();
+                    let bin = bins_map.get(name).unwrap();
+                    let pack = bin.pack(idx, feature, target, dist);
+                    let (threshold, score) = split_by_gini(pack);
 
-                        (score, name, threshold)
-                    })
-                    .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
-                    .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature minimizes Gini impurity")
-            },
-            SplitBy::Twoing => {
-                sample.features()
-                    .par_iter()
-                    .map(|feature| {
-                        let name = feature.name();
-                        let bin = bins_map.get(name).unwrap();
-                        let pack = bin.pack(idx, feature, target, dist);
-                        let (threshold, score) = split_by_twoing(pack);
+                    (score, name, threshold)
+                })
+                .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                .map(|(_, name, threshold)| (name, threshold))
+                .expect("No feature minimizes Gini impurity"),
+            SplitBy::Twoing => sample
+                .features()
+                .par_iter()
+                .map(|feature| {
+                    let name = feature.name();
+                    let bin = bins_map.get(name).unwrap();
+                    let pack = bin.pack(idx, feature, target, dist);
+                    let (threshold, score) = split_by_twoing(pack);
 
-                        (score, name, threshold)
-                    })
-                    .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
-                    .map(|(_, name, threshold)| (name, threshold))
-                    .expect("No feature maximizes Twoing rule")
-            },
+                    (score, name, threshold)
+                })
+                .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
+                .map(|(_, name, threshold)| (name, threshold))
+                .expect("No feature maximizes Twoing rule"),
         }
     }
 }
 
-fn split_by_entropy(pack: Vec<(Bin, HashMap<i32, f64>)>)
-    -> (f64, Score)
-{
-    let weight_sum = pack.iter()
+fn split_by_entropy(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
+    let weight_sum = pack
+        .iter()
         .map(|(_, mp)| mp.values().sum::<f64>())
         .sum::<f64>();
 
@@ -206,21 +197,16 @@ fn split_by_entropy(pack: Vec<(Bin, HashMap<i32, f64>)>)
 fn split_by_edge(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
     // Compute the edge of the hypothesis that predicts `+1`
     // for all instances.
-    let mut edge = pack.iter()
-        .map(|(_, map)| {
-            map.iter()
-                .map(|(y, d)| *y as f64 * d)
-                .sum::<f64>()
-        })
+    let mut edge = pack
+        .iter()
+        .map(|(_, map)| map.iter().map(|(y, d)| *y as f64 * d).sum::<f64>())
         .sum::<f64>();
 
     let mut best_edge = edge.abs();
     let mut best_threshold = f64::MIN;
 
     for (bin, map) in pack {
-        edge -= 2f64 * map.into_iter()
-            .map(|(y, d)| y as f64 * d)
-            .sum::<f64>();
+        edge -= 2f64 * map.into_iter().map(|(y, d)| y as f64 * d).sum::<f64>();
 
         if best_edge < edge.abs() {
             best_edge = edge.abs();
@@ -232,7 +218,8 @@ fn split_by_edge(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
 }
 
 fn split_by_gini(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
-    let weight_sum = pack.iter()
+    let weight_sum = pack
+        .iter()
         .map(|(_, mp)| mp.values().sum::<f64>())
         .sum::<f64>();
 
@@ -257,7 +244,9 @@ fn split_by_gini(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
             left_weight_sum += w;
             if let Some(entry) = right_weight.get_mut(&y) {
                 *entry -= w;
-                if *entry <= 0f64 { right_weight.remove(&y); }
+                if *entry <= 0f64 {
+                    right_weight.remove(&y);
+                }
             }
         }
         let lp = left_weight_sum / weight_sum;
@@ -300,7 +289,9 @@ fn split_by_twoing(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
             *entry += w;
             if let Some(entry) = right_weight.get_mut(&y) {
                 *entry -= w;
-                if *entry <= 0f64 { right_weight.remove(&y); }
+                if *entry <= 0f64 {
+                    right_weight.remove(&y);
+                }
             }
         }
 
@@ -319,7 +310,9 @@ fn split_by_twoing(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
 #[inline(always)]
 fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
-    if total <= 0f64 || map.is_empty() { return 0f64; }
+    if total <= 0f64 || map.is_empty() {
+        return 0f64;
+    }
 
     map.par_iter()
         .map(|(_, &p)| {
@@ -333,9 +326,12 @@ fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
 #[inline(always)]
 fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
-    if total <= 0f64 || map.is_empty() { return 0f64; }
+    if total <= 0f64 || map.is_empty() {
+        return 0f64;
+    }
 
-    let correct = map.par_iter()
+    let correct = map
+        .par_iter()
         .map(|(_, &w)| (w / total).powi(2))
         .sum::<f64>();
 
@@ -344,18 +340,15 @@ fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
 
 /// Returns the twoing score of the given map.
 #[inline(always)]
-fn twoing_score(
-    labels: &HashSet<i32>,
-    left: &HashMap<i32, f64>,
-    right: &HashMap<i32, f64>,
-) -> f64
-{
+fn twoing_score(labels: &HashSet<i32>, left: &HashMap<i32, f64>, right: &HashMap<i32, f64>) -> f64 {
     let pl = left.values().sum::<f64>();
     let pr = right.values().sum::<f64>();
     let pt = pl + pr;
 
     assert!(pt > 0f64);
-    if pl == 0f64 || pr == 0f64 { return 0f64; }
+    if pl == 0f64 || pr == 0f64 {
+        return 0f64;
+    }
 
     let mut score = 0f64;
     for y in labels {
@@ -371,9 +364,9 @@ fn twoing_score(
 
 #[cfg(test)]
 mod tests {
-    use std::io::BufReader;
     use super::*;
     use miniboosts_core::Feature;
+    use std::io::BufReader;
 
     const TEST_TOLERANCE: f64 = 1e-9;
 
@@ -432,7 +425,7 @@ mod tests {
             let mut y = vec![1f64; 5];
             y.extend(std::iter::repeat_n(-1f64, 5));
             y[4] = -1f64;
-            y[5] =  1f64;
+            y[5] = 1f64;
             y
         };
         let ix = (0..m).collect::<Vec<_>>();
@@ -453,7 +446,7 @@ mod tests {
             let mut y = vec![1f64; 5];
             y.extend(std::iter::repeat_n(-1f64, 5));
             y[4] = -1f64;
-            y[5] =  1f64;
+            y[5] = 1f64;
             y
         };
         let ix = (0..m).collect::<Vec<_>>();
@@ -521,8 +514,7 @@ mod tests {
         );
 
         let expected_score = Score::from({
-            let e = - (11f64 / 12f64) * (11f64 / 12f64).ln()
-                - (1f64 / 12f64) * (1f64 / 12f64).ln();
+            let e = -(11f64 / 12f64) * (11f64 / 12f64).ln() - (1f64 / 12f64) * (1f64 / 12f64).ln();
             e * 6f64 / 10f64
         });
         assert!(
@@ -645,7 +637,7 @@ mod tests {
         );
 
         let expected_score = Score::from({
-            let i = 1f64 - (11f64 / 12f64).powi(2) - (1f64/ 12f64).powi(2);
+            let i = 1f64 - (11f64 / 12f64).powi(2) - (1f64 / 12f64).powi(2);
             i * 6f64 / 10f64
         });
         assert!(
@@ -707,9 +699,7 @@ mod tests {
             "expected {expected_threshold}, got {threshold}.",
         );
 
-        let expected_score = Score::from(
-            (22f64 / 12f64).powi(2) * 3f64 / 50f64
-        );
+        let expected_score = Score::from((22f64 / 12f64).powi(2) * 3f64 / 50f64);
         assert!(
             (expected_score.0 - score.0).abs() < TEST_TOLERANCE,
             "expected {expected_score:?}, got {score:?}",
@@ -719,13 +709,14 @@ mod tests {
     #[test]
     fn test_best_split_entropy() {
         let sample = test_sample();
-        let bins = sample.features()
+        let bins = sample
+            .features()
             .iter()
             .map(|feature| {
                 let name = feature.name();
                 (name, Bins::cut(feature, 10))
             })
-        .collect::<HashMap<_, _>>();
+            .collect::<HashMap<_, _>>();
         let m = sample.shape().0;
         let ix = (0..m).collect::<Vec<_>>();
         let dist = vec![1f64 / m as f64; m];
@@ -745,13 +736,14 @@ mod tests {
     #[test]
     fn test_best_split_gini() {
         let sample = test_sample();
-        let bins = sample.features()
+        let bins = sample
+            .features()
             .iter()
             .map(|feature| {
                 let name = feature.name();
                 (name, Bins::cut(feature, 10))
             })
-        .collect::<HashMap<_, _>>();
+            .collect::<HashMap<_, _>>();
         let m = sample.shape().0;
         let ix = (0..m).collect::<Vec<_>>();
         let dist = vec![1f64 / m as f64; m];
@@ -771,13 +763,14 @@ mod tests {
     #[test]
     fn test_best_split_edge() {
         let sample = test_sample();
-        let bins = sample.features()
+        let bins = sample
+            .features()
             .iter()
             .map(|feature| {
                 let name = feature.name();
                 (name, Bins::cut(feature, 10))
             })
-        .collect::<HashMap<_, _>>();
+            .collect::<HashMap<_, _>>();
         let m = sample.shape().0;
         let ix = (0..m).collect::<Vec<_>>();
         let dist = vec![1f64 / m as f64; m];
@@ -797,13 +790,14 @@ mod tests {
     #[test]
     fn test_best_split_twoing() {
         let sample = test_sample();
-        let bins = sample.features()
+        let bins = sample
+            .features()
             .iter()
             .map(|feature| {
                 let name = feature.name();
                 (name, Bins::cut(feature, 10))
             })
-        .collect::<HashMap<_, _>>();
+            .collect::<HashMap<_, _>>();
         let m = sample.shape().0;
         let ix = (0..m).collect::<Vec<_>>();
         let dist = vec![1f64 / m as f64; m];
@@ -820,4 +814,3 @@ mod tests {
         );
     }
 }
-

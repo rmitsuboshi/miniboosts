@@ -1,10 +1,5 @@
-use serde::{Serialize, Deserialize};
-use miniboosts_core::{
-    tools::helpers,
-    Classifier,
-    Regressor,
-    Sample,
-};
+use miniboosts_core::{Classifier, Regressor, Sample, tools::helpers};
+use serde::{Deserialize, Serialize};
 
 /// A weighted majority classifier that takes references of
 /// weights and hypotheses.
@@ -19,15 +14,20 @@ impl<'a, H> RefWeightedMajority<'a, H> {
     /// Construct a new `WeightedMajority` from given slices.
     #[inline]
     pub fn new(weights: &'a [f64], hypotheses: &'a [H]) -> Self {
-        Self { weights, hypotheses, }
+        Self {
+            weights,
+            hypotheses,
+        }
     }
 }
 
 impl<H> Classifier for RefWeightedMajority<'_, H>
-    where H: Classifier,
+where
+    H: Classifier,
 {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
-        self.weights.iter()
+        self.weights
+            .iter()
             .zip(self.hypotheses)
             .map(|(w, h)| *w * h.confidence(sample, row))
             .sum::<f64>()
@@ -35,10 +35,12 @@ impl<H> Classifier for RefWeightedMajority<'_, H>
 }
 
 impl<H> Regressor for RefWeightedMajority<'_, H>
-    where H: Regressor,
+where
+    H: Regressor,
 {
     fn predict(&self, sample: &Sample, row: usize) -> f64 {
-        self.weights.iter()
+        self.weights
+            .iter()
             .zip(self.hypotheses)
             .map(|(w, h)| *w * h.predict(sample, row))
             .sum::<f64>()
@@ -62,18 +64,18 @@ impl<H: Clone> WeightedMajority<H> {
         let mut new_weights = Vec::with_capacity(weights.len());
         let mut new_hypotheses = Vec::with_capacity(hypotheses.len());
 
-        weights.iter()
-            .copied()
-            .zip(hypotheses)
-            .for_each(|(w, h)| {
-                if w > 0.0 {
-                    new_weights.push(w);
-                    new_hypotheses.push(h.clone());
-                }
-            });
+        weights.iter().copied().zip(hypotheses).for_each(|(w, h)| {
+            if w > 0.0 {
+                new_weights.push(w);
+                new_hypotheses.push(h.clone());
+            }
+        });
         helpers::normalize(&mut new_weights[..]);
 
-        Self { weights: new_weights, hypotheses: new_hypotheses, }
+        Self {
+            weights: new_weights,
+            hypotheses: new_hypotheses,
+        }
     }
 }
 
@@ -100,10 +102,12 @@ impl<H> WeightedMajority<H> {
 }
 
 impl<H> Classifier for WeightedMajority<H>
-    where H: Classifier,
+where
+    H: Classifier,
 {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
-        self.weights.iter()
+        self.weights
+            .iter()
             .zip(&self.hypotheses[..])
             .map(|(w, h)| *w * h.confidence(sample, row))
             .sum::<f64>()
@@ -111,13 +115,14 @@ impl<H> Classifier for WeightedMajority<H>
 }
 
 impl<H> Regressor for WeightedMajority<H>
-    where H: Regressor,
+where
+    H: Regressor,
 {
     fn predict(&self, sample: &Sample, row: usize) -> f64 {
-        self.weights.iter()
+        self.weights
+            .iter()
             .zip(&self.hypotheses[..])
             .map(|(w, h)| *w * h.predict(sample, row))
             .sum::<f64>()
     }
 }
-

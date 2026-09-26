@@ -1,12 +1,5 @@
-use miniboosts_core::{
-    Sample,
-    Classifier,
-    helpers,
-};
-use optimization::{
-    ObjectiveFunction,
-    SoftMarginObjective,
-};
+use miniboosts_core::{Classifier, Sample, helpers};
+use optimization::{ObjectiveFunction, SoftMarginObjective};
 
 pub trait LoggingObjective {
     fn name(&self) -> String;
@@ -34,4 +27,3 @@ impl LoggingObjective for LoggingSoftMarginObjective {
         self.0.objective_value(&neg_margins[..])
     }
 }
-

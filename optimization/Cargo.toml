@@ -2,9 +2,10 @@
 name = "optimization"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [dependencies]
 miniboosts_core = { path    = "../miniboosts-core" }
 hypotheses      = { path    = "../hypotheses" }
-clarabel        = { version = "0.10.0" }
+clarabel        = { workspace = true }
 

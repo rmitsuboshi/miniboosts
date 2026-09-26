@@ -1,5 +1,5 @@
-use std::path::Path;
 use std::io;
+use std::path::Path;
 
 use super::sample_struct::Sample;
 
@@ -20,7 +20,8 @@ impl<P, S> SampleReader<P, S> {
 }
 
 impl<P, S> SampleReader<P, S>
-    where P: AsRef<Path>
+where
+    P: AsRef<Path>,
 {
     /// Set the file name.
     pub fn file(mut self, file: P) -> Self {
@@ -30,7 +31,8 @@ impl<P, S> SampleReader<P, S>
 }
 
 impl<P, S> SampleReader<P, S>
-    where S: AsRef<str>
+where
+    S: AsRef<str>,
 {
     /// Set the column name that is used for target label.
     /// The each item of the column takes value in `{-1, +1}.`
@@ -41,10 +43,11 @@ impl<P, S> SampleReader<P, S>
 }
 
 impl<P, S> SampleReader<P, S>
-    where P: AsRef<Path>,
-          S: AsRef<str>
+where
+    P: AsRef<Path>,
+    S: AsRef<str>,
 {
-    /// Reads the file based on the arguments, 
+    /// Reads the file based on the arguments,
     /// and returns `std::io::Result<Sample>`.
     /// This method consumes `self.`
     /// If you read a CSV file, the extension should be `.csv`.
@@ -63,13 +66,10 @@ impl<P, S> SampleReader<P, S>
                 );
             }
             let target = self.target.unwrap();
-            Sample::from_csv(file, self.has_header)?
-                .set_target(target.as_ref())
+            Sample::from_csv(file, self.has_header)?.set_target(target.as_ref())
         } else {
             Sample::from_svmlight(file)?
         };
         Ok(sample)
     }
 }
-
-

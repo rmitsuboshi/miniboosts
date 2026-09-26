@@ -1,18 +1,12 @@
 use colored::Colorize;
 
-use miniboosts_core::{
-    Sample,
-    Booster,
-    WeakLearner,
-    Classifier,
-};
 use crate::objective::LoggingObjective;
+use miniboosts_core::{Booster, Classifier, Sample, WeakLearner};
 
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
-use std::time::Instant;
-use std::ops::ControlFlow;
+use std::time::{Duration, Instant};
 
 const DEFAULT_ROUND: usize = 100;
 const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
@@ -45,8 +39,7 @@ impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
         loss_func: G,
         train: &'a Sample,
         test: &'a Sample,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             booster,
             weak_learner,
@@ -61,16 +54,16 @@ impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
 }
 
 impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
-    where B: Booster<H, Output=O> + CurrentHypothesis<Output=S>,
-          O: Classifier,
-          S: Classifier,
-          W: WeakLearner<Hypothesis = H>,
-          F: LoggingObjective,
-          G: Fn(&Sample, &S) -> f64,
+where
+    B: Booster<H, Output = O> + CurrentHypothesis<Output = S>,
+    O: Classifier,
+    S: Classifier,
+    W: WeakLearner<Hypothesis = H>,
+    F: LoggingObjective,
+    G: Fn(&Sample, &S) -> f64,
 {
     /// Set the time limit for boosting algorithm as milliseconds.
-    /// If the boosting algorithm reaches this limit,
-    /// breaks immediately.
+    /// Checked after each completed boosting step and evaluation; it does not interrupt a step.
     #[inline(always)]
     pub fn time_limit_as_millis(mut self, time_limit: u128) -> Self {
         self.time_limit = time_limit;
@@ -78,21 +71,21 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
     }
 
     /// Set the time limit for boosting algorithm as seconds.
-    /// If the boosting algorithm reaches this limit,
-    /// breaks immediately.
+    /// Checked after each completed boosting step and evaluation; it does not interrupt a step.
     #[inline(always)]
     pub fn time_limit_as_secs(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128).checked_mul(1_000_u128)
+        self.time_limit = (time_limit as u128)
+            .checked_mul(1_000_u128)
             .expect("The time limit (ms) cannot be represented as u128");
         self
     }
 
     /// Set the time limit for boosting algorithm as minutes.
-    /// If the boosting algorithm reaches this limit,
-    /// breaks immediately.
+    /// Checked after each completed boosting step and evaluation; it does not interrupt a step.
     #[inline(always)]
     pub fn time_limit_as_mins(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128).checked_mul(60_u128)
+        self.time_limit = (time_limit as u128)
+            .checked_mul(60_u128)
             .expect("The time limit (s) cannot be represented as u128")
             .checked_mul(1_000u128)
             .expect("The time limit (ms) cannot be represented as u128");
@@ -129,7 +122,9 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
         };
         let header = format!(
             "{:=>FULL_WIDTH$}\n{:^FULL_WIDTH$}\n{:->FULL_WIDTH$}",
-            "", "STATS".bold(), "",
+            "",
+            "STATS".bold(),
+            "",
         );
         println!(
             "\n{header}\n\
@@ -139,7 +134,8 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
         );
 
         if let Some(info) = self.booster.info() {
-            let line = info.into_iter()
+            let line = info
+                .into_iter()
                 .map(|(key, val)| {
                     format!(
                         "    + {:<STAT_WIDTH$}\t{:>width$}",
@@ -159,7 +155,8 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
             self.weak_learner.name().bold().green(),
         );
         if let Some(info) = self.weak_learner.info() {
-            let line = info.into_iter()
+            let line = info
+                .into_iter()
                 .map(|(key, val)| {
                     format!(
                         "    + {:<STAT_WIDTH$}\t{:>width$}",
@@ -192,17 +189,25 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
     /// set `usize::MAX`.
     #[inline(always)]
     pub fn print_every(mut self, round: usize) -> Self {
+        assert!(round > 0, "print interval must be positive");
         self.round = round;
         self
     }
 
     /// Run the given boosting algorithm with logging.
     /// Note that this method is almost the same as `Booster::run`.
-    /// This method measures running time per iteration.
+    /// CSV time is cumulative boosting-step time in milliseconds.
+    /// Setup, finalization, evaluation, and I/O are excluded from this budget.
     #[inline(always)]
-    pub fn run<P: AsRef<Path>>(&mut self, filename: P)
-        -> std::io::Result<O>
-    {
+    pub fn run<P: AsRef<Path>>(&mut self, filename: P) -> std::io::Result<O> {
+        self.run_with_clock(filename, Instant::now)
+    }
+
+    fn run_with_clock<P: AsRef<Path>>(
+        &mut self,
+        filename: P,
+        mut clock: impl FnMut() -> Instant,
+    ) -> std::io::Result<O> {
         // Open file
         let mut file = File::create(filename)?;
 
@@ -215,22 +220,22 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
         self.print_stats();
 
         // Cumulative time
-        let mut time_acc = 0;
+        let mut elapsed = Duration::ZERO;
 
         // ---------------------------------------------------------------------
         // Boosting step
-        if self.round != usize::MAX { self.print_log_header(); }
-        (1..).try_for_each(|iter| {
+        if self.round != usize::MAX {
+            self.print_log_header();
+        }
+        for iter in 1.. {
             // Start measuring time
-            let now = Instant::now();
+            let now = clock();
 
             let flow = self.booster.boost(&self.weak_learner, iter);
 
-            // Stop measuring and convert `Duration` to Milliseconds.
-            let time = now.elapsed().as_millis();
-
-            // Update the cumulative time
-            time_acc += time;
+            // Retain sub-millisecond precision across steps.
+            elapsed += clock().duration_since(now);
+            let time_acc = elapsed.as_millis();
 
             let f = self.booster.current_hypothesis();
             let obj = self.objective_func.objective_value(&self.train, &f);
@@ -240,10 +245,9 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
 
             // Write the results to `file`.
             let line = format!("{obj},{train},{test},{time_acc}\n");
-            file.write_all(line.as_bytes())
-                .expect("Failed to writing {filename:?}");
+            file.write_all(line.as_bytes())?;
 
-            if time_acc > self.time_limit {
+            if time_acc >= self.time_limit {
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}\n",
                     "[TLE]".bold().bright_red(),
@@ -253,7 +257,7 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
                     format!("{:>WIDTH$.PREC_WIDTH$}", test).bold().yellow(),
                     time_format(time_acc).bold().cyan(),
                 );
-                return ControlFlow::Break(iter);
+                break;
             }
 
             if self.round != usize::MAX && iter % self.round == 0 {
@@ -279,8 +283,10 @@ impl<H, B, W, F, G, O, S> Logger<'_, B, W, F, G>
                     time_format(time_acc).bold().cyan(),
                 );
             }
-            flow
-        });
+            if flow.is_break() {
+                break;
+            }
+        }
 
         let f = self.booster.postprocess();
         Ok(f)
@@ -306,8 +312,94 @@ fn time_format(millisec: u128) -> String {
     format!(" {:0>2}h {:0>2}m", hours, min)
 }
 
-pub trait CurrentHypothesis {
-    type Output;
-    fn current_hypothesis(&self) -> Self::Output;
-}
+pub use miniboosts_core::CurrentHypothesis;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LoggingSoftMarginObjective;
+    use std::ops::ControlFlow;
+
+    #[derive(Clone)]
+    struct Model;
+    impl Classifier for Model {
+        fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+            sample.target()[row]
+        }
+    }
+    struct Learner;
+    impl WeakLearner for Learner {
+        type Hypothesis = Model;
+        fn produce(&self, _: &Sample, _: &[f64]) -> Model {
+            Model
+        }
+    }
+    struct Steps(usize);
+    impl Booster<Model> for Steps {
+        type Output = Model;
+        fn name(&self) -> &str {
+            "test"
+        }
+        fn preprocess(&mut self) {
+            self.0 = 0;
+        }
+        fn boost<W: WeakLearner<Hypothesis = Model>>(
+            &mut self,
+            _: &W,
+            _: usize,
+        ) -> ControlFlow<usize> {
+            self.0 += 1;
+            if self.0 == 5 {
+                ControlFlow::Break(5)
+            } else {
+                ControlFlow::Continue(())
+            }
+        }
+        fn postprocess(&mut self) -> Model {
+            Model
+        }
+    }
+    impl CurrentHypothesis for Steps {
+        type Output = Model;
+        fn current_hypothesis(&self) -> Model {
+            Model
+        }
+    }
+
+    #[test]
+    fn submillisecond_steps_accumulate_and_stop_at_budget() {
+        let sample = Sample::dummy(2);
+        let mut logger = Logger::new(
+            Steps(0),
+            Learner,
+            LoggingSoftMarginObjective::new(1.0),
+            |_: &Sample, _: &Model| 0.0,
+            &sample,
+            &sample,
+        )
+        .time_limit_as_millis(1)
+        .print_every(usize::MAX);
+        let path =
+            std::env::temp_dir().join(format!("miniboosts-clock-{}.csv", std::process::id()));
+        let mut now = Instant::now();
+        let model = logger
+            .run_with_clock(&path, || {
+                let value = now;
+                now += Duration::from_micros(600);
+                value
+            })
+            .unwrap();
+        assert_eq!(logger.booster.0, 2);
+        assert_eq!(model.predict_all(&sample), vec![1, -1]);
+        let csv = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let rows: Vec<_> = csv.lines().collect();
+        assert_eq!(rows[0], HEADER.trim());
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[1], "1,0,0,0");
+        assert_eq!(rows[2], "1,0,0,1");
+        // A directory is not a writable CSV file: propagate the error before training.
+        assert!(logger.run(std::env::temp_dir()).is_err());
+        assert_eq!(logger.booster.0, 2);
+    }
+}

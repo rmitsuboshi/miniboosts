@@ -1,7 +1,7 @@
 //! The core library for the weak learner in the boosting protocol.
 use crate::Sample;
 
-/// A trait that returns a struct 
+/// A trait that returns a struct
 /// implementing [`Self::Hypothesis`].
 /// # Required Methods
 /// - [`WeakLearner::name`]
@@ -22,9 +22,8 @@ pub trait WeakLearner {
     }
 
     /// For classification, `WeakLearner::produce`
-    /// outputs a struct implementing [`crate::hypothesis::Classifier`] 
+    /// outputs a struct implementing [`crate::hypothesis::Classifier`]
     /// that achieves high accuracy
     /// on the given distribution `dist`.
     fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis;
 }
-

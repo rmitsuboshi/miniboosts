@@ -1,20 +1,13 @@
 use miniboosts_core::{
-    Sample,
-    Classifier,
-    tools::{
-        helpers,
-        checkers,
-    },
+    Classifier, Sample,
+    tools::{checkers, helpers},
 };
 
-use clarabel::{
-    algebra::*,
-    solver::*,
-};
+use clarabel::{algebra::*, solver::*};
 
 use std::iter;
 
-/// A linear programming model for edge minimization. 
+/// A linear programming model for edge minimization.
 /// `LPModel` solves the soft margin optimization:
 ///
 /// ```txt
@@ -69,12 +62,13 @@ pub fn soft_margin_optimization<T, H>(
     // hypotheses
     hypotheses: T,
 ) -> (f64, Vec<f64>)
-    where T: AsRef<[H]>,
-          H: Classifier,
+where
+    T: AsRef<[H]>,
+    H: Classifier,
 {
-    let hypotheses   = hypotheses.as_ref();
+    let hypotheses = hypotheses.as_ref();
     let n_hypotheses = hypotheses.len();
-    let n_examples   = sample.shape().0;
+    let n_examples = sample.shape().0;
 
     checkers::capping_parameter(nu, n_examples);
 
@@ -88,13 +82,13 @@ pub fn soft_margin_optimization<T, H>(
     solver.solve();
 
     assert!(
-        matches!{ solver.solution.status, SolverStatus::Solved },
+        matches! { solver.solution.status, SolverStatus::Solved },
         "unexped solver status. got {}",
         solver.solution.status,
     );
 
-    let objval = - solver.solution.obj_val;
-    let start  = 1 + n_examples;
+    let objval = -solver.solution.obj_val;
+    let start = 1 + n_examples;
     let weight = solver.solution.x[start..]
         .iter()
         .map(|w| w.max(0f64))
@@ -103,21 +97,19 @@ pub fn soft_margin_optimization<T, H>(
     (objval, weight)
 }
 
-fn build_objective(nu: f64, n_examples: usize, n_hypotheses: usize)
-    -> Vec<f64>
-{
+fn build_objective(nu: f64, n_examples: usize, n_hypotheses: usize) -> Vec<f64> {
     iter::once(-1f64)
         .chain(iter::repeat_n(1f64 / nu, n_examples))
         .chain(iter::repeat_n(0f64, n_hypotheses))
         .collect()
 }
 
-fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H])
-    -> CscMatrix::<f64>
-    where H: Classifier,
+fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H]) -> CscMatrix<f64>
+where
+    H: Classifier,
 {
     let n_hypotheses = hypotheses.len();
-    let n_examples   = sample.shape().0;
+    let n_examples = sample.shape().0;
 
     let mut col_ptr = vec![0];
     let mut row_idx = (0..n_examples).collect::<Vec<_>>();
@@ -145,11 +137,10 @@ fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H])
         // insert a coefficient for `w[h]` of constraint
         // `ρ - ξ[i] - y[i] Σ_{h} w[h] h(x[i]) ≤ 0`
         // (i.e., `ρ - ξ[i] ≤ y[i] Σ_{h} w[h] h(x[i])`)
-        let iter = helpers::margins(sample, h)
-            .enumerate();
+        let iter = helpers::margins(sample, h).enumerate();
         for (i, yhx) in iter {
             row_idx.push(i);
-            nonzero.push(- yhx);
+            nonzero.push(-yhx);
         }
 
         // insert a coefficient `1` for `w[h]` of constraint
@@ -170,9 +161,7 @@ fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H])
     CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
 }
 
-fn build_sns(n_examples: usize, n_hypotheses: usize)
-    -> Vec<SupportedConeT<f64>>
-{
+fn build_sns(n_examples: usize, n_hypotheses: usize) -> Vec<SupportedConeT<f64>> {
     vec![
         NonnegativeConeT(n_examples),
         ZeroConeT(1),
@@ -189,11 +178,10 @@ fn build_rhs(n_examples: usize, n_hypotheses: usize) -> Vec<f64> {
 
 fn build_solver(
     obj: Vec<f64>,
-    mat: CscMatrix::<f64>,
+    mat: CscMatrix<f64>,
     sns: Vec<SupportedConeT<f64>>,
     rhs: Vec<f64>,
-) -> DefaultSolver<f64>
-{
+) -> DefaultSolver<f64> {
     let settings = DefaultSettingsBuilder::default()
         .equilibrate_enable(true)
         .verbose(false)
@@ -204,6 +192,7 @@ fn build_solver(
     let zmx = CscMatrix::<f64>::zeros((n_variables, n_variables));
 
     DefaultSolver::new(&zmx, &obj, &mat, &rhs, &sns, settings)
+        .expect("failed to construct the LP solver: invalid dimensions or settings")
 }
 
 /// The column generation algorithm for soft margin optimization.
@@ -244,7 +233,13 @@ impl<'a> ColumnGeneration<'a> {
     }
 
     pub fn initialize(&mut self, n_examples: usize, nu: f64) {
+        assert_eq!(n_examples, self.sample.shape().0);
+        checkers::capping_parameter(nu, n_examples);
         self.nu = nu;
+        self.n_hypotheses = 0;
+        self.optval = f64::MAX;
+        self.primal.clear();
+        self.dual.clear();
 
         self.col_ptr = vec![0];
         self.row_idx = (0..n_examples).collect();
@@ -268,7 +263,8 @@ impl<'a> ColumnGeneration<'a> {
     }
 
     pub fn solve<H>(&mut self, h: &H)
-        where H: Classifier,
+    where
+        H: Classifier,
     {
         if !self.initialized {
             panic!(
@@ -290,7 +286,7 @@ impl<'a> ColumnGeneration<'a> {
         solver.solve();
 
         assert!(
-            matches!{
+            matches! {
                 solver.solution.status,
                 SolverStatus::Solved | SolverStatus::AlmostSolved
             },
@@ -298,25 +294,27 @@ impl<'a> ColumnGeneration<'a> {
             solver.solution.status,
         );
 
-        self.optval = - solver.solution.obj_val;
+        self.optval = -solver.solution.obj_val;
 
-        let start  = 1 + n_examples;
+        let start = 1 + n_examples;
         self.primal = solver.solution.x[start..]
             .iter()
             .map(|w| w.max(0f64))
             .collect::<Vec<f64>>();
         checkers::capped_simplex_condition(&self.primal[..], 1f64);
 
-        self.dual = solver.solution.z[..n_examples].iter()
+        self.dual = solver.solution.z[..n_examples]
+            .iter()
             .map(|d| d.abs())
             .collect::<Vec<f64>>();
         checkers::capped_simplex_condition(&self.dual[..], self.nu);
     }
 
-    fn append_matrix<H>(&mut self, h: &H) -> CscMatrix::<f64>
-        where H: Classifier
+    fn append_matrix<H>(&mut self, h: &H) -> CscMatrix<f64>
+    where
+        H: Classifier,
     {
-        let n_examples   = self.sample.shape().0;
+        let n_examples = self.sample.shape().0;
         let n_hypotheses = self.n_hypotheses();
 
         self.col_ptr.push(self.row_idx.len());
@@ -358,3 +356,37 @@ impl<'a> ColumnGeneration<'a> {
     }
 }
 
+#[cfg(test)]
+mod regression_tests {
+    use super::*;
+
+    struct Margins([f64; 3]);
+    impl Classifier for Margins {
+        fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+            self.0[row] * sample.target()[row]
+        }
+    }
+
+    #[test]
+    fn initialize_discards_previous_columns_and_solutions() {
+        let sample = Sample::dummy(3);
+        let mut solver = ColumnGeneration::new(&sample);
+        for _ in 0..2 {
+            solver.initialize(3, 1.0);
+            assert_eq!(solver.n_hypotheses, 0);
+            assert!(solver.weights_on_hypotheses().is_empty());
+            assert!(solver.distribution_on_examples().is_empty());
+            assert_eq!(solver.optimal_value(), f64::MAX);
+            solver.solve(&Margins([1.0, 0.0, -1.0]));
+            solver.solve(&Margins([-1.0, 0.0, 1.0]));
+            assert!(solver.optimal_value().abs() < 1e-7);
+            assert_eq!(solver.weights_on_hypotheses().len(), 2);
+            assert!(
+                solver
+                    .weights_on_hypotheses()
+                    .iter()
+                    .all(|w| (*w - 0.5).abs() < 1e-7)
+            );
+        }
+    }
+}

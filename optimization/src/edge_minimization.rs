@@ -1,23 +1,15 @@
 use miniboosts_core::{
-    Sample,
-    Classifier,
+    Classifier, Sample,
+    constants::{DEFAULT_CAPPING, PERTURBATION, SQP_TOLERANCE},
     tools::checkers,
     tools::helpers,
-    constants::{
-        SQP_TOLERANCE,
-        PERTURBATION,
-        DEFAULT_CAPPING,
-    },
 };
 
-use clarabel::{
-    algebra::*,
-    solver::*,
-};
+use clarabel::{algebra::*, solver::*};
 
 use std::iter;
 
-/// A linear programming model for edge minimization. 
+/// A linear programming model for edge minimization.
 /// `LPModel` solves the entropy regularized edge minimization problem:
 ///
 /// ```txt
@@ -62,17 +54,14 @@ use std::iter;
 /// # of
 /// cols     1 ┃               m
 /// ```
-pub fn edge_minimization<T, H>(
-    nu: f64,
-    sample: &Sample,
-    hypotheses: T,
-) -> (f64, Vec<f64>)
-    where T: AsRef<[H]>,
-          H: Classifier,
+pub fn edge_minimization<T, H>(nu: f64, sample: &Sample, hypotheses: T) -> (f64, Vec<f64>)
+where
+    T: AsRef<[H]>,
+    H: Classifier,
 {
-    let hypotheses   = hypotheses.as_ref();
+    let hypotheses = hypotheses.as_ref();
     let n_hypotheses = hypotheses.len();
-    let n_examples   = sample.shape().0;
+    let n_examples = sample.shape().0;
 
     checkers::capping_parameter(nu, n_examples);
 
@@ -85,13 +74,14 @@ pub fn edge_minimization<T, H>(
     solver.solve();
 
     assert!(
-        matches!{ solver.solution.status, SolverStatus::Solved },
+        matches! { solver.solution.status, SolverStatus::Solved },
         "unexped solver status. got {}",
         solver.solution.status,
     );
 
     let objval = solver.solution.obj_val;
-    let dist = solver.solution.x[1..].iter()
+    let dist = solver.solution.x[1..]
+        .iter()
         .map(|w| w.max(0f64))
         .collect::<Vec<f64>>();
 
@@ -138,15 +128,15 @@ fn build_objective(n_variables: usize) -> Vec<f64> {
 /// # of
 /// cols     1 ┃               m
 /// ```
-fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H])
-    -> CscMatrix::<f64>
-    where H: Classifier,
+fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H]) -> CscMatrix<f64>
+where
+    H: Classifier,
 {
     let n_hypotheses = hypotheses.len();
-    let n_examples   = sample.shape().0;
+    let n_examples = sample.shape().0;
 
     let start = 1 + 2 * n_examples;
-    let end   = 1 + 2 * n_examples + n_hypotheses;
+    let end = 1 + 2 * n_examples + n_hypotheses;
 
     let mut col_ptr = vec![0];
     let mut row_idx = (start..end).collect::<Vec<_>>();
@@ -186,27 +176,27 @@ fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H])
     CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
 }
 
-fn build_sns(n_examples: usize, n_hypotheses: usize)
-    -> Vec<SupportedConeT<f64>>
-{
-    vec![ZeroConeT(1), NonnegativeConeT(2 * n_examples + n_hypotheses)]
+fn build_sns(n_examples: usize, n_hypotheses: usize) -> Vec<SupportedConeT<f64>> {
+    vec![
+        ZeroConeT(1),
+        NonnegativeConeT(2 * n_examples + n_hypotheses),
+    ]
 }
 
 fn build_rhs(nu: f64, n_examples: usize, n_hypotheses: usize) -> Vec<f64> {
     iter::once(1f64)
         .chain(iter::repeat_n(0f64, n_examples))
-        .chain(iter::repeat_n(1f64/nu, n_examples))
+        .chain(iter::repeat_n(1f64 / nu, n_examples))
         .chain(iter::repeat_n(0f64, n_hypotheses))
         .collect()
 }
 
 fn build_solver(
     obj: Vec<f64>,
-    mat: CscMatrix::<f64>,
+    mat: CscMatrix<f64>,
     sns: Vec<SupportedConeT<f64>>,
     rhs: Vec<f64>,
-) -> DefaultSolver<f64>
-{
+) -> DefaultSolver<f64> {
     let settings = DefaultSettingsBuilder::default()
         .equilibrate_enable(true)
         .verbose(false)
@@ -217,6 +207,7 @@ fn build_solver(
     let zmx = CscMatrix::<f64>::zeros((n_variables, n_variables));
 
     DefaultSolver::new(&zmx, &obj, &mat, &rhs, &sns, settings)
+        .expect("failed to construct the LP solver: invalid dimensions or settings")
 }
 
 /// `RowGeneration` is a struct for row-generation algorithm
@@ -261,17 +252,19 @@ pub trait RowGenerationObjective {
         dist: &[f64],
     ) -> f64;
     fn gradient(&self, dist: &[f64]) -> Vec<f64>;
-    fn hessian(&self, dist: &[f64]) -> CscMatrix::<f64>;
+    fn hessian(&self, dist: &[f64]) -> CscMatrix<f64>;
 }
 
 impl<T> RowGeneration<'_, T>
-    where T: RowGenerationObjective,
+where
+    T: RowGenerationObjective,
 {
     pub fn solve<H>(&mut self, hypotheses: &[H])
-        where H: Classifier,
+    where
+        H: Classifier,
     {
         let n_hypotheses = hypotheses.len();
-        let n_examples   = self.sample.shape().0;
+        let n_examples = self.sample.shape().0;
 
         let mat = build_constraint_matrix(self.sample, hypotheses);
         let sns = build_sns(n_examples, n_hypotheses);
@@ -287,12 +280,13 @@ impl<T> RowGeneration<'_, T>
                 .unwrap();
             let g = self.objective.gradient(&current[..]);
             let h = self.objective.hessian(&current[..]);
-            let mut solver = DefaultSolver::new(&h, &g, &mat, &rhs, &sns, set);
+            let mut solver = DefaultSolver::new(&h, &g, &mat, &rhs, &sns, set)
+                .expect("failed to construct the row-generation QP solver");
 
             solver.solve();
 
             assert!(
-                matches!{
+                matches! {
                     solver.solution.status,
                     SolverStatus::Solved
                         | SolverStatus::AlmostSolved
@@ -308,7 +302,7 @@ impl<T> RowGeneration<'_, T>
 
             let solution = solver.solution.x[1..]
                 .iter()
-                .map(|d| d.clamp(0f64, 1f64/self.nu))
+                .map(|d| d.clamp(0f64, 1f64 / self.nu))
                 .collect::<Vec<_>>();
             checkers::capped_simplex_condition(&solution[..], self.nu);
             let optval = self.objval(hypotheses, &solution[..]);
@@ -319,14 +313,15 @@ impl<T> RowGeneration<'_, T>
                 self.primal = solution;
 
                 let start = 1 + 2 * n_examples;
-                self.dual = solver.solution.z[start..].iter()
+                self.dual = solver.solution.z[start..]
+                    .iter()
                     .map(|w| w.abs())
                     .collect::<Vec<_>>();
 
                 break;
             }
 
-            objval  = optval;
+            objval = optval;
             current = solution;
         }
         checkers::capped_simplex_condition(&self.primal[..], self.nu);
@@ -346,9 +341,11 @@ impl<T> RowGeneration<'_, T>
     }
 
     pub fn objval<H>(&self, hypotheses: &[H], dist: &[f64]) -> f64
-        where H: Classifier
+    where
+        H: Classifier,
     {
-        self.objective.objective_value(self.sample, hypotheses, dist)
+        self.objective
+            .objective_value(self.sample, hypotheses, dist)
     }
 }
 
@@ -357,7 +354,9 @@ pub struct EntropyRegularizedMaxEdge(f64);
 
 impl EntropyRegularizedMaxEdge {
     /// Takes the regularization parameter `η > 0` and returns `Self.`
-    pub fn new(eta: f64) -> Self { Self(eta) }
+    pub fn new(eta: f64) -> Self {
+        Self(eta)
+    }
 }
 
 impl RowGenerationObjective for EntropyRegularizedMaxEdge {
@@ -366,20 +365,17 @@ impl RowGenerationObjective for EntropyRegularizedMaxEdge {
         sample: &Sample,
         hypotheses: &[H],
         dist: &[f64],
-    ) -> f64
-    {
+    ) -> f64 {
         assert_eq!(dist.len(), sample.shape().0);
 
         let eta = self.0;
-        let max_edge = hypotheses.iter()
+        let max_edge = hypotheses
+            .iter()
             .map(|h| helpers::edge(sample, dist, h))
             .reduce(f64::max)
             .expect("failed to compute the max-edge.");
         let entropy = helpers::entropy_from_uni_distribution(dist);
-        assert!(
-            entropy.is_finite(),
-            "not a finite entropy. dist = {dist:?}",
-        );
+        assert!(entropy.is_finite(), "not a finite entropy. dist = {dist:?}",);
         max_edge + (entropy / eta)
     }
 
@@ -409,7 +405,7 @@ impl RowGenerationObjective for EntropyRegularizedMaxEdge {
     /// dm ┃ 0   0   ...  ... 1/dm ┃
     ///    ┗                       ┛
     /// ```
-    fn hessian(&self, dist: &[f64]) -> CscMatrix::<f64> {
+    fn hessian(&self, dist: &[f64]) -> CscMatrix<f64> {
         let eta = self.0;
         let n_rows = dist.len() + 1;
         let n_cols = n_rows;
@@ -418,7 +414,8 @@ impl RowGenerationObjective for EntropyRegularizedMaxEdge {
 
         let col_ptr = iter::once(0).chain(0..=n_examples).collect();
         let row_idx = (1..=n_examples).collect();
-        let nonzero = dist.iter()
+        let nonzero = dist
+            .iter()
             .map(|&d| 1f64 / ((d + PERTURBATION) * eta))
             .collect();
         CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
@@ -427,7 +424,7 @@ impl RowGenerationObjective for EntropyRegularizedMaxEdge {
 
 /// The objective function for ErlpBoost.
 pub struct DeformedEntropyRegularizedMaxEdge {
-    t:   f64,
+    t: f64,
     eta: f64,
 }
 
@@ -435,7 +432,7 @@ impl DeformedEntropyRegularizedMaxEdge {
     /// Constructs `Self` from the deformation parameter `t ∈ [0, 1]`
     /// and regularization parameter `η > 0.`
     pub fn new(t: f64, eta: f64) -> Self {
-        Self { t, eta, }
+        Self { t, eta }
     }
 }
 
@@ -445,10 +442,10 @@ impl RowGenerationObjective for DeformedEntropyRegularizedMaxEdge {
         sample: &Sample,
         hypotheses: &[H],
         dist: &[f64],
-    ) -> f64
-    {
+    ) -> f64 {
         assert_eq!(dist.len(), sample.shape().0);
-        let max_edge = hypotheses.iter()
+        let max_edge = hypotheses
+            .iter()
             .map(|h| helpers::edge(sample, &dist, h))
             .reduce(f64::max)
             .expect("Failed to compute the max-edge");
@@ -466,11 +463,10 @@ impl RowGenerationObjective for DeformedEntropyRegularizedMaxEdge {
     fn gradient(&self, dist: &[f64]) -> Vec<f64> {
         let constant = self.t * (2f64 - self.t) / (1f64 - self.t);
         iter::once(1f64)
-            .chain(dist.iter().map(|&d| {
-                constant
-                    * (d + PERTURBATION).powf(1f64 - self.t)
-                    / self.eta
-            }))
+            .chain(
+                dist.iter()
+                    .map(|&d| constant * (d + PERTURBATION).powf(1f64 - self.t) / self.eta),
+            )
             .collect()
     }
 
@@ -487,7 +483,7 @@ impl RowGenerationObjective for DeformedEntropyRegularizedMaxEdge {
     /// dm ┃ 0   0     ...    ...   1/dm^t ┃
     ///    ┗                               ┛
     /// ```
-    fn hessian(&self, dist: &[f64]) -> CscMatrix::<f64> {
+    fn hessian(&self, dist: &[f64]) -> CscMatrix<f64> {
         let n_rows = dist.len() + 1;
         let n_cols = n_rows;
 
@@ -497,10 +493,10 @@ impl RowGenerationObjective for DeformedEntropyRegularizedMaxEdge {
         let row_idx = (1..=n_examples).collect();
 
         let constant = (2f64 - self.t) / self.eta;
-        let nonzero = dist.iter()
+        let nonzero = dist
+            .iter()
             .map(|&d| constant / (d + PERTURBATION).powf(self.t))
             .collect();
         CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
     }
 }
-

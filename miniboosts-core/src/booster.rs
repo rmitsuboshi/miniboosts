@@ -39,13 +39,12 @@ pub trait Booster<H> {
     }
     /// A main function that runs boosting algorithm.
     fn run<W>(&mut self, weak_learner: &W) -> Self::Output
-        where W: WeakLearner<Hypothesis = H>
+    where
+        W: WeakLearner<Hypothesis = H>,
     {
         self.preprocess();
 
-        (1..).try_for_each(|iter|
-            self.boost(weak_learner, iter)
-        );
+        let _ = (1..).try_for_each(|iter| self.boost(weak_learner, iter));
 
         self.postprocess()
     }
@@ -56,14 +55,10 @@ pub trait Booster<H> {
     fn preprocess(&mut self);
 
     /// Boosting step per iteration.
-    fn boost<W>(
-        &mut self,
-        weak_learner: &W,
-        iteration: usize,
-    ) -> ControlFlow<usize>
-        where W: WeakLearner<Hypothesis = H>;
+    fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
+    where
+        W: WeakLearner<Hypothesis = H>;
 
     /// Post-processing.
     fn postprocess(&mut self) -> Self::Output;
 }
-

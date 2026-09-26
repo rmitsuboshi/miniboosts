@@ -1,15 +1,15 @@
-use std::path::Path;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
-use std::collections::{HashMap, HashSet};
-use std::ops::Index;
 use std::mem;
-use std::cmp::Ordering;
+use std::ops::Index;
+use std::path::Path;
 
-use rayon::prelude::*;
 use super::feature::*;
+use rayon::prelude::*;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Sample {
     pub(super) name_to_index: HashMap<String, usize>,
     pub(super) features: Vec<Feature>,
@@ -24,8 +24,9 @@ impl Sample {
     pub fn dummy(n_sample: usize) -> Self {
         let half = n_sample / 2;
         let mut target = vec![1f64; n_sample];
-        target[half..].iter_mut()
-            .for_each(|y| { *y = -1f64; });
+        target[half..].iter_mut().for_each(|y| {
+            *y = -1f64;
+        });
         let features = vec![Feature::sparse("dummy", 0)];
         Self {
             name_to_index: HashMap::from([("dummy".to_string(), 0)]),
@@ -38,16 +39,16 @@ impl Sample {
 
     /// Read a CSV format file to [`Sample`] type.
     /// This method returns `Err` if the file does not exist.
-    /// 
+    ///
     /// If the CSV file does not header row,
     /// this method assigns a default name for each column:
     /// `Feat. [0]`, `Feat. [1]`, ..., `Feat. [n]`.
-    /// 
+    ///
     /// **Do not forget** to call [`Sample::set_target`] to
     /// assign the class label.
-    pub(crate) fn from_csv<P>(file: P, has_header: bool)
-        -> io::Result<Self>
-        where P: AsRef<Path>,
+    pub(crate) fn from_csv<P>(file: P, has_header: bool) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
     {
         // Open the given `file`.
         let file = File::open(file)?;
@@ -56,18 +57,16 @@ impl Sample {
     }
 
     /// read a csv from [`BufReader`].
-    pub fn from_reader<R>(reader: BufReader<R>, mut has_header: bool)
-        -> io::Result<Self>
-        where R: Read,
+    pub fn from_reader<R>(reader: BufReader<R>, mut has_header: bool) -> io::Result<Self>
+    where
+        R: Read,
     {
         let mut lines = reader.lines();
 
         let mut features = Vec::new();
         if has_header {
             let line = lines.next().unwrap();
-            features = line?.split(',')
-                .map(Feature::dense)
-                .collect::<Vec<_>>();
+            features = line?.split(',').map(Feature::dense).collect::<Vec<_>>();
         }
         let mut n_sample = 0_usize;
 
@@ -79,20 +78,21 @@ impl Sample {
             // if the headeer does not exists,
             // construct a dummy header.
             if !has_header {
-                let xs = line.split(',')
+                let xs = line
+                    .split(',')
                     .map(|x| {
-                        x.trim().parse::<f64>()
-                            .unwrap_or_else(|_| {
-                                panic!(
-                                    "The file contains non-numerical value. \
+                        x.trim().parse::<f64>().unwrap_or_else(|_| {
+                            panic!(
+                                "The file contains non-numerical value. \
                                     Got {x} in Line {i}"
-                                )
-                            })
+                            )
+                        })
                     })
                     .collect::<Vec<_>>();
 
                 let n_feature = xs.len();
-                features = (1..=n_feature).map(|i| {
+                features = (1..=n_feature)
+                    .map(|i| {
                         let name = format!("Feat. [{i}]");
                         Feature::dense(name)
                     })
@@ -120,13 +120,18 @@ impl Sample {
         let n_feature = features.len();
         let target = Vec::with_capacity(0);
 
-        let name_to_index = features.iter()
+        let name_to_index = features
+            .iter()
             .enumerate()
             .map(|(i, f)| (f.name().to_string(), i))
             .collect::<HashMap<_, _>>();
 
         let sample = Self {
-            name_to_index, features, target, n_sample, n_feature,
+            name_to_index,
+            features,
+            target,
+            n_sample,
+            n_feature,
         };
 
         Ok(sample)
@@ -155,17 +160,19 @@ impl Sample {
     /// The old value assigned to `self.target` will be dropped.
     pub fn set_target<S: AsRef<str>>(mut self, target: S) -> Self {
         let target = target.as_ref();
-        let pos = self.features.iter()
+        let pos = self
+            .features
+            .iter()
             .position(|feat| feat.name() == target)
-            .unwrap_or_else(|| {
-                panic!("The target class \"{target}\" does not exist")
-            });
+            .unwrap_or_else(|| panic!("The target class \"{target}\" does not exist"));
 
         let target = self.features.remove(pos).into_vals();
         self.target = target;
         self.n_feature -= 1;
 
-        self.name_to_index = self.features.iter()
+        self.name_to_index = self
+            .features
+            .iter()
             .enumerate()
             .map(|(i, f)| (f.name().to_string(), i))
             .collect::<HashMap<_, _>>();
@@ -174,7 +181,7 @@ impl Sample {
     }
 
     /// Read a SVMLight format file to `Sample`.
-    /// 
+    ///
     /// Each line of SVMLight format file has the following form:
     /// ```txt
     /// y index:value index: value
@@ -182,14 +189,12 @@ impl Sample {
     /// where `y` is the target label of type `f64`,
     /// `index` is the feature index, and `value` is the value
     /// at the feature.
-    /// 
+    ///
     /// **Note**
     /// The SVMLight format file is basically 1-indexed,
     /// while the `sklearn.datasets.dump_svmlight_file` outputs
     /// a svmlight format file with 0-indexed, by default.
-    pub(super) fn from_svmlight<P: AsRef<Path>>(file: P)
-        -> io::Result<Self>
-    {
+    pub(super) fn from_svmlight<P: AsRef<Path>>(file: P) -> io::Result<Self> {
         let mut features = Vec::new();
         let mut target = Vec::new();
         let mut n_sample = 0_usize;
@@ -204,7 +209,8 @@ impl Sample {
             let line = line?;
             let mut words = line.split_whitespace();
             // The first word corresponds to the target value.
-            let y = words.next()
+            let y = words
+                .next()
                 .unwrap()
                 .trim()
                 .parse::<f64>()
@@ -227,18 +233,22 @@ impl Sample {
 
         let n_feature = features.len();
 
-        features.iter_mut()
-            .for_each(|feat| {
-                feat.set_size(n_sample);
-            });
+        features.iter_mut().for_each(|feat| {
+            feat.set_size(n_sample);
+        });
 
-        let name_to_index = features.iter()
+        let name_to_index = features
+            .iter()
             .enumerate()
             .map(|(i, f)| (f.name().to_string(), i))
             .collect::<HashMap<_, _>>();
 
         let mut sample = Self {
-            name_to_index, features, target, n_sample, n_feature,
+            name_to_index,
+            features,
+            target,
+            n_sample,
+            n_feature,
         };
 
         sample.remove_allzero_features();
@@ -249,7 +259,8 @@ impl Sample {
     /// Removes the empty features in `self.features`.
     fn remove_allzero_features(&mut self) {
         let features = mem::take(&mut self.features);
-        self.name_to_index = features.iter()
+        self.name_to_index = features
+            .iter()
             .filter_map(|feat| {
                 if feat.is_empty() {
                     None
@@ -260,7 +271,8 @@ impl Sample {
             .enumerate()
             .map(|(i, name)| (name, i))
             .collect();
-        self.features = features.into_iter()
+        self.features = features
+            .into_iter()
             .filter(|feat| !feat.is_empty())
             .collect();
         self.n_feature = self.features.len();
@@ -276,8 +288,9 @@ impl Sample {
     /// This method panics when the length of given feature names is
     /// not equals to the one of `self.features`.
     pub fn replace_names<S, T>(&mut self, names: T) -> Vec<String>
-        where S: ToString + std::fmt::Display,
-              T: AsRef<[S]>,
+    where
+        S: ToString + std::fmt::Display,
+        T: AsRef<[S]>,
     {
         let names = names.as_ref();
 
@@ -289,12 +302,15 @@ impl Sample {
             not equal to the one of `self.features.`"
         );
 
-        let old_names = names.iter()
+        let old_names = names
+            .iter()
             .zip(&mut self.features[..])
             .map(|(name, feature)| feature.replace_name(name))
             .collect();
 
-        self.name_to_index = self.features.iter()
+        self.name_to_index = self
+            .features
+            .iter()
             .map(|feature| feature.name().to_string())
             .enumerate()
             .map(|(i, name)| (name, i))
@@ -304,7 +320,9 @@ impl Sample {
 
     /// Returns the `idx`-th instance `(x, y)`.
     pub fn at(&self, idx: usize) -> (Vec<f64>, f64) {
-        let x = self.features.iter()
+        let x = self
+            .features
+            .iter()
             .map(|feat| feat[idx])
             .collect::<Vec<f64>>();
         let y = self.target[idx];
@@ -323,18 +341,22 @@ impl Sample {
         }
     }
 
-    /// Check whether `self` is 
+    /// Check whether `self` is
     /// a training set for binary classification or not.
     pub fn is_valid_binary_instance(&self) {
         // Check whether the target column is specified.
         self.target_is_specified();
 
         // Check whether the target values can be converted into integers.
-        let non_integers = self.target.iter()
+        let non_integers = self
+            .target
+            .iter()
             .filter(|&yi| !yi.trunc().eq(yi))
             .collect::<Vec<_>>();
         if !non_integers.is_empty() {
-            let line = non_integers.iter().take(5)
+            let line = non_integers
+                .iter()
+                .take(5)
                 .map(|yi| yi.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -345,7 +367,9 @@ impl Sample {
         }
 
         // Check whether the target values takes exactly 2 kinds.
-        let set = self.target.iter()
+        let set = self
+            .target
+            .iter()
             .copied()
             .map(|yi| yi as i32)
             .collect::<HashSet<_>>();
@@ -356,20 +380,21 @@ impl Sample {
                     "The target values take more than 2 kinds. \
                      Expected 2 kinds, got {n_label} kinds."
                 );
-            },
+            }
             Ordering::Less => {
                 panic!(
                     "The target values take less than 2 kinds. \
                      Expected 2 kinds, got {n_label} kinds."
                 );
-            },
-            Ordering::Equal => {},
+            }
+            Ordering::Equal => {}
         }
 
         // Check whether the target values takes +1 or -1.
         let is_pm = set.iter().all(|y| y.eq(&1) || y.eq(&-1));
         if !is_pm {
-            let line = set.iter()
+            let line = set
+                .iter()
                 .map(|y| y.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -388,9 +413,9 @@ impl Sample {
     ///
     /// The weight vector must be a probability vector
     /// (A vector consists of non-negative entries whose sum is `1`).
-    pub fn weighted_mean_and_variance<T>(&self, weight: T)
-        -> Vec<(f64, f64)>
-        where T: AsRef<[f64]>
+    pub fn weighted_mean_and_variance<T>(&self, weight: T) -> Vec<(f64, f64)>
+    where
+        T: AsRef<[f64]>,
     {
         let weight = weight.as_ref();
         self.features()
@@ -404,7 +429,8 @@ impl Sample {
     /// The weight vector must be a probability vector
     /// (A vector consists of non-negative entries whose sum is `1`).
     pub fn weighted_mean<T>(&self, weight: T) -> Vec<f64>
-        where T: AsRef<[f64]>
+    where
+        T: AsRef<[f64]>,
     {
         let weight = weight.as_ref();
         self.features()
@@ -417,20 +443,15 @@ impl Sample {
     /// whose label (target) is `y.`
     ///
     /// The weight vector must be a non-negative vector.
-    pub fn weighted_mean_for_label<T>(
-        &self,
-        y: f64,
-        weight: T
-    ) -> Vec<f64>
-        where T: AsRef<[f64]>
+    pub fn weighted_mean_for_label<T>(&self, y: f64, weight: T) -> Vec<f64>
+    where
+        T: AsRef<[f64]>,
     {
         let weight = weight.as_ref();
         let target = self.target();
         self.features()
             .par_iter()
-            .map(|feat|
-                feat.weighted_mean_for_label(y, target, weight)
-            )
+            .map(|feat| feat.weighted_mean_for_label(y, target, weight))
             .collect()
     }
 
@@ -438,41 +459,50 @@ impl Sample {
     /// whose label (target) is `y.`
     ///
     /// The weight vector must be a non-negative vector.
-    pub fn weighted_mean_and_variance_for_label<T>(
-        &self,
-        y: f64,
-        weight: T
-    ) -> Vec<(f64, f64)>
-        where T: AsRef<[f64]>
+    pub fn weighted_mean_and_variance_for_label<T>(&self, y: f64, weight: T) -> Vec<(f64, f64)>
+    where
+        T: AsRef<[f64]>,
     {
         let weight = weight.as_ref();
         let target = self.target();
         self.features()
             .par_iter()
-            .map(|feat|
-                feat.weighted_mean_and_variance_for_label(y, target, weight)
-            )
+            .map(|feat| feat.weighted_mean_and_variance_for_label(y, target, weight))
             .collect()
     }
 
     fn append(&mut self, row: usize, feat: Vec<f64>, y: f64) {
-        self.features.par_iter_mut()
-            .zip(feat)
-            .for_each(|(col, f)| {
-                col.append((row, f));
-            });
+        self.features.par_iter_mut().zip(feat).for_each(|(col, f)| {
+            col.append((row, f));
+        });
         self.target.push(y);
     }
 
-    /// Split `self` into two samples.
-    pub fn split<T>(&self, ix: T, start: usize, end: usize)
-        -> (Sample, Sample)
-        where T: AsRef<[usize]>
+    /// Return (training, test), preserving the order in `ix`.
+    /// `ix` must be a permutation of all row indices. The half-open interval
+    /// `ix[start..end]` selects test rows; the remainder selects training rows.
+    /// Panics for an invalid permutation or interval. Empty partitions are valid.
+    pub fn split<T>(&self, ix: T, start: usize, end: usize) -> (Sample, Sample)
+    where
+        T: AsRef<[usize]>,
     {
+        let ix = ix.as_ref();
+        assert!(
+            start <= end && end <= self.n_sample,
+            "invalid split interval"
+        );
+        assert_eq!(ix.len(), self.n_sample, "split requires all row indices");
+        let mut seen = vec![false; self.n_sample];
+        for &i in ix {
+            assert!(
+                i < self.n_sample && !seen[i],
+                "split requires a permutation"
+            );
+            seen[i] = true;
+        }
         let n_feature = self.features.len();
         let test_size = end - start;
         let train_size = self.n_sample - test_size;
-        let ix = ix.as_ref();
 
         let name_to_ix = self.name_to_index.clone();
         let mut train = Self {
@@ -493,14 +523,8 @@ impl Sample {
 
         for (name, &i) in self.name_to_index.iter() {
             if self.features[i].is_sparse() {
-                train.features[i] = Feature::sparse(
-                    name.to_string(),
-                    train_size,
-                );
-                test.features[i] = Feature::sparse(
-                    name.to_string(),
-                    test_size,
-                );
+                train.features[i] = Feature::sparse(name.to_string(), train_size);
+                test.features[i] = Feature::sparse(name.to_string(), test_size);
             } else {
                 train.features[i] = Feature::dense(name.to_string());
                 test.features[i] = Feature::dense(name.to_string());
@@ -512,14 +536,14 @@ impl Sample {
             train.append(i, x, y);
         }
 
-        for (i, &ii) in ix.iter().enumerate().take(end).skip(start) {
+        for (i, &ii) in ix[start..end].iter().enumerate() {
             let (x, y) = self.at(ii);
             test.append(i, x, y);
         }
 
         for (i, &ii) in ix.iter().enumerate().take(self.n_sample).skip(end) {
             let (x, y) = self.at(ii);
-            train.append(i, x, y);
+            train.append(i - test_size, x, y);
         }
 
         (train, test)
@@ -530,12 +554,14 @@ impl Sample {
 /// `index:value`, where `index: usize` and `value: f64`.
 fn index_and_feature(word: &str) -> (usize, f64) {
     let mut i_x = word.split(':');
-    let i = i_x.next()
+    let i = i_x
+        .next()
         .unwrap()
         .trim()
         .parse::<usize>()
         .expect("Failed to parse an index.");
-    let x = i_x.next()
+    let x = i_x
+        .next()
         .unwrap()
         .trim()
         .parse::<f64>()
@@ -545,7 +571,8 @@ fn index_and_feature(word: &str) -> (usize, f64) {
 }
 
 impl<S> Index<S> for Sample
-    where S: AsRef<str>
+where
+    S: AsRef<str>,
 {
     type Output = Feature;
 
@@ -569,6 +596,46 @@ mod tests {
     }
 
     #[test]
+    fn split_reindexes_sparse_rows_and_preserves_labels() {
+        let dense = training_examples(b"x,class\n1,1\n0,-1\n3,1\n4,-1", true);
+        let mut sparse = dense.clone();
+        sparse.features = dense
+            .features
+            .iter()
+            .map(|f| {
+                let mut result = Feature::sparse(f.name(), dense.n_sample);
+                for i in 0..dense.n_sample {
+                    result.append((i, f[i]));
+                }
+                result
+            })
+            .collect();
+        for sample in [dense, sparse] {
+            let indices = [3, 0, 2, 1];
+            for (start, end) in [(1, 3), (0, 0), (0, 4), (2, 4)] {
+                let (train, test) = sample.split(indices, start, end);
+                let train_ix = indices[..start]
+                    .iter()
+                    .chain(&indices[end..])
+                    .copied()
+                    .collect::<Vec<_>>();
+                for (part, expected) in
+                    [(&train, train_ix.as_slice()), (&test, &indices[start..end])]
+                {
+                    assert_eq!(part.n_sample, expected.len());
+                    for (i, &source) in expected.iter().enumerate() {
+                        assert_eq!(part.at(i), sample.at(source));
+                    }
+                    for feature in &part.features {
+                        assert_eq!(feature.clone().into_vals().len(), expected.len());
+                    }
+                }
+            }
+            assert!(std::panic::catch_unwind(|| sample.split([0, 0, 2, 3], 1, 2)).is_err());
+        }
+    }
+
+    #[test]
     fn test_from_reader_01() {
         let bytes = b"\
             test,dummy,class\n\
@@ -580,4 +647,3 @@ mod tests {
         println!("{sample:?}");
     }
 }
-

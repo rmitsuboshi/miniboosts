@@ -1,25 +1,16 @@
 //! This file defines `LpBoost` based on the paper
 //! ``Boosting algorithms for Maximizing the Soft Margin''
 //! by Warmuth et al.
-//! 
-use miniboosts_core::{
-    Sample,
-    Booster,
-    WeakLearner,
-    Classifier,
-    tools::helpers,
-    tools::checkers,
-    constants::{
-        DEFAULT_TOLERANCE,
-        DEFAULT_CAPPING,
-    },
-};
+//!
 use hypotheses::WeightedMajority;
-use optimization::{
-    ColumnGeneration,
-    soft_margin_optimization,
+use miniboosts_core::CurrentHypothesis;
+use miniboosts_core::{
+    Booster, Classifier, Sample, WeakLearner,
+    constants::{DEFAULT_CAPPING, DEFAULT_TOLERANCE},
+    tools::checkers,
+    tools::helpers,
 };
-use logging::CurrentHypothesis;
+use optimization::{ColumnGeneration, soft_margin_optimization};
 
 use std::ops::ControlFlow;
 
@@ -51,10 +42,11 @@ pub struct LpBoost<'a, F> {
 }
 
 impl<'a, F> LpBoost<'a, F>
-    where F: Classifier
+where
+    F: Classifier,
 {
     /// Constructs a new instance of `LpBoost`.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
         let n_examples = sample.shape().0;
@@ -78,7 +70,7 @@ impl<'a, F> LpBoost<'a, F>
 
     /// This method updates the capping parameter.
     /// This parameter must be in `[1, # of training examples]`.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     pub fn nu(mut self, nu: f64) -> Self {
         checkers::capping_parameter(nu, self.n_examples);
@@ -91,7 +83,7 @@ impl<'a, F> LpBoost<'a, F>
     /// LpBoost guarantees the `tolerance`-approximate solution to
     /// the soft margin optimization.  
     /// Default value is `0.01`.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
@@ -101,7 +93,7 @@ impl<'a, F> LpBoost<'a, F>
 
     /// Returns the terminated iteration.
     /// This method returns `usize::MAX` before the boosting step.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn terminated(&self) -> usize {
@@ -111,7 +103,7 @@ impl<'a, F> LpBoost<'a, F>
     /// This method updates `self.dist` and `self.gamma_hat`
     /// by solving a linear program
     /// over the hypotheses obtained in past rounds.
-    /// 
+    ///
     /// Time complexity depends on the LP solver.
     #[inline(always)]
     fn update_distribution_mut(&mut self, h: &F) -> f64 {
@@ -123,11 +115,14 @@ impl<'a, F> LpBoost<'a, F>
 }
 
 impl<F> Booster<F> for LpBoost<'_, F>
-    where F: Classifier + Clone,
+where
+    F: Classifier + Clone,
 {
     type Output = WeightedMajority<F>;
 
-    fn name(&self) -> &str { "LpBoost" }
+    fn name(&self) -> &str {
+        "LpBoost"
+    }
 
     fn info(&self) -> Option<Vec<(&str, String)>> {
         let (n_examples, n_feature) = self.sample.shape();
@@ -138,7 +133,7 @@ impl<F> Booster<F> for LpBoost<'_, F>
             ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", self.tolerance)),
             ("Max iteration", "-".to_string()),
-            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)"))
+            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)")),
         ]);
         Some(info)
     }
@@ -156,12 +151,9 @@ impl<F> Booster<F> for LpBoost<'_, F>
         self.terminated = usize::MAX;
     }
 
-    fn boost<W>(
-        &mut self,
-        weak_learner: &W,
-        iteration: usize,
-    ) -> ControlFlow<usize>
-        where W: WeakLearner<Hypothesis = F>,
+    fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
+    where
+        W: WeakLearner<Hypothesis = F>,
     {
         let h = weak_learner.produce(self.sample, &self.dist);
 
@@ -173,7 +165,13 @@ impl<F> Booster<F> for LpBoost<'_, F>
 
         let gamma_star = self.update_distribution_mut(&h);
         self.hypotheses.push(h);
-        assert!((-1f64..=1f64).contains(&gamma_star));
+        // The LP optimum is in [-1, 1] for confidence-rated hypotheses,
+        // but the numerical solver can exceed a boundary by roundoff.
+        let slack = miniboosts_core::constants::NUMERIC_TOLERANCE;
+        assert!(
+            gamma_star.is_finite() && (-1.0 - slack..=1.0 + slack).contains(&gamma_star),
+            "LP objective outside its numerical bounds: {gamma_star}"
+        );
 
         if gamma_star >= self.gamma_hat - self.tolerance {
             self.terminated = self.hypotheses.len();
@@ -184,18 +182,15 @@ impl<F> Booster<F> for LpBoost<'_, F>
     }
 
     fn postprocess(&mut self) -> Self::Output {
-        let (_, weights) = soft_margin_optimization(
-            self.nu,
-            self.sample,
-            &self.hypotheses[..],
-        );
+        let (_, weights) = soft_margin_optimization(self.nu, self.sample, &self.hypotheses[..]);
         self.weights = weights;
         WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
 impl<H> CurrentHypothesis for LpBoost<'_, H>
-    where H: Classifier + Clone,
+where
+    H: Classifier + Clone,
 {
     type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
@@ -204,4 +199,3 @@ impl<H> CurrentHypothesis for LpBoost<'_, H>
         WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
-
