@@ -13,7 +13,6 @@ const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
 const WIDTH: usize = 8;
 const PREC_WIDTH: usize = 5;
 const FULL_WIDTH: usize = 60;
-const STAT_WIDTH: usize = (FULL_WIDTH - 4) / 2;
 const HEADER: &str = "ObjectiveValue,TrainLoss,TestLoss,Time\n";
 
 /// Struct `Logger` provides a generic function that
@@ -28,6 +27,7 @@ pub struct Logger<'a, B, W, F, G> {
     pub(super) test: &'a Sample,
     pub(super) time_limit: u128,
     pub(super) round: usize,
+    pub(super) max_iterations: usize,
 }
 
 impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
@@ -49,6 +49,7 @@ impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
             test,
             time_limit: DEFAULT_TIMELIMIT_MILLIS,
             round: DEFAULT_ROUND,
+            max_iterations: usize::MAX,
         }
     }
 }
@@ -62,6 +63,14 @@ where
     F: LoggingObjective,
     G: Fn(&Sample, &S) -> f64,
 {
+    /// Limit the number of boosting steps. The final step is logged before stopping.
+    /// Defaults to no practical limit; algorithm and time limits still apply.
+    pub fn max_iterations(mut self, limit: usize) -> Self {
+        assert!(limit > 0, "iteration limit must be positive");
+        self.max_iterations = limit;
+        self
+    }
+
     /// Set the time limit for boosting algorithm as milliseconds.
     /// Checked after each completed boosting step and evaluation; it does not interrupt a step.
     #[inline(always)]
@@ -112,75 +121,57 @@ where
         );
     }
 
-    /// print current settings.
-    #[inline(always)]
+    /// Print current settings in a rounded panel.
     fn print_stats(&self) {
         let limit = if self.time_limit != u128::MAX {
             time_format(self.time_limit)
         } else {
-            "Nothing".into()
+            "Unlimited".into()
         };
-        let header = format!(
-            "{:=>FULL_WIDTH$}\n{:^FULL_WIDTH$}\n{:->FULL_WIDTH$}",
-            "",
-            "STATS".bold(),
-            "",
-        );
-        println!(
-            "\n{header}\n\
-            + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}",
-            "Booster".bold(),
-            self.booster.name().bold().green(),
-        );
-
+        let mut rows = vec![("Booster".to_owned(), self.booster.name().to_owned(), true)];
         if let Some(info) = self.booster.info() {
-            let line = info
-                .into_iter()
-                .map(|(key, val)| {
-                    format!(
-                        "    + {:<STAT_WIDTH$}\t{:>width$}",
-                        key,
-                        val.bold().yellow(),
-                        width = STAT_WIDTH - 8
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            println!("{line}");
+            rows.extend(
+                info.into_iter()
+                    .map(|(key, value)| (format!("  {key}"), value, false)),
+            );
+        }
+        rows.push((String::new(), String::new(), false));
+        rows.push(("Weak Learner".into(), self.weak_learner.name().into(), true));
+        if let Some(info) = self.weak_learner.info() {
+            rows.extend(
+                info.into_iter()
+                    .map(|(key, value)| (format!("  {key}"), value, false)),
+            );
+        }
+        rows.push((String::new(), String::new(), false));
+        rows.push(("Objective".into(), self.objective_func.name(), true));
+        rows.push(("Time Limit".into(), limit, true));
+
+        if self.max_iterations != usize::MAX {
+            rows.push((
+                "Iteration Limit".into(),
+                self.max_iterations.to_string(),
+                true,
+            ));
         }
 
-        println!(
-            "+ {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}",
-            "Weak Learner".bold(),
-            self.weak_learner.name().bold().green(),
-        );
-        if let Some(info) = self.weak_learner.info() {
-            let line = info
-                .into_iter()
-                .map(|(key, val)| {
-                    format!(
-                        "    + {:<STAT_WIDTH$}\t{:>width$}",
-                        key,
-                        val.bold().yellow(),
-                        width = STAT_WIDTH - 8
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            println!("{line}");
+        // Compute padding before applying ANSI colors; avoid terminal-dependent tabs.
+        let width = rows
+            .iter()
+            .map(|(key, value, _)| key.chars().count() + value.chars().count() + 2)
+            .max()
+            .unwrap_or(0)
+            .max(FULL_WIDTH - 4);
+        println!("\n╭─ {} {}╮", "STATS".bold(), "─".repeat(width - 6));
+        for (key, value, heading) in rows {
+            let padding = " ".repeat(width - key.chars().count() - value.chars().count());
+            if heading {
+                println!("│ {}{padding}{} │", key.bold(), value.green().bold());
+            } else {
+                println!("│ {key}{padding}{} │", value.yellow());
+            }
         }
-        println!(
-            "\
-            + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}\n\
-            + {:<STAT_WIDTH$}\t{:>STAT_WIDTH$}\n\
-            {:=^FULL_WIDTH$}\n\
-            ",
-            "Objective".bold(),
-            self.objective_func.name().bold().green(),
-            "Time Limit".bold(),
-            limit.bold().green(),
-            "".bold(),
-        );
+        println!("╰{}╯\n", "─".repeat(width + 2));
     }
 
     /// Set the interval to print the current status.
@@ -227,7 +218,7 @@ where
         if self.round != usize::MAX {
             self.print_log_header();
         }
-        for iter in 1.. {
+        for iter in 1..=self.max_iterations {
             // Start measuring time
             let now = clock();
 
@@ -272,10 +263,13 @@ where
                 );
             }
 
-            if flow.is_break() && self.round != usize::MAX {
+            let capped = iter == self.max_iterations && !flow.is_break();
+            if (flow.is_break() || capped) && self.round != usize::MAX {
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}\n",
-                    "[FIN]".bold().bright_green(),
+                    (if capped { "[LIMIT]" } else { "[FIN]" })
+                        .bold()
+                        .bright_green(),
                     format!("{:>WIDTH$}", iter).red(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
                     format!("{:>WIDTH$.PREC_WIDTH$}", train).bold().green(),
@@ -363,6 +357,34 @@ mod tests {
         type Output = Model;
         fn current_hypothesis(&self) -> Model {
             Model
+        }
+    }
+
+    #[test]
+    fn iteration_limit_logs_last_step_and_preserves_early_stop() {
+        let sample = Sample::dummy(2);
+        for (limit, expected) in [(1, 1), (3, 3), (10, 5)] {
+            let mut logger = Logger::new(
+                Steps(0),
+                Learner,
+                LoggingSoftMarginObjective::new(1.0),
+                |_: &Sample, _: &Model| 0.0,
+                &sample,
+                &sample,
+            )
+            .max_iterations(limit)
+            .print_every(usize::MAX);
+            let path = std::env::temp_dir().join(format!(
+                "miniboosts-limit-{}-{limit}.csv",
+                std::process::id()
+            ));
+            let now = Instant::now();
+            let model = logger.run_with_clock(&path, || now).unwrap();
+            assert_eq!(logger.booster.0, expected);
+            assert_eq!(model.predict_all(&sample), vec![1, -1]);
+            let csv = std::fs::read_to_string(&path).unwrap();
+            std::fs::remove_file(path).unwrap();
+            assert_eq!(csv.lines().count(), expected + 1);
         }
     }
 

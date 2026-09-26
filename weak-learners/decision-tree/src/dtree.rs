@@ -156,7 +156,7 @@ impl WeakLearner for DecisionTree<'_> {
         let info = Vec::from([
             ("# of bins (max)", format!("{n_bins}")),
             ("Max depth", format!("{}", self.max_depth)),
-            ("Split split_by", format!("{}", self.split_by)),
+            ("Split criterion", format!("{}", self.split_by)),
         ]);
         Some(info)
     }

@@ -347,6 +347,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "miniboosts-example"
+version = "0.1.0"
+dependencies = [
+ "miniboosts",
+]
+
+[[package]]
 name = "miniboosts_core"
 version = "0.1.0"
 dependencies = [

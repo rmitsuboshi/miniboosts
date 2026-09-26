@@ -33,6 +33,7 @@ pub struct SoftBoost<'a, H> {
     terminated: usize,
 
     weights: Vec<f64>,
+    numerical_stop_reason: Option<String>,
 }
 
 impl<'a, H> SoftBoost<'a, H>
@@ -55,11 +56,18 @@ where
 
             dist: Vec::new(),
             weights: Vec::new(),
+            numerical_stop_reason: None,
             hypotheses: Vec::new(),
 
             max_iter: usize::MAX,
             terminated: usize::MAX,
         }
+    }
+
+    /// Numerical reason for early termination, if any. This is not convergence.
+    /// The final model is fitted to the hypotheses collected before stopping.
+    pub fn numerical_stop_reason(&self) -> Option<&str> {
+        self.numerical_stop_reason.as_deref()
     }
 
     /// Set the capping parameter.
@@ -111,16 +119,26 @@ where
     /// Updates `self.dist`
     /// Returns `None` if the stopping criterion satisfied.
     fn update_params_mut(&mut self) -> Option<()> {
-        let result = self
+        match self
             .solver
-            .solve(self.gamma_hat, self.tolerance, &self.hypotheses[..]);
-        if let Some(_) = result {
-            self.dist = self.solver.distribution_on_examples();
-            if self.dist.iter().any(|&d| d == 0f64) {
-                return None;
+            .solve(self.gamma_hat, self.tolerance, &self.hypotheses[..])
+        {
+            Ok(Some(())) => {
+                self.dist = self.solver.distribution_on_examples();
+                if self.dist.iter().any(|&d| d == 0.0) {
+                    return None;
+                }
+                Some(())
+            }
+            Ok(None) => None,
+            Err(reason) => {
+                eprintln!(
+                    "[WARN] SoftBoost/TotalBoost stopped early: {reason}. Returning a model from collected hypotheses; convergence is not certified."
+                );
+                self.numerical_stop_reason = Some(reason);
+                None
             }
         }
-        result
     }
 }
 
@@ -161,6 +179,7 @@ where
         self.hypotheses = Vec::new();
 
         self.gamma_hat = 1.0;
+        self.numerical_stop_reason = None;
         self.initialize_solver();
     }
 

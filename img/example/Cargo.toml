@@ -1,10 +1,9 @@
 [package]
-name = "example"
+name = "miniboosts-example"
 version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition = "2024"
+rust-version.workspace = true
+publish = false
 
 [dependencies]
-miniboosts = { path = "./../../../miniboosts", features = ["extended"] }
-polars     = "0.27.0"
+miniboosts = { path = "../.." }

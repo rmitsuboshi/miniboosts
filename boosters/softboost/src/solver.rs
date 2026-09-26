@@ -167,7 +167,12 @@ impl<'a> SoftBoostSolver<'a> {
 }
 
 impl SoftBoostSolver<'_> {
-    pub fn solve<H>(&mut self, gamma: f64, delta: f64, hypotheses: &[H]) -> Option<()>
+    pub fn solve<H>(
+        &mut self,
+        gamma: f64,
+        delta: f64,
+        hypotheses: &[H],
+    ) -> Result<Option<()>, String>
     where
         H: Classifier,
     {
@@ -232,38 +237,39 @@ impl SoftBoostSolver<'_> {
         let mut solver = DefaultSolver::new(&p, &q, &mat, &rhs, &cones, settings)
             .expect("failed to construct the SoftBoost entropy solver");
         solver.solve();
-        if solver.solution.status == SolverStatus::PrimalInfeasible {
-            return None;
+        if !projection_status(solver.solution.status)? {
+            return Ok(None);
         }
-        assert_eq!(
-            solver.solution.status,
-            SolverStatus::Solved,
-            "SoftBoost entropy solver did not converge"
-        );
-        assert!(
-            solver.solution.obj_val.is_finite()
-                && solver.solution.obj_val_dual.is_finite()
-                && solver.solution.r_prim.is_finite()
-                && solver.solution.r_dual.is_finite()
-        );
+        if !(solver.solution.obj_val.is_finite()
+            && solver.solution.obj_val_dual.is_finite()
+            && solver.solution.r_prim.is_finite()
+            && solver.solution.r_dual.is_finite())
+        {
+            return Err("entropy solver returned non-finite diagnostics".into());
+        }
         let solution = &solver.solution.x[..n_examples];
         const FEASIBILITY_TOLERANCE: f64 = 1e-7;
-        assert!(solution.iter().all(|d| d.is_finite()
-            && *d >= -FEASIBILITY_TOLERANCE
-            && *d <= 1.0 / self.nu + FEASIBILITY_TOLERANCE));
+        if !solution.iter().all(|d| {
+            d.is_finite()
+                && *d >= -FEASIBILITY_TOLERANCE
+                && *d <= 1.0 / self.nu + FEASIBILITY_TOLERANCE
+        }) {
+            return Err("entropy solution violates distribution bounds".into());
+        }
         // Remove only negative roundoff; do not clamp positive near-zero mass
         // or renormalize. Recheck feasibility after this numerical correction.
         let solution: Vec<_> = solution.iter().map(|&d| d.max(0.0)).collect();
-        assert!((solution.iter().sum::<f64>() - 1.0).abs() <= FEASIBILITY_TOLERANCE);
+        if (solution.iter().sum::<f64>() - 1.0).abs() > FEASIBILITY_TOLERANCE {
+            return Err("entropy solution does not sum to one".into());
+        }
         for h in hypotheses {
             let edge = helpers::edge(self.sample, &solution, h);
-            assert!(
-                edge.is_finite() && edge <= gamma - delta + FEASIBILITY_TOLERANCE,
-                "SoftBoost entropy solution violates an edge constraint"
-            );
+            if !edge.is_finite() || edge > gamma - delta + FEASIBILITY_TOLERANCE {
+                return Err("entropy solution violates an edge constraint".into());
+            }
         }
         self.primal = solution;
-        Some(())
+        Ok(Some(()))
     }
 
     pub fn distribution_on_examples(&self) -> Vec<f64> {
@@ -271,10 +277,33 @@ impl SoftBoostSolver<'_> {
     }
 }
 
+// Approximate solutions and infeasibility certificates are not convergence.
+fn projection_status(status: SolverStatus) -> Result<bool, String> {
+    match status {
+        SolverStatus::Solved => Ok(true),
+        SolverStatus::PrimalInfeasible => Ok(false),
+        _ => Err(format!("entropy solver stopped with {status:?}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{BufReader, Cursor};
+
+    #[test]
+    fn numerical_status_is_not_convergence_or_infeasibility() {
+        assert_eq!(projection_status(SolverStatus::Solved), Ok(true));
+        assert_eq!(projection_status(SolverStatus::PrimalInfeasible), Ok(false));
+        for status in [
+            SolverStatus::AlmostSolved,
+            SolverStatus::AlmostPrimalInfeasible,
+            SolverStatus::MaxIterations,
+            SolverStatus::NumericalError,
+        ] {
+            assert!(projection_status(status).is_err());
+        }
+    }
 
     struct Margins([f64; 3]);
     impl Classifier for Margins {
@@ -300,6 +329,7 @@ mod tests {
         assert!(
             solver
                 .solve(0.0, 0.2, &[Margins([1.0, 0.0, -1.0])])
+                .unwrap()
                 .is_some()
         );
         let d = solver.distribution_on_examples();
@@ -318,12 +348,12 @@ mod tests {
         let mut solver = SoftBoostSolver::new(&sample);
         solver.initialize(2.0);
         let h = [Margins([1.0, 0.0, -1.0])];
-        assert!(solver.solve(0.0, 0.4, &h).is_some());
+        assert!(solver.solve(0.0, 0.4, &h).unwrap().is_some());
         let d = solver.distribution_on_examples();
         for (actual, expected) in d.iter().zip([0.1, 0.4, 0.5]) {
             assert!((actual - expected).abs() < 2e-5, "{d:?}");
         }
-        assert!(solver.solve(0.0, 0.6, &h).is_none());
+        assert!(solver.solve(0.0, 0.6, &h).unwrap().is_none());
         assert!(solver.distribution_on_examples().is_empty());
     }
 
@@ -335,6 +365,7 @@ mod tests {
         assert!(
             solver
                 .solve(0.0, 1.0, &[Margins([1.0, 0.0, -1.0])])
+                .unwrap()
                 .is_some()
         );
         let d = solver.distribution_on_examples();
