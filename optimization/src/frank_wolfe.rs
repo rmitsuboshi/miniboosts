@@ -1,19 +1,16 @@
 //! This file defines some options of MLPBoost.
-use miniboosts_core::{
-    tools::{
-        checkers,
-        helpers,
-    },
-    constants::BINARY_SEARCH_TOLERANCE,
-};
 use crate::objective_function::ObjectiveFunction;
+use miniboosts_core::{
+    constants::BINARY_SEARCH_TOLERANCE,
+    tools::{checkers, helpers},
+};
 use std::fmt;
 
 /// FwUpdateRule updates.
 /// These options correspond to the Frank-Wolfe strategies.
 #[derive(Clone, Copy)]
 pub enum FwUpdateRule {
-    /// Classic step size. 
+    /// Classic step size.
     /// This step size uses `2 / (t + 2)`.
     Classic,
 
@@ -25,8 +22,8 @@ pub enum FwUpdateRule {
     /// This step size uses the minimizer of the line segment.
     LineSearch,
 
-    /// The Blended-Pairwise Frank-Wolfe, 
-    /// See [this paper](https://proceedings.mlr.press/v162/tsuji22a). 
+    /// The Blended-Pairwise Frank-Wolfe,
+    /// See [this paper](https://proceedings.mlr.press/v162/tsuji22a).
     BlendedPairwise,
 }
 
@@ -47,10 +44,7 @@ pub enum StepSize {
     /// An ordinal Frank-Wolfe step.
     Normal(f64),
     /// Moves the weight on an away atom to a local fw atom.
-    BpfwMoveWeights {
-        stepsize: f64,
-        dir: Vec<f64>,
-    },
+    BpfwMoveWeights { stepsize: f64, dir: Vec<f64> },
 }
 
 /// The Frank-Wolfe algorithm.
@@ -62,13 +56,13 @@ pub struct FrankWolfe<F> {
 
 impl<F> FrankWolfe<F> {
     /// Creates a new instance of `FrankWolfe.`
-    pub fn new(
-        objective: F,
-        update_rule: FwUpdateRule,
-    ) -> Self
-    {
+    pub fn new(objective: F, update_rule: FwUpdateRule) -> Self {
         let iteration = 0;
-        Self { objective, update_rule, iteration, }
+        Self {
+            objective,
+            update_rule,
+            iteration,
+        }
     }
 
     /// Sets `FwUpdateRule.`
@@ -96,7 +90,7 @@ impl<F> FrankWolfe<F> {
         }
     }
 
-    /// Updates the current weights on hypotheses 
+    /// Updates the current weights on hypotheses
     /// based on the classic step size.
     /// ```txt
     ///     w_{t+1} = w_{t} + λ ( e_{h_{t+1}} - w_{t} )
@@ -110,25 +104,28 @@ impl<F> FrankWolfe<F> {
 }
 
 impl<F> FrankWolfe<F>
-    where F: ObjectiveFunction,
+where
+    F: ObjectiveFunction,
 {
-    /// Updates the current weights on hypotheses 
+    /// Updates the current weights on hypotheses
     /// based on the short-step size.
     /// ```txt
     ///     w_{t+1} = w_{t} + λ ( e_{h_{t+1}} - w_{t} )
-    ///     where λ = 
+    ///     where λ =
     /// ```
     /// The last entry of `hypotheses` is `h_{t+1}` in the above update rule.
     pub fn short_step(&self, cur: &[f64], nxt: &[f64]) -> StepSize {
-        if cur.len() == 1 { return StepSize::Normal(1f64); }
+        if cur.len() == 1 {
+            return StepSize::Normal(1f64);
+        }
         // if cur.len() == 1 { return vec![1f64]; }
 
         let grad = self.objective.gradient(cur);
 
         let (s, p) = self.objective.smooth();
-        let numer = helpers::inner_product(&grad[..], cur)
-            - helpers::inner_product(&grad[..], nxt);
-        let denom = nxt.iter()
+        let numer = helpers::inner_product(&grad[..], cur) - helpers::inner_product(&grad[..], nxt);
+        let denom = nxt
+            .iter()
             .zip(cur)
             .fold(0f64, |acc, (n, c)| {
                 if p == f64::MAX {
@@ -149,10 +146,7 @@ impl<F> FrankWolfe<F>
     ///     λ ∈ [0, 1]
     /// ```
     fn line_search(&self, cur: &[f64], nxt: &[f64]) -> StepSize {
-        let dir = nxt.iter()
-            .zip(cur)
-            .map(|(n, c)| n - c)
-            .collect::<Vec<_>>();
+        let dir = nxt.iter().zip(cur).map(|(n, c)| n - c).collect::<Vec<_>>();
 
         let stepsize = self.line_search_inner(cur, &dir[..], 1f64);
         StepSize::Normal(stepsize)
@@ -168,7 +162,8 @@ impl<F> FrankWolfe<F>
 
         while ub - lb > BINARY_SEARCH_TOLERANCE {
             let stepsize = (lb + ub) / 2f64;
-            let mid = cur.iter()
+            let mid = cur
+                .iter()
                 .zip(dir)
                 .map(|(c, d)| c + stepsize * d)
                 .collect::<Vec<_>>();
@@ -187,20 +182,14 @@ impl<F> FrankWolfe<F>
     }
 
     fn find_away_atom(&self, cur: &[f64], grad: &[f64]) -> (f64, Vec<f64>) {
-        let (ix, _) = grad.iter()
-            .zip(cur)
-            .enumerate()
-            .fold((usize::MAX, f64::MIN), |acc, (i, (&g, &c))| {
-                if c == 0f64 || g < acc.1 {
-                    acc
-                } else {
-                    (i, g)
-                }
-            });
-        assert_ne!(
-            ix, usize::MAX,
-            "failed to find an away atom."
-        );
+        let (ix, _) =
+            grad.iter()
+                .zip(cur)
+                .enumerate()
+                .fold((usize::MAX, f64::MIN), |acc, (i, (&g, &c))| {
+                    if c == 0f64 || g < acc.1 { acc } else { (i, g) }
+                });
+        assert_ne!(ix, usize::MAX, "failed to find an away atom.");
 
         let dim = cur.len();
         let mut away = vec![0f64; dim];
@@ -209,20 +198,14 @@ impl<F> FrankWolfe<F>
     }
 
     fn find_localfw_atom(&self, cur: &[f64], grad: &[f64]) -> (f64, Vec<f64>) {
-        let (ix, _) = grad.iter()
-            .zip(cur)
-            .enumerate()
-            .fold((usize::MAX, f64::MAX), |acc, (i, (&g, &c))| {
-                if c == 0f64 || acc.1 < g {
-                    acc
-                } else {
-                    (i, g)
-                }
-            });
-        assert_ne!(
-            ix, usize::MAX,
-            "failed to find an local fw atom."
-        );
+        let (ix, _) =
+            grad.iter()
+                .zip(cur)
+                .enumerate()
+                .fold((usize::MAX, f64::MAX), |acc, (i, (&g, &c))| {
+                    if c == 0f64 || acc.1 < g { acc } else { (i, g) }
+                });
+        assert_ne!(ix, usize::MAX, "failed to find an local fw atom.");
 
         let dim = cur.len();
         let mut localfw = vec![0f64; dim];
@@ -236,28 +219,23 @@ impl<F> FrankWolfe<F>
         let grad = self.objective.gradient(cur);
 
         let (ub, a) = self.find_away_atom(cur, &grad[..]);
-        let (_,  s) = self.find_localfw_atom(cur, &grad[..]);
+        let (_, s) = self.find_localfw_atom(cur, &grad[..]);
         let x = cur;
         let w = nxt;
-        let sa = s.iter()
+        let sa = s
+            .iter()
             .zip(&a[..])
             .map(|(si, ai)| si - ai)
             .collect::<Vec<_>>();
-        let wx = w.iter()
-            .zip(x)
-            .map(|(wi, xi)| wi - xi)
-            .collect::<Vec<_>>();
+        let wx = w.iter().zip(x).map(|(wi, xi)| wi - xi).collect::<Vec<_>>();
 
         let stepsize;
         let dir;
-        if helpers::inner_product(&grad[..], &sa[..])
-            <= helpers::inner_product(&grad[..], &wx[..]) {
+        if helpers::inner_product(&grad[..], &sa[..]) <= helpers::inner_product(&grad[..], &wx[..])
+        {
             dir = sa;
             stepsize = self.line_search_inner(x, &dir[..], ub);
-            StepSize::BpfwMoveWeights {
-                stepsize,
-                dir,
-            }
+            StepSize::BpfwMoveWeights { stepsize, dir }
         } else {
             dir = wx;
             stepsize = self.line_search_inner(x, &dir[..], 1f64);
@@ -268,9 +246,9 @@ impl<F> FrankWolfe<F>
     /// Get the step size for Frank-Wolfe update.
     pub fn get_stepsize_mut(&mut self, cur: &[f64], nxt: &[f64]) -> StepSize {
         let stepsize = match self.update_rule {
-            FwUpdateRule::Classic         => self.classic(cur, nxt),
-            FwUpdateRule::ShortStep       => self.short_step(cur, nxt),
-            FwUpdateRule::LineSearch      => self.line_search(cur, nxt),
+            FwUpdateRule::Classic => self.classic(cur, nxt),
+            FwUpdateRule::ShortStep => self.short_step(cur, nxt),
+            FwUpdateRule::LineSearch => self.line_search(cur, nxt),
             FwUpdateRule::BlendedPairwise => self.bpfw(cur, nxt),
         };
         self.iteration += 1;
@@ -286,20 +264,13 @@ impl<F> FrankWolfe<F>
     pub fn next(&mut self, cur: Vec<f64>, nxt: Vec<f64>) -> Vec<f64> {
         match self.get_stepsize_mut(&cur[..], &nxt[..]) {
             StepSize::Normal(stepsize) => interior_point(cur, nxt, stepsize),
-            StepSize::BpfwMoveWeights { stepsize, dir } => {
-                move_to_dir(cur, dir, stepsize)
-            },
+            StepSize::BpfwMoveWeights { stepsize, dir } => move_to_dir(cur, dir, stepsize),
         }
     }
 }
 
 /// Take the interior point of the given two arrays.
-pub(crate) fn interior_point(
-    cur: Vec<f64>,
-    nxt: Vec<f64>,
-    stepsize: f64,
-) -> Vec<f64>
-{
+pub(crate) fn interior_point(cur: Vec<f64>, nxt: Vec<f64>, stepsize: f64) -> Vec<f64> {
     checkers::stepsize(stepsize);
     cur.iter()
         .zip(nxt)
@@ -307,16 +278,8 @@ pub(crate) fn interior_point(
         .collect()
 }
 /// Take the interior point of the given two arrays.
-pub(crate) fn move_to_dir(
-    cur: Vec<f64>,
-    dir: Vec<f64>,
-    stepsize: f64,
-) -> Vec<f64>
-{
-    cur.iter()
-        .zip(dir)
-        .map(|(c, d)| c + stepsize * d)
-        .collect()
+pub(crate) fn move_to_dir(cur: Vec<f64>, dir: Vec<f64>, stepsize: f64) -> Vec<f64> {
+    cur.iter().zip(dir).map(|(c, d)| c + stepsize * d).collect()
 }
 
 #[cfg(test)]
@@ -329,18 +292,21 @@ mod test {
     /// ℓ₂-norm objective
     struct L2;
     impl L2 {
-        fn new() -> Self { Self {} }
+        fn new() -> Self {
+            Self {}
+        }
     }
     impl ObjectiveFunction for L2 {
-        fn name(&self) -> &str { "L2-norm objective" }
+        fn name(&self) -> &str {
+            "L2-norm objective"
+        }
 
-        fn smooth(&self) -> (f64, f64) { (1f64, 2f64) }
+        fn smooth(&self) -> (f64, f64) {
+            (1f64, 2f64)
+        }
 
         fn objective_value(&self, point: &[f64]) -> f64 {
-            point.iter()
-                .map(|p| p.powi(2))
-                .sum::<f64>()
-                / 2f64
+            point.iter().map(|p| p.powi(2)).sum::<f64>() / 2f64
         }
 
         fn gradient(&self, point: &[f64]) -> Vec<f64> {
@@ -360,15 +326,13 @@ mod test {
     /// the inner product `v · ∇f(x).`
     fn linear_minimization_oracle_entropy(grad: &[f64]) -> Vec<f64> {
         let dim = grad.len();
-        let (i, v) = grad.iter()
-            .enumerate()
-            .fold((dim, f64::MAX), |acc, (i, &g)| {
-                if acc.1 > g {
-                    (i, g)
-                } else {
-                    acc
-                }
-            });
+        let (i, v) =
+            grad.iter().enumerate().fold(
+                (dim, f64::MAX),
+                |acc, (i, &g)| {
+                    if acc.1 > g { (i, g) } else { acc }
+                },
+            );
         assert!(
             i < dim && v < f64::MAX,
             "failed to call linear minimization oracle."
@@ -410,7 +374,8 @@ mod test {
     }
 
     fn stopping_criterion(nxt: &[f64], cur: &[f64], grad: &[f64]) -> bool {
-        let duality_gap = nxt.iter()
+        let duality_gap = nxt
+            .iter()
             .zip(&cur[..])
             .zip(&grad[..])
             .map(|((n, c), g)| (c - n) * g)
@@ -420,9 +385,9 @@ mod test {
 
     #[test]
     fn classic_frank_wolfe_l2_objective() {
-        let dim      = 100usize;
-        let f        = L2::new();
-        let mut x    = initial_point_l2(dim);
+        let dim = 100usize;
+        let f = L2::new();
+        let mut x = initial_point_l2(dim);
         let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::Classic);
 
         loop {
@@ -446,9 +411,9 @@ mod test {
 
     #[test]
     fn shortstep_frank_wolfe_l2_objective() {
-        let dim      = 100usize;
-        let f        = L2::new();
-        let mut x    = initial_point_l2(dim);
+        let dim = 100usize;
+        let f = L2::new();
+        let mut x = initial_point_l2(dim);
         let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::ShortStep);
 
         loop {
@@ -472,9 +437,9 @@ mod test {
 
     #[test]
     fn line_search_frank_wolfe_l2_objective() {
-        let dim      = 100usize;
-        let f        = L2::new();
-        let mut x    = initial_point_l2(dim);
+        let dim = 100usize;
+        let f = L2::new();
+        let mut x = initial_point_l2(dim);
         let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::LineSearch);
 
         loop {
@@ -498,13 +463,10 @@ mod test {
 
     #[test]
     fn bpfw_frank_wolfe_l2_objective() {
-        let dim      = 100usize;
-        let f        = L2::new();
-        let mut x    = initial_point_l2(dim);
-        let mut algo = FrankWolfe::new(
-            L2::new(),
-            FwUpdateRule::BlendedPairwise,
-        );
+        let dim = 100usize;
+        let f = L2::new();
+        let mut x = initial_point_l2(dim);
+        let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::BlendedPairwise);
 
         loop {
             let g = f.gradient(&x[..]);
@@ -527,9 +489,9 @@ mod test {
 
     #[test]
     fn classic_frank_wolfe_entropy_objective() {
-        let dim      = 100usize;
-        let f        = Entropy::new();
-        let mut x    = initial_point_entropy(dim);
+        let dim = 100usize;
+        let f = Entropy::new();
+        let mut x = initial_point_entropy(dim);
         let mut algo = FrankWolfe::new(Entropy::new(), FwUpdateRule::Classic);
 
         loop {
@@ -553,13 +515,10 @@ mod test {
 
     #[test]
     fn line_search_frank_wolfe_entropy_objective() {
-        let dim      = 100usize;
-        let f        = Entropy::new();
-        let mut x    = initial_point_entropy(dim);
-        let mut algo = FrankWolfe::new(
-            Entropy::new(),
-            FwUpdateRule::LineSearch,
-        );
+        let dim = 100usize;
+        let f = Entropy::new();
+        let mut x = initial_point_entropy(dim);
+        let mut algo = FrankWolfe::new(Entropy::new(), FwUpdateRule::LineSearch);
 
         loop {
             let g = f.gradient(&x[..]);
@@ -582,13 +541,10 @@ mod test {
 
     #[test]
     fn bpfw_frank_wolfe_entropy_objective() {
-        let dim      = 100usize;
-        let f        = Entropy::new();
-        let mut x    = initial_point_entropy(dim);
-        let mut algo = FrankWolfe::new(
-            Entropy::new(),
-            FwUpdateRule::BlendedPairwise,
-        );
+        let dim = 100usize;
+        let f = Entropy::new();
+        let mut x = initial_point_entropy(dim);
+        let mut algo = FrankWolfe::new(Entropy::new(), FwUpdateRule::BlendedPairwise);
 
         loop {
             let g = f.gradient(&x[..]);
@@ -609,4 +565,3 @@ mod test {
         );
     }
 }
-

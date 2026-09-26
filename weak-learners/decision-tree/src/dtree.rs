@@ -1,20 +1,11 @@
 use rayon::prelude::*;
 
-use miniboosts_core::{
-    tree::*,
-    binning::*,
-    Sample,
-    WeakLearner,
-};
+use miniboosts_core::{Sample, WeakLearner, binning::*, tree::*};
 
-use crate::{
-    split_by::SplitBy,
-    node::*,
-    classifier::DecisionTreeClassifier,
-};
+use crate::{classifier::DecisionTreeClassifier, node::*, split_by::SplitBy};
 
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
 /// The Decision Tree algorithm.  
 /// Given a set of training examples for classification
@@ -27,9 +18,9 @@ use std::collections::HashMap;
 /// [Classification and Regression Trees](https://www.amazon.com/Classification-Regression-Wadsworth-Statistics-Probability/dp/0412048418)
 /// by Leo Breiman, Jerome H. Friedman, Richard A. Olshen, and Charles J. Stone.
 ///
-/// [`DecisionTree`] is constructed 
+/// [`DecisionTree`] is constructed
 /// by [`DecisionTreeBuilder`](crate::builder::DecisionTreeBuilder).
-/// 
+///
 /// # Example
 /// ```no_run
 /// use miniboosts_core::{
@@ -42,7 +33,7 @@ use std::collections::HashMap;
 ///     DecisionTreeBuilder,
 ///     SplitBy,
 /// };
-/// 
+///
 /// // Read the training data from the CSV file.
 /// let file = "/path/to/data/file.csv";
 /// let sample = SampleReader::default()
@@ -51,7 +42,7 @@ use std::collections::HashMap;
 ///     .target_feature("class")
 ///     .read()
 ///     .unwrap();
-/// 
+///
 /// // Get an instance of decision tree weak learner.
 /// // In this example, the output tree is at most depth 2.
 /// let tree = DecisionTreeBuilder::new(&sample)
@@ -62,9 +53,9 @@ use std::collections::HashMap;
 /// let n_sample = sample.shape().0;
 /// let dist = vec![1f64 / n_sample as f64; n_sample];
 /// let f = tree.produce(&sample, &dist);
-/// 
+///
 /// let predictions = f.predict_all(&sample);
-/// 
+///
 /// let loss = sample.target()
 ///     .into_iter()
 ///     .zip(predictions)
@@ -74,8 +65,8 @@ use std::collections::HashMap;
 /// println!("loss (train) is: {loss}");
 /// ```
 pub struct DecisionTree<'a> {
-    bins:      HashMap<&'a str, Bins>,
-    split_by:  SplitBy,
+    bins: HashMap<&'a str, Bins>,
+    split_by: SplitBy,
     max_depth: Depth,
 }
 
@@ -83,25 +74,23 @@ impl<'a> DecisionTree<'a> {
     /// Initialize [`DecisionTree`].
     /// This method is called only via `DecisionTreeBuilder::build`.
     #[inline]
-    pub(super) fn new(
-        bins:      HashMap<&'a str, Bins>,
-        split_by:  SplitBy,
-        max_depth: Depth,
-    ) -> Self
-    {
-        Self { bins, split_by, max_depth, }
+    pub(super) fn new(bins: HashMap<&'a str, Bins>, split_by: SplitBy, max_depth: Depth) -> Self {
+        Self {
+            bins,
+            split_by,
+            max_depth,
+        }
     }
 
     /// Construct a full binary tree of depth `depth`.
     #[inline]
     fn grow(
         &self,
-        sample:   &'a Sample,
-        dist:     &[f64],
-        indices:  Vec<usize>,
-        depth:    Depth,
-    ) -> Box<Node>
-    {
+        sample: &'a Sample,
+        dist: &[f64],
+        indices: Vec<usize>,
+        depth: Depth,
+    ) -> Box<Node> {
         // Compute the best confidence that minimizes the training error
         // on this node.
         let (conf, loss) = confidence_and_loss(sample, dist, &indices[..]);
@@ -113,9 +102,9 @@ impl<'a> DecisionTree<'a> {
 
         // Find the best pair of feature name and threshold
         // based on the `split_by`.
-        let (feature, threshold) = self.split_by.best_split(
-            &self.bins, sample, dist, &indices[..]
-        );
+        let (feature, threshold) = self
+            .split_by
+            .best_split(&self.bins, sample, dist, &indices[..]);
 
         // Construct the splitting rule
         // from the best feature and threshold.
@@ -126,8 +115,12 @@ impl<'a> DecisionTree<'a> {
         let mut rindices = Vec::new();
         for i in indices {
             match rule.split(sample, i) {
-                LeftRight::Left  => { lindices.push(i); },
-                LeftRight::Right => { rindices.push(i); },
+                LeftRight::Left => {
+                    lindices.push(i);
+                }
+                LeftRight::Right => {
+                    rindices.push(i);
+                }
             }
         }
 
@@ -139,7 +132,7 @@ impl<'a> DecisionTree<'a> {
         // At this point, `depth > 0` is guaranteed so that
         // one can grow the tree.
         let depth = depth - 1;
-        let left  = self.grow(sample, dist, lindices, depth);
+        let left = self.grow(sample, dist, lindices, depth);
         let right = self.grow(sample, dist, rindices, depth);
 
         Box::new(Node::branch(rule, left, right, conf))
@@ -154,7 +147,9 @@ impl WeakLearner for DecisionTree<'_> {
     }
 
     fn info(&self) -> Option<Vec<(&str, String)>> {
-        let n_bins = self.bins.values()
+        let n_bins = self
+            .bins
+            .values()
             .map(|bin| bin.len())
             .reduce(usize::max)
             .unwrap_or(0);
@@ -171,15 +166,15 @@ impl WeakLearner for DecisionTree<'_> {
     ///    to grow a tree (e.g., impurity, total distribution mass, etc.)
     /// 2. Convert `Node` to `Node` that pares redundant information
     #[inline]
-    fn produce(&self, sample: &Sample, dist: &[f64])
-        -> Self::Hypothesis
-    {
+    fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis {
         let n_sample = sample.shape().0;
 
-        let indices = (0..n_sample).filter(|&i| dist[i] > 0f64)
+        let indices = (0..n_sample)
+            .filter(|&i| dist[i] > 0f64)
             .collect::<Vec<usize>>();
         assert_ne!(
-            indices.len(), 0,
+            indices.len(),
+            0,
             "zero vector is given as a distribution. dist is: {dist:?}"
         );
 
@@ -194,13 +189,10 @@ impl WeakLearner for DecisionTree<'_> {
 /// `c` is the **confidence** for some label `y`
 /// that minimizes the training loss.
 /// - `l` is the training loss when the confidence is `y`.
-/// 
+///
 /// **Note that** this function assumes that the label is `+1` or `-1`.
 #[inline]
-fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
-    -> (f64, f64)
-{
-
+fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize]) -> (f64, f64) {
     assert_ne!(indices.len(), 0);
     let target = sample.target();
     let mut counter: HashMap<i64, f64> = HashMap::new();
@@ -214,13 +206,18 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize])
     let total = counter.values().sum::<f64>();
 
     // Compute the max (key, val) that has maximal p(j, t)
-    let (y, p) = counter.into_par_iter()
+    let (y, p) = counter
+        .into_par_iter()
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .unwrap();
 
     // From the update rule of boosting algorithm,
     // the sum of `dist` over `indices` may become zero,
-    let loss = if total > 0f64 { total * (1f64 - (p / total)) } else { 0f64 };
+    let loss = if total > 0f64 {
+        total * (1f64 - (p / total))
+    } else {
+        0f64
+    };
 
     // `label` takes value in `{-1, +1}`.
     let confidence = if total > 0f64 {
@@ -243,15 +240,18 @@ impl fmt::Display for DecisionTree<'_> {
             - Splitting split_by: {}\n\
             - Bins:\
             ",
-            self.max_depth,
-            self.split_by,
+            self.max_depth, self.split_by,
         )?;
 
-        let width = self.bins.keys()
+        let width = self
+            .bins
+            .keys()
             .map(|key| key.len())
             .max()
             .expect("Tried to print bins, but no features are found");
-        let max_bin_width = self.bins.values()
+        let max_bin_width = self
+            .bins
+            .values()
             .map(|bin| bin.len().ilog10() as usize)
             .max()
             .expect("Tried to print bins, but no features are found")
@@ -271,4 +271,3 @@ impl fmt::Display for DecisionTree<'_> {
         write!(f, "----------")
     }
 }
-

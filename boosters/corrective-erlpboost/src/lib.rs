@@ -1,6 +1,2 @@
 pub mod algorithm;
-pub use algorithm::{
-    CorrectiveErlpBoost,
-    CorrErlpFwObjective,
-};
-
+pub use algorithm::{CorrErlpFwObjective, CorrectiveErlpBoost};

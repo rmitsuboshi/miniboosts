@@ -1,26 +1,16 @@
 //! This file defines `ErlpBoost` based on the paper
 //! "Entropy Regularized LPBoost"
 //! by Warmuth et al.
-//! 
-use miniboosts_core::{
-    Sample,
-    Booster,
-    WeakLearner,
-    Classifier,
-    tools::helpers,
-    tools::checkers,
-    constants::{
-        DEFAULT_CAPPING,
-        DEFAULT_TOLERANCE,
-    },
-};
+//!
 use hypotheses::WeightedMajority;
-use optimization::{
-    RowGeneration,
-    soft_margin_optimization,
-    EntropyRegularizedMaxEdge,
+use miniboosts_core::CurrentHypothesis;
+use miniboosts_core::{
+    Booster, Classifier, Sample, WeakLearner,
+    constants::{DEFAULT_CAPPING, DEFAULT_TOLERANCE},
+    tools::checkers,
+    tools::helpers,
 };
-use logging::CurrentHypothesis;
+use optimization::{EntropyRegularizedMaxEdge, RowGeneration, soft_margin_optimization};
 
 use std::ops::ControlFlow;
 
@@ -55,7 +45,7 @@ pub struct ErlpBoost<'a, H> {
 
 impl<'a, H> ErlpBoost<'a, H> {
     /// Constructs a new instance of `ErlpBoost`.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
         let n_sample = sample.shape().0;
@@ -71,7 +61,7 @@ impl<'a, H> ErlpBoost<'a, H> {
         let eta = 0.5f64.max(ln_m / half_tolerance);
 
         // Set gamma_hat and gamma_star
-        let gamma_hat  = 1f64;
+        let gamma_hat = 1f64;
         let gamma_star = f64::MIN;
 
         let objective = EntropyRegularizedMaxEdge::new(eta);
@@ -120,7 +110,7 @@ impl<'a, H> ErlpBoost<'a, H> {
     }
 
     /// Sets the tolerance parameter.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
@@ -136,10 +126,9 @@ impl<'a, H> ErlpBoost<'a, H> {
         self.eta = 0.5f64.max(ln_m / self.half_tolerance);
     }
 
-    /// `max_loop` returns the maximum iteration
-    /// of the Adaboost to find a combined hypothesis
-    /// that has error at most `tolerance`.
-    /// 
+    /// Returns the entropy-regularized soft-margin iteration budget.
+    /// The tolerance concerns optimization accuracy, not classification error.
+    ///
     /// Time complexity: `O(1)`.
     fn max_loop(&mut self) -> usize {
         let n_sample = self.n_sample as f64;
@@ -156,7 +145,8 @@ impl<'a, H> ErlpBoost<'a, H> {
 }
 
 impl<H> ErlpBoost<'_, H>
-    where H: Classifier
+where
+    H: Classifier,
 {
     /// Computes the current objective value and set it to `self.gamma_hat`.
     /// Time complexity: `O(m)`, where `m` is the number of training examples.
@@ -170,7 +160,7 @@ impl<H> ErlpBoost<'_, H>
         self.gamma_hat = self.gamma_hat.min(obj_val);
     }
 
-    /// Solve the entropy regularized edge minimization problem 
+    /// Solve the entropy regularized edge minimization problem
     /// to update `self.dist.`
     fn update_distribution_mut(&mut self) {
         self.solver.solve(&self.hypotheses[..]);
@@ -179,11 +169,14 @@ impl<H> ErlpBoost<'_, H>
 }
 
 impl<H> Booster<H> for ErlpBoost<'_, H>
-    where H: Classifier + Clone,
+where
+    H: Classifier + Clone,
 {
     type Output = WeightedMajority<H>;
 
-    fn name(&self) -> &str { "ErlpBoost" }
+    fn name(&self) -> &str {
+        "ErlpBoost"
+    }
 
     fn info(&self) -> Option<Vec<(&str, String)>> {
         let (n_sample, n_feature) = self.sample.shape();
@@ -194,7 +187,7 @@ impl<H> Booster<H> for ErlpBoost<'_, H>
             ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", 2f64 * self.half_tolerance)),
             ("Max iteration", format!("{}", self.max_iter)),
-            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)"))
+            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)")),
         ]);
         Some(info)
     }
@@ -219,9 +212,9 @@ impl<H> Booster<H> for ErlpBoost<'_, H>
         self.init_solver();
     }
 
-    fn boost<W>(&mut self, weak_learner: &W, iteration: usize)
-        -> ControlFlow<usize>
-        where W: WeakLearner<Hypothesis = H>,
+    fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
+    where
+        W: WeakLearner<Hypothesis = H>,
     {
         if self.max_iter < iteration {
             println!("reached to the max iteration");
@@ -253,18 +246,15 @@ impl<H> Booster<H> for ErlpBoost<'_, H>
     }
 
     fn postprocess(&mut self) -> Self::Output {
-        let (_, weights) = soft_margin_optimization(
-            self.nu,
-            &self.sample,
-            &self.hypotheses[..],
-        );
+        let (_, weights) = soft_margin_optimization(self.nu, &self.sample, &self.hypotheses[..]);
         self.weights = weights;
         WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
 impl<H> CurrentHypothesis for ErlpBoost<'_, H>
-    where H: Classifier + Clone,
+where
+    H: Classifier + Clone,
 {
     type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
@@ -273,4 +263,3 @@ impl<H> CurrentHypothesis for ErlpBoost<'_, H>
         WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
-

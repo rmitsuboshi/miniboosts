@@ -2,11 +2,10 @@
 name = "logging"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [dependencies]
-rand            = { version = "0.8.5" }
-rayon           = { version = "1.10.0" }
-colored         = { version = "2.1.0" }
+colored         = { workspace = true }
 miniboosts_core = { path = "../miniboosts-core" }
 optimization    = { path = "../optimization" }
 

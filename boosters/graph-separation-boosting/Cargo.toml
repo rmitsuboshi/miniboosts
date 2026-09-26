@@ -2,10 +2,12 @@
 name = "graph_separation_boosting"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [dependencies]
-logging         = { path = "../../logging" }
 miniboosts_core = { path = "../../miniboosts-core" }
 hypotheses      = { path = "../../hypotheses" }
-decision_tree   = { path = "../../weak-learners/decision-tree" }
 
+
+[dev-dependencies]
+decision_tree   = { path = "../../weak-learners/decision-tree" }

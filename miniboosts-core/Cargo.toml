@@ -2,8 +2,9 @@
 name = "miniboosts_core"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [dependencies]
-rayon = { version = "1.10.0" }
-serde = { version = "1.0.206", features = ["rc", "derive"] }
+rayon = { workspace = true }
+serde = { workspace = true, features = ["rc", "derive"] }
 

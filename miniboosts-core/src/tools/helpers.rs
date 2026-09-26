@@ -1,24 +1,18 @@
 //! Provides some helper functions.
 use rayon::prelude::*;
 
-use crate::{
-    Sample,
-    Classifier,
-};
 use crate::checkers;
 use crate::constants::BINARY_SEARCH_TOLERANCE;
+use crate::{Classifier, Sample};
 
 /// Returns the edge of a single hypothesis for the given distribution.
 /// Here `edge` is the weighted training loss.
-/// 
+///
 /// Time complexity: `O(m)`, where `m` is the number of training examples.
 #[inline(always)]
-pub fn edge<H>(
-    sample: &Sample,
-    dist: &[f64],
-    h: &H
-) -> f64
-    where H: Classifier,
+pub fn edge<H>(sample: &Sample, dist: &[f64], h: &H) -> f64
+where
+    H: Classifier,
 {
     margins(sample, h)
         .zip(dist)
@@ -26,54 +20,44 @@ pub fn edge<H>(
         .sum::<f64>()
 }
 
-pub fn edge_from_margins(
-    margins: &[f64],
-    dist: &[f64],
-) -> f64
-{
-    margins.iter()
-        .zip(dist)
-        .map(|(yh, d)| *d * yh)
-        .sum::<f64>()
+pub fn edge_from_margins(margins: &[f64], dist: &[f64]) -> f64 {
+    margins.iter().zip(dist).map(|(yh, d)| *d * yh).sum::<f64>()
 }
 
 /// Returns the margin vector of a single hypothesis
 /// for the given distribution.
-/// 
+///
 /// Time complexity: `O(m)`, where `m` is the number of training examples.
 #[inline(always)]
-pub fn margins<H>(sample: &Sample, h: &H)
-    -> impl Iterator<Item=f64>
-    where H: Classifier,
+pub fn margins<H>(sample: &Sample, h: &H) -> impl Iterator<Item = f64>
+where
+    H: Classifier,
 {
     let targets = sample.target();
 
-    targets.iter()
+    targets
+        .iter()
         .enumerate()
         .map(|(i, y)| y * h.confidence(sample, i))
 }
 
-/// Computes the logarithm of 
+/// Computes the logarithm of
 /// the exponential distribution for the given combined hypothesis.
 /// The `i` th element of the output vector `d` satisfies:
 /// ```txt
 /// d[i] = - eta * yi * sum ( w[h] * h(xi) ),
 /// ```
 /// where `(xi, yi)` is the `i`-th training example.
-/// 
+///
 /// Time complexity: `O(m * n)`, where
 /// - `m` is the number of training examples and
 /// - `n` is the number of hypotheses.
 #[inline(always)]
-pub fn log_exp_distribution<H>(
-    eta: f64,
-    sample: &Sample,
-    h: &H,
-) -> impl Iterator<Item = f64>
-    where H: Classifier,
+pub fn log_exp_distribution<H>(eta: f64, sample: &Sample, h: &H) -> impl Iterator<Item = f64>
+where
+    H: Classifier,
 {
-    margins(sample, h)
-        .map(move |yhx| - eta * yhx)
+    margins(sample, h).map(move |yhx| -eta * yhx)
 }
 
 /// Computes the exponential distribution for the given combined hypothesis.
@@ -82,18 +66,14 @@ pub fn log_exp_distribution<H>(
 /// d[i] ∝ exp( - eta * yi * sum ( w[h] * h(xi) ) ),
 /// ```
 /// where `(xi, yi)` is the `i`-th training example.
-/// 
+///
 /// Time complexity: `O(m * n)`, where
 /// - `m` is the number of training examples and
 /// - `n` is the number of hypotheses.
 #[inline(always)]
-pub fn exp_distribution<H>(
-    eta: f64,
-    nu: f64,
-    sample: &Sample,
-    h: &H,
-) -> Vec<f64>
-    where H: Classifier,
+pub fn exp_distribution<H>(eta: f64, nu: f64, sample: &Sample, h: &H) -> Vec<f64>
+where
+    H: Classifier,
 {
     let log_dist = log_exp_distribution(eta, sample, h);
 
@@ -110,7 +90,8 @@ pub fn deformed_exp_distribution<H>(
     sample: &Sample,
     f: &H,
 ) -> Vec<f64>
-    where H: Classifier,
+where
+    H: Classifier,
 {
     let q = gradient_of_conjugate_deformed_entropy(deform, eta, sample, f);
 
@@ -119,8 +100,8 @@ pub fn deformed_exp_distribution<H>(
 
 /// Computes the exponential distribution from the given parameters
 /// `eta` and `nu` and an iterator `margins`.
-/// 
-/// Computational complexity: `O(m log(m))`, 
+///
+/// Computational complexity: `O(m log(m))`,
 /// where `m` is the number of training examples.
 #[inline(always)]
 pub fn deformed_exp_distribution_from_margins<I>(
@@ -129,18 +110,21 @@ pub fn deformed_exp_distribution_from_margins<I>(
     nu: f64,
     margins: I,
 ) -> Vec<f64>
-    where I: Iterator<Item = f64>,
+where
+    I: Iterator<Item = f64>,
 {
     let power = 1f64 / (1f64 - deform);
-    let mut g = margins.map(|yf| - (1f64 - deform) * eta * yf)
+    let mut g = margins
+        .map(|yf| -(1f64 - deform) * eta * yf)
         .collect::<Vec<f64>>();
 
     let max = g.iter().fold(f64::MIN, |acc, val| val.max(acc));
-    let (mut lb, mut ub) = (- max, 1f64 - max);
+    let (mut lb, mut ub) = (-max, 1f64 - max);
 
     while ub - lb > BINARY_SEARCH_TOLERANCE {
         let normalizer = (ub + lb) / 2f64;
-        let sum = g.iter()
+        let sum = g
+            .iter()
             .map(|val| (val + normalizer).max(0f64).powf(power))
             .sum::<f64>();
 
@@ -153,8 +137,9 @@ pub fn deformed_exp_distribution_from_margins<I>(
     }
 
     let normalizer = (lb + ub) / 2f64;
-    g.iter_mut()
-        .for_each(|val| { *val = (*val + normalizer).max(0f64).powf(power); });
+    g.iter_mut().for_each(|val| {
+        *val = (*val + normalizer).max(0f64).powf(power);
+    });
 
     assert!(
         g.iter().all(|gi| gi.is_finite()),
@@ -166,38 +151,28 @@ pub fn deformed_exp_distribution_from_margins<I>(
 }
 
 #[inline(always)]
-fn deformed_projection_onto_capped_simplex(nu: f64, t: f64, mut q: Vec<f64>)
-    -> Vec<f64>
-{
+fn deformed_projection_onto_capped_simplex(nu: f64, t: f64, mut q: Vec<f64>) -> Vec<f64> {
     assert!(q.iter().all(|qi| qi.is_finite()), "{q:?}");
     fn d(t: f64, q: f64, xi: f64) -> f64 {
         assert!((0f64..=1f64).contains(&t), "t = {t}");
         assert!((0f64..=1f64).contains(&q), "q = {q}");
 
-        let ret = (q.powf(1.0 - t) + (1.0 - t) * xi).max(0f64)
+        let ret = (q.powf(1.0 - t) + (1.0 - t) * xi)
+            .max(0f64)
             .powf(1.0 / (1.0 - t));
         assert!(
             ret.is_finite(),
-            "d = {ret}, q = {q}, q^(1-t) = {}", q.powf(1f64 - t)
+            "d = {ret}, q = {q}, q^(1-t) = {}",
+            q.powf(1f64 - t)
         );
         ret
     }
 
-    fn compute_xi(
-        mut lb: f64,
-        amount: f64,
-        t: f64,
-        ix: &[usize],
-        q: &[f64],
-    ) -> f64
-    {
-
+    fn compute_xi(mut lb: f64, amount: f64, t: f64, ix: &[usize], q: &[f64]) -> f64 {
         // DEBUG
         let mut ub = 1f64;
         loop {
-            let sum = ix.iter()
-                .map(|&i| d(t, q[i], ub))
-                .sum::<f64>();
+            let sum = ix.iter().map(|&i| d(t, q[i], ub)).sum::<f64>();
             if sum >= amount {
                 break;
             }
@@ -205,10 +180,12 @@ fn deformed_projection_onto_capped_simplex(nu: f64, t: f64, mut q: Vec<f64>)
         }
         while ub - lb > 0f64 {
             let xi = (lb + ub) / 2f64;
-            let sum = ix.iter()
-                .map(|&i| d(t, q[i], xi))
-                .sum::<f64>();
-            if sum < amount { lb = xi; } else { ub = xi; }
+            let sum = ix.iter().map(|&i| d(t, q[i], xi)).sum::<f64>();
+            if sum < amount {
+                lb = xi;
+            } else {
+                ub = xi;
+            }
             if (sum - amount).abs() < BINARY_SEARCH_TOLERANCE {
                 break;
             }
@@ -226,7 +203,7 @@ fn deformed_projection_onto_capped_simplex(nu: f64, t: f64, mut q: Vec<f64>)
         ix
     };
 
-    let lb = - 1f64 / (1f64 - t);
+    let lb = -1f64 / (1f64 - t);
     for i in 0..n_sample {
         let amount = 1f64 - (i as f64 / nu);
         let xi = compute_xi(lb, amount, t, &ix[i..], &q[..]);
@@ -261,20 +238,22 @@ pub fn gradient_of_conjugate_deformed_entropy<H>(
     sample: &Sample,
     f: &H,
 ) -> Vec<f64>
-    where H: Classifier,
+where
+    H: Classifier,
 {
     let power = 1f64 / (1f64 - deform);
     // (1-t) η θ
     let mut g = margins(sample, f)
-        .map(|yf| - (1f64 - deform) * eta * yf)
+        .map(|yf| -(1f64 - deform) * eta * yf)
         .collect::<Vec<f64>>();
 
     let max = g.iter().fold(f64::MIN, |acc, val| val.max(acc));
-    let (mut lb, mut ub) = (- max, 1f64 - max);
+    let (mut lb, mut ub) = (-max, 1f64 - max);
 
     while ub - lb > BINARY_SEARCH_TOLERANCE {
         let normalizer = (ub + lb) / 2f64;
-        let sum = g.iter()
+        let sum = g
+            .iter()
             .map(|val| (val + normalizer).max(0f64).powf(power))
             .sum::<f64>();
 
@@ -287,8 +266,9 @@ pub fn gradient_of_conjugate_deformed_entropy<H>(
     }
 
     let normalizer = (lb + ub) / 2f64;
-    g.iter_mut()
-        .for_each(|val| { *val = (*val + normalizer).max(0f64).powf(power); });
+    g.iter_mut().for_each(|val| {
+        *val = (*val + normalizer).max(0f64).powf(power);
+    });
 
     assert!(
         g.iter().all(|gi| gi.is_finite()),
@@ -300,88 +280,203 @@ pub fn gradient_of_conjugate_deformed_entropy<H>(
 
 /// Computes the exponential distribution from the given parameters
 /// `eta` and `nu` and an iterator `margins`.
-/// 
-/// Computational complexity: `O(m log(m))`, 
+///
+/// Computational complexity: `O(m log(m))`,
 /// where `m` is the number of training examples.
 #[inline(always)]
-pub fn exp_distribution_from_margins<I>(
-    eta: f64,
-    nu: f64,
-    margins: I,
-) -> Vec<f64>
-    where I: Iterator<Item = f64>,
+pub fn exp_distribution_from_margins<I>(eta: f64, nu: f64, margins: I) -> Vec<f64>
+where
+    I: Iterator<Item = f64>,
 {
-    let iter = margins.map(|yf| - eta * yf);
+    let iter = margins.map(|yf| -eta * yf);
     project_log_distribution_to_capped_simplex(nu, iter)
 }
 
-/// Projects the given logarithmic distribution onto the capped simplex.
-/// Capped simplex with parameter `ν (nu)` is defined as
-/// 
-/// ```txt
-/// Δ_{m, ν} := { d ∈ [0, 1/ν]^m | sum( d[i] ) = 1 }
-/// ```
-/// 
-/// That is, each coordinate takes at most `1/ν`.
-/// Specifying `ν = 1` yields the no-capped simplex.
-#[inline(always)]
-pub fn project_log_distribution_to_capped_simplex<I>(
-    nu: f64,
-    iter: I,
-) -> Vec<f64>
-    where I: Iterator<Item = f64>,
-{
-    let mut dist: Vec<_> = iter.collect();
-    let m = dist.len();
-
-    // Construct a vector of indices `ix.`
-    let mut ix = (0..m).collect::<Vec<usize>>();
-    // sort `ix` in the descending order of `dist`.
-    ix.sort_by(|&i, &j| dist[j].partial_cmp(&dist[i]).unwrap());
-
-    // `logsums[k] = ln( sum_{i=0}^{k-1} exp( -η (Aw)i ) )
-    let mut logsums = Vec::with_capacity(m);
-    let mut last    = dist[ix[m-1]];
-    logsums.push(last);
-    for &i in ix.iter().rev().skip(1) {
-        let small = last.min(dist[i]);
-        let large = last.max(dist[i]);
-        last = large + (1f64 + (small - large).exp()).ln();
-        logsums.push(last);
+/// Add two log-domain nonnegative quantities. Negative infinity is zero.
+/// Panics for NaN or positive infinity.
+pub fn logaddexp(a: f64, b: f64) -> f64 {
+    assert!(
+        !a.is_nan() && a != f64::INFINITY && !b.is_nan() && b != f64::INFINITY,
+        "invalid log weight"
+    );
+    if a == f64::NEG_INFINITY {
+        return b;
     }
+    if b == f64::NEG_INFINITY {
+        return a;
+    }
+    a.max(b) + (a.min(b) - a.max(b)).exp().ln_1p()
+}
 
-    // NOTE:
-    // The following is the efficient projection 
-    // onto the probability simplex capped by `1/ν.`
-    // This code comes from the paper:
-    //
-    // Shai Shalev-Shwartz and Yoram Singer.
-    // On the equivalence of weak learnability and linear separability:
-    // new relaxations and efficient boosting algorithms.
-    // [Journal of Machine Learning 2010]
-    //
-    // Note that the parameter `ν` in the paper corresponds to
-    // `1/nu` in this code.
-    let ub = 1.0 / nu;
-    let log_nu = nu.ln();
-    let mut ix_with_logsum = ix.into_iter()
-        .zip(logsums.into_iter().rev())
-        .enumerate();
-    for (i, (i_sorted, logsum)) in ix_with_logsum.by_ref() {
-        let log_xi = (1.0 - ub * i as f64).ln() - logsum;
-        // TODO replace this line by `get_unchecked`
-        let d = dist[i_sorted];
+fn log_weight_max(values: &[f64]) -> f64 {
+    assert!(!values.is_empty(), "log weights must be nonempty");
+    assert!(
+        values.iter().all(|v| !v.is_nan() && *v != f64::INFINITY),
+        "log weights must be finite or negative infinity"
+    );
+    let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    assert!(max.is_finite(), "log weights must have positive support");
+    max
+}
 
-        // Check the stopping criterion
-        if log_xi + d + log_nu <= 0.0 {
-            dist[i_sorted] = (log_xi + d).exp();
-            for (_, (ii, _)) in ix_with_logsum {
-                dist[ii] = (log_xi + dist[ii]).exp();
+// Neumaier summation; absolute-value comparison also supports signed margins.
+fn compensated_sum(values: impl Iterator<Item = f64>) -> f64 {
+    let (mut sum, mut correction) = (0.0_f64, 0.0_f64);
+    for value in values {
+        let next = sum + value;
+        correction += if sum.abs() >= value.abs() {
+            (sum - next) + value
+        } else {
+            (value - next) + sum
+        };
+        sum = next;
+    }
+    sum + correction
+}
+
+/// Normalize log weights in O(n), using max-shifted exponentials and direct
+/// division (equation (4) in Blanchard, Higham & Higham,
+/// <https://arxiv.org/abs/1909.03469>). The sum uses compensated accumulation.
+///
+/// Panics for empty input, NaN, positive infinity, or no finite entries.
+/// Negative infinity denotes exact zero; finite tiny probabilities may underflow.
+pub fn softmax(log_weights: &[f64]) -> Vec<f64> {
+    let max = log_weight_max(log_weights);
+    let mut probabilities: Vec<_> = log_weights.iter().map(|v| (v - max).exp()).collect();
+    let sum = compensated_sum(probabilities.iter().copied());
+    probabilities.iter_mut().for_each(|p| *p /= sum);
+    probabilities
+}
+
+/// Return normalized probabilities and retain normalized logs in `log_weights`.
+/// Uses the same contract and shifted computation as [`softmax`], without
+/// taking logarithms of rounded probabilities. Finite underflowed probabilities
+/// thus retain their log mass for later updates. Panics if a finite normalized
+/// log cannot be represented as a finite `f64`.
+pub fn normalize_log_weights(log_weights: &mut [f64]) -> Vec<f64> {
+    let max = log_weight_max(log_weights);
+    let mut probabilities: Vec<_> = log_weights.iter().map(|v| (v - max).exp()).collect();
+    let sum = compensated_sum(probabilities.iter().copied());
+    let log_sum = sum.ln();
+    for (log_weight, probability) in log_weights.iter_mut().zip(&mut probabilities) {
+        let was_finite = log_weight.is_finite();
+        let normalized = (*log_weight - max) - log_sum;
+        assert!(
+            !was_finite || normalized.is_finite(),
+            "normalized log weight exceeds the finite f64 range"
+        );
+        *log_weight = normalized;
+        *probability /= sum;
+    }
+    probabilities
+}
+
+/// Compute `atanh(edge)` from log weights and margins without mistaking
+/// rounded probabilities for perfect classification. Weights need not be
+/// normalized. Margins must be finite and in `[-1, 1]`, with matching lengths;
+/// log weights follow [`softmax`]'s contract.
+///
+/// Uses compensated summation and `ln_1p` near zero. Near either endpoint,
+/// computes half the log ratio of weighted `(1 + margin)` and `(1 - margin)`
+/// sums, avoiding cancellation in `1 - edge`. Returns positive/negative
+/// infinity only when every supported margin is exactly positive/negative one.
+/// Panics if a finite log-weight spread is not representable in `f64`.
+pub fn log_weighted_edge_coefficient(log_weights: &[f64], margins: &[f64]) -> f64 {
+    let max = log_weight_max(log_weights);
+    assert_eq!(
+        log_weights.len(),
+        margins.len(),
+        "weights and margins must match"
+    );
+    assert!(
+        margins
+            .iter()
+            .all(|m| m.is_finite() && (-1.0..=1.0).contains(m)),
+        "margins must be finite and lie in [-1, 1]"
+    );
+    let shifted: Vec<_> = log_weights
+        .iter()
+        .map(|&log| {
+            let value = log - max;
+            assert!(
+                !log.is_finite() || value.is_finite(),
+                "log-weight spread exceeds f64 range"
+            );
+            value
+        })
+        .collect();
+    let total = compensated_sum(shifted.iter().map(|x| x.exp()));
+    let edge = compensated_sum(shifted.iter().zip(margins).map(|(x, m)| x.exp() * m)) / total;
+    if edge.abs() < 0.5 {
+        return 0.5 * (edge.ln_1p() - (-edge).ln_1p());
+    }
+    let (mut plus, mut minus) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for (&log, &margin) in shifted.iter().zip(margins) {
+        if log == f64::NEG_INFINITY {
+            continue;
+        }
+        if margin != -1.0 {
+            plus = logaddexp(plus, log + margin.ln_1p());
+        }
+        if margin != 1.0 {
+            minus = logaddexp(minus, log + (-margin).ln_1p());
+        }
+    }
+    0.5 * plus - 0.5 * minus
+}
+
+/// KL-project log weights onto `{d: 0 <= d[i] <= 1/nu, sum(d) = 1}`.
+/// Uses the sorted active-set method of Shalev-Shwartz and Singer (2010),
+/// "On the equivalence of weak learnability and linear separability".
+/// Sorting is required here; complexity is O(n log n).
+///
+/// Panics for invalid log weights (see [`softmax`]), non-finite `nu`, or
+/// `nu` outside `1..=support_size`. Negative-infinity entries stay zero, so
+/// fewer than `nu` finite entries make the constrained support infeasible.
+pub fn project_log_distribution_to_capped_simplex<I>(nu: f64, iter: I) -> Vec<f64>
+where
+    I: Iterator<Item = f64>,
+{
+    let logs: Vec<_> = iter.collect();
+    log_weight_max(&logs);
+    let support = logs.iter().filter(|v| v.is_finite()).count();
+    assert!(
+        nu.is_finite() && nu >= 1.0 && nu <= support as f64,
+        "nu must lie between one and the finite support size"
+    );
+    if nu == 1.0 {
+        return softmax(&logs);
+    }
+    let cap = 1.0 / nu;
+    let mut dist = vec![0.0; logs.len()];
+    if nu == support as f64 {
+        for (p, log) in dist.iter_mut().zip(&logs) {
+            if log.is_finite() {
+                *p = cap;
+            }
+        }
+        return dist;
+    }
+    let mut ix: Vec<_> = (0..logs.len()).filter(|&i| logs[i].is_finite()).collect();
+    ix.sort_by(|&i, &j| logs[j].partial_cmp(&logs[i]).unwrap());
+
+    // Store each suffix log-sum relative to its own largest entry. Adding a
+    // small log-normalizer to an absolute log weight (e.g. 1e16) loses it.
+    let mut suffix = vec![0.0; support];
+    for i in (0..support - 1).rev() {
+        suffix[i] = logaddexp(0.0, (logs[ix[i + 1]] - logs[ix[i]]) + suffix[i + 1]);
+    }
+    for i in 0..support {
+        let remaining = (nu - i as f64) / nu;
+        if remaining * (-suffix[i]).exp() <= cap {
+            let max = logs[ix[i]];
+            let sum = compensated_sum(ix[i..].iter().map(|&j| (logs[j] - max).exp()));
+            for &j in &ix[i..] {
+                dist[j] = remaining * ((logs[j] - max).exp() / sum);
             }
             break;
         }
-
-        dist[i_sorted] = ub;
+        dist[ix[i]] = cap;
     }
     checkers::capped_simplex_condition(&dist, nu);
     dist
@@ -410,40 +505,32 @@ pub fn entropy<T: AsRef<[f64]>>(dist: T) -> f64 {
 /// Compute the inner-product of the given two slices.
 #[inline(always)]
 pub fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
-    v1.into_par_iter()
-        .zip(v2)
-        .map(|(a, b)| a * b)
-        .sum::<f64>()
+    v1.into_par_iter().zip(v2).map(|(a, b)| a * b).sum::<f64>()
 }
 
 /// Normalizes the given slice.
 #[inline(always)]
 pub fn normalize(items: &mut [f64]) {
-    let z = items.iter()
-        .map(|it| it.abs())
-        .sum::<f64>();
+    let z = items.iter().map(|it| it.abs()).sum::<f64>();
 
     assert_ne!(z, 0.0, "{items:?}");
 
-    items.par_iter_mut()
-        .for_each(|item| { *item /= z; });
+    items.par_iter_mut().for_each(|item| {
+        *item /= z;
+    });
 }
 
 /// Computes the Hadamard product of given two matrices.
 #[inline(always)]
-pub fn hadamard_product(mut m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>)
-    -> Vec<Vec<f64>>
-{
+pub fn hadamard_product(mut m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>) -> Vec<Vec<f64>> {
     assert_eq!(m1.len(), m2.len());
     assert_eq!(m1[0].len(), m2[0].len());
 
-    m1.iter_mut()
-        .zip(m2)
-        .for_each(|(r1, r2)| {
-            r1.iter_mut()
-                .zip(r2)
-                .for_each(|(a, b)| { *a *= b; });
+    m1.iter_mut().zip(m2).for_each(|(r1, r2)| {
+        r1.iter_mut().zip(r2).for_each(|(a, b)| {
+            *a *= b;
         });
+    });
     m1
 }
 
@@ -483,9 +570,7 @@ pub fn deformed_logarithm(t: f64, x: f64) -> f64 {
 /// ```
 pub fn deformed_exponential(t: f64, x: f64) -> f64 {
     assert!((0f64..1f64).contains(&t));
-    (1f64 + (1f64 - t) * x)
-        .max(0f64)
-        .powf(1f64 / (1f64 - t))
+    (1f64 + (1f64 - t) * x).max(0f64).powf(1f64 / (1f64 - t))
 }
 
 /// Compute the deformed t-entropy
@@ -501,44 +586,201 @@ pub fn deformed_entropy<T: AsRef<[f64]>>(t: f64, dist: T) -> f64 {
 /// Returns an index whose entry is the minimal value.
 pub fn argmin(arr: &[f64]) -> usize {
     let dim = arr.len();
-    let (ix, _) = arr.iter()
-        .enumerate()
-        .fold((dim, f64::MAX), |acc, (i, &a)| {
-            if acc.1 < a {
-                acc
-            } else {
-                (i, a)
-            }
-        });
-    assert_ne!(
-        ix, dim,
-        "failed to execute argmin. array is {arr:?}"
-    );
+    let (ix, _) =
+        arr.iter().enumerate().fold(
+            (dim, f64::MAX),
+            |acc, (i, &a)| {
+                if acc.1 < a { acc } else { (i, a) }
+            },
+        );
+    assert_ne!(ix, dim, "failed to execute argmin. array is {arr:?}");
     ix
 }
 
 /// Returns an index whose entry is the maximal value.
 pub fn argmax(arr: &[f64]) -> usize {
     let dim = arr.len();
-    let (ix, _) = arr.iter()
-        .enumerate()
-        .fold((dim, f64::MIN), |acc, (i, &a)| {
-            if acc.1 < a {
-                (i, a)
-            } else {
-                acc
-            }
-        });
-    assert_ne!(
-        ix, dim,
-        "failed to execute argmax. array is {arr:?}"
-    );
+    let (ix, _) =
+        arr.iter().enumerate().fold(
+            (dim, f64::MIN),
+            |acc, (i, &a)| {
+                if acc.1 < a { (i, a) } else { acc }
+            },
+        );
+    assert_ne!(ix, dim, "failed to execute argmax. array is {arr:?}");
     ix
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_distribution(actual: &[f64], expected: &[f64], cap: f64) {
+        assert_eq!(actual.len(), expected.len());
+        // A few ulps cover exp/division rounding in these small fixtures.
+        assert!((actual.iter().sum::<f64>() - 1.0).abs() < 2e-15);
+        for (&a, &e) in actual.iter().zip(expected) {
+            assert!(a.is_finite() && a >= 0.0 && a <= cap + 2e-15);
+            assert!((a - e).abs() < 2e-15, "{actual:?} != {expected:?}");
+        }
+    }
+
+    #[test]
+    fn softmax_handles_offsets_zeros_and_underflow() {
+        assert_eq!(softmax(&[1e16, 1e16]), vec![0.5, 0.5]);
+        let mut equal_logs = [1e16, 1e16];
+        assert_eq!(normalize_log_weights(&mut equal_logs), vec![0.5, 0.5]);
+        assert_eq!(equal_logs, [-2.0_f64.ln(); 2]);
+        assert_eq!(softmax(&[-10000.0, -10000.0]), vec![0.5, 0.5]);
+        assert_eq!(softmax(&[f64::NEG_INFINITY, 0.0]), vec![0.0, 1.0]);
+        assert_eq!(softmax(&[f64::MAX, f64::MIN]), vec![1.0, 0.0]);
+        let expected = softmax(&[0.0, -2.0, -4.0]);
+        assert_distribution(&softmax(&[1e16, 1e16 - 2.0, 1e16 - 4.0]), &expected, 1.0);
+        let mut logs = [0.0, -1000.0, f64::NEG_INFINITY];
+        assert_eq!(normalize_log_weights(&mut logs), vec![1.0, 0.0, 0.0]);
+        assert_eq!(logs, [0.0, -1000.0, f64::NEG_INFINITY]);
+        // A later update can revive a rounded-to-zero but finite log mass.
+        logs[1] += 1000.0;
+        assert_eq!(normalize_log_weights(&mut logs), vec![0.5, 0.5, 0.0]);
+        assert_eq!(logs[0], -2.0_f64.ln());
+        assert_eq!(logs[1], logs[0]);
+    }
+
+    #[test]
+    fn compensated_softmax_keeps_small_collective_mass() {
+        let mut logs = vec![(1e-16_f64).ln(); 10_000];
+        logs[0] = 0.0;
+        let p = softmax(&logs);
+        let expected = 1.0 / (1.0 + 9999.0 * 1e-16);
+        assert!((p[0] - expected).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn logaddexp_preserves_small_terms_and_zero_identity() {
+        assert_eq!(
+            logaddexp(f64::NEG_INFINITY, f64::NEG_INFINITY),
+            f64::NEG_INFINITY
+        );
+        assert_eq!(logaddexp(-1000.0, f64::NEG_INFINITY), -1000.0);
+        assert_eq!(logaddexp(0.0, 0.0), 2.0_f64.ln());
+        assert!(logaddexp(0.0, -40.0) > 0.0);
+    }
+
+    #[test]
+    fn log_edge_coefficient_distinguishes_underflow_from_perfection() {
+        assert_eq!(
+            log_weighted_edge_coefficient(&[0.0, -1000.0], &[1.0, -1.0]),
+            500.0
+        );
+        assert_eq!(
+            log_weighted_edge_coefficient(&[0.0, -1000.0], &[-1.0, 1.0]),
+            -500.0
+        );
+        assert_eq!(
+            log_weighted_edge_coefficient(&[0.0, f64::NEG_INFINITY], &[1.0, -1.0]),
+            f64::INFINITY
+        );
+        assert_eq!(
+            log_weighted_edge_coefficient(&[0.0, -1000.0], &[-1.0, -1.0]),
+            f64::NEG_INFINITY
+        );
+        for edge in [1e-18, -1e-18, 0.2, -0.2] {
+            let actual = log_weighted_edge_coefficient(&[1e16, 1e16], &[edge, edge]);
+            let expected = edge.atanh();
+            assert!((actual - expected).abs() <= 2.0 * f64::EPSILON * expected.abs());
+        }
+        assert_eq!(
+            log_weighted_edge_coefficient(&[0.0, 0.0], &[1.0, -1.0]),
+            0.0
+        );
+        assert!(
+            std::panic::catch_unwind(|| log_weighted_edge_coefficient(&[0.0], &[f64::NAN]))
+                .is_err()
+        );
+        assert!(
+            std::panic::catch_unwind(|| log_weighted_edge_coefficient(&[0.0], &[1.1])).is_err()
+        );
+        assert!(
+            std::panic::catch_unwind(|| log_weighted_edge_coefficient(&[f64::INFINITY], &[1.0]))
+                .is_err()
+        );
+        assert!(std::panic::catch_unwind(|| log_weighted_edge_coefficient(&[0.0], &[])).is_err());
+    }
+
+    #[test]
+    fn capped_projection_preserves_support_and_shift_invariance() {
+        assert_distribution(
+            &project_log_distribution_to_capped_simplex(
+                2.0,
+                [1000.0, 0.0, 0.0, f64::NEG_INFINITY].into_iter(),
+            ),
+            &[0.5, 0.25, 0.25, 0.0],
+            0.5,
+        );
+        assert_distribution(
+            &project_log_distribution_to_capped_simplex(3.0, [1000.0, 0.0, -1000.0].into_iter()),
+            &[1.0 / 3.0; 3],
+            1.0 / 3.0,
+        );
+        assert_distribution(
+            &project_log_distribution_to_capped_simplex(
+                2.0,
+                [0.0, f64::NEG_INFINITY, 0.0].into_iter(),
+            ),
+            &[0.5, 0.0, 0.5],
+            0.5,
+        );
+        assert_distribution(
+            &project_log_distribution_to_capped_simplex(
+                2.0,
+                [f64::MAX, f64::MIN, f64::MIN].into_iter(),
+            ),
+            &[0.5, 0.25, 0.25],
+            0.5,
+        );
+        for nu in [1.0, 1.5, 2.0, 2.9999999999999996, 3.0] {
+            let base =
+                project_log_distribution_to_capped_simplex(nu, [0.0, -2.0, -4.0].into_iter());
+            let shifted = project_log_distribution_to_capped_simplex(
+                nu,
+                [1e16, 1e16 - 2.0, 1e16 - 4.0].into_iter(),
+            );
+            assert_distribution(&shifted, &base, 1.0 / nu);
+        }
+        let p = project_log_distribution_to_capped_simplex(2.0, [1e16; 3].into_iter());
+        assert_distribution(&p, &[1.0 / 3.0; 3], 0.5);
+    }
+
+    #[test]
+    fn normalization_rejects_invalid_inputs_and_infeasible_support() {
+        for values in [
+            vec![],
+            vec![f64::NAN],
+            vec![f64::INFINITY],
+            vec![f64::NEG_INFINITY; 2],
+        ] {
+            assert!(std::panic::catch_unwind(|| softmax(&values)).is_err());
+            assert!(
+                std::panic::catch_unwind(|| normalize_log_weights(&mut values.clone())).is_err()
+            );
+            assert!(
+                std::panic::catch_unwind(|| project_log_distribution_to_capped_simplex(
+                    1.0,
+                    values.iter().copied()
+                ))
+                .is_err()
+            );
+        }
+        for nu in [0.0, 3.0, f64::NAN, f64::INFINITY] {
+            assert!(
+                std::panic::catch_unwind(|| project_log_distribution_to_capped_simplex(
+                    nu,
+                    [0.0, 0.0, f64::NEG_INFINITY].into_iter()
+                ))
+                .is_err()
+            );
+        }
+    }
 
     struct TestHypothesis {
         threshold: f64,
@@ -611,10 +853,7 @@ mod tests {
         let m = sample.shape().0;
         let expected = vec![1f64; m];
         for (i, (e, yh)) in expected.into_iter().zip(margins).enumerate() {
-            assert_eq!(
-                e, yh,
-                "failed for {i}th example. expected {e}, got {yh}."
-            );
+            assert_eq!(e, yh, "failed for {i}th example. expected {e}, got {yh}.");
         }
     }
 
@@ -625,11 +864,7 @@ mod tests {
         let margins = margins(&sample, &h);
         let expected = [-1.0, 1.0, -1.0, 1.0];
         for (i, (e, yh)) in expected.into_iter().zip(margins).enumerate() {
-            assert_eq!(
-                e, yh,
-                "failed for {i}th example. expected {e}, got {yh}."
-            );
+            assert_eq!(e, yh, "failed for {i}th example. expected {e}, got {yh}.");
         }
     }
 }
-

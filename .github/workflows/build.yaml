@@ -1,25 +1,22 @@
-name: Build check
+name: Build and test
 on:
+  pull_request:
   push:
     branches: ['main']
-    paths:
-      - '.github/workflows/build.yaml'
-      - 'Cargo.toml'
-      - 'src/**'
 jobs:
-  ubuntu:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo check --workspace --locked
+      - run: cargo test --workspace --locked
+  msrv:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build --release
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cargo build --release
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cargo build --release
-
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - run: cargo test --workspace --locked

@@ -1,6 +1,5 @@
 use crate::Sample;
 
-
 /// A trait that defines the behavor of classifier.
 /// You only need to implement `confidence` method.
 pub trait Classifier {
@@ -19,15 +18,16 @@ pub trait Classifier {
     /// Computes the confidence of `df`.
     fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
         let n_sample = sample.shape().0;
-        (0..n_sample).map(|row| self.confidence(sample, row))
+        (0..n_sample)
+            .map(|row| self.confidence(sample, row))
             .collect::<Vec<_>>()
     }
 
     /// Predicts the labels of `df`.
-    fn predict_all(&self, sample: &Sample) -> Vec<i64>
-    {
+    fn predict_all(&self, sample: &Sample) -> Vec<i64> {
         let n_sample = sample.shape().0;
-        (0..n_sample).map(|row| self.predict(sample, row))
+        (0..n_sample)
+            .map(|row| self.predict(sample, row))
             .collect::<Vec<_>>()
     }
 }
@@ -39,11 +39,10 @@ pub trait Regressor {
     fn predict(&self, sample: &Sample, row: usize) -> f64;
 
     /// Predicts the labels of `df`.
-    fn predict_all(&self, sample: &Sample) -> Vec<f64>
-    {
+    fn predict_all(&self, sample: &Sample) -> Vec<f64> {
         let n_sample = sample.shape().0;
-        (0..n_sample).map(|row| self.predict(sample, row))
+        (0..n_sample)
+            .map(|row| self.predict(sample, row))
             .collect::<Vec<_>>()
     }
 }
-

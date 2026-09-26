@@ -1,8 +1,8 @@
 //! This file defines some tools for tree algorithms
-use serde::{Serialize, Deserialize};
-use std::{fmt, cmp, ops};
-use std::collections::HashMap;
 use crate::Sample;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::{cmp, fmt, ops};
 
 /// This is an alias from label of type `i32`
 /// to non-negative weight of type `f64`.
@@ -20,7 +20,8 @@ impl<T> From<T> for Prediction<T> {
 }
 
 impl<T> ops::Add<Self> for Prediction<T>
-    where T: ops::Add<Output = T>,
+where
+    T: ops::Add<Output = T>,
 {
     type Output = Self;
     #[inline]
@@ -41,7 +42,8 @@ impl<T> From<T> for Confidence<T> {
 }
 
 impl<T> ops::Add<Self> for Confidence<T>
-    where T: ops::Add<Output = T>,
+where
+    T: ops::Add<Output = T>,
 {
     type Output = Self;
     #[inline]
@@ -235,10 +237,7 @@ impl Splitter {
     #[inline]
     pub fn new(name: &str, threshold: f64) -> Self {
         let feature = name.to_string();
-        Self {
-            feature,
-            threshold
-        }
+        Self { feature, threshold }
     }
 
     /// Defines the splitting.
@@ -248,7 +247,11 @@ impl Splitter {
 
         let value = sample[name][row];
 
-        if value < self.threshold { LeftRight::Left } else { LeftRight::Right }
+        if value < self.threshold {
+            LeftRight::Left
+        } else {
+            LeftRight::Right
+        }
     }
 }
 
@@ -340,4 +343,3 @@ mod tests {
         assert!(res, "failed for {d1:?} <= {rhs}. got {res}.");
     }
 }
-

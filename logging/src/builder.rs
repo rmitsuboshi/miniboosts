@@ -1,5 +1,5 @@
-use miniboosts_core::Sample;
 use crate::Logger;
+use miniboosts_core::Sample;
 
 const DEFAULT_ROUND: usize = 100;
 const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
@@ -15,61 +15,31 @@ const DEFAULT_TIMELIMIT_MILLIS: u128 = u128::MAX;
 /// - Test examples,
 /// - Time limit for force quit, and
 /// - Round (The log text is shown for every **round** you specified).
-/// 
+///
 /// # Example
 /// ```no_run
-/// use miniboostes::prelude::*;
-/// use miniboosts::research::{Logger, LoggerBuilder};
-/// use miniboosts::ExponentialLoss;
+/// use logging::{LoggerBuilder, LoggingSoftMarginObjective};
+/// use miniboosts_core::{Booster, Classifier, CurrentHypothesis, Sample, WeakLearner};
 ///
-///
-/// fn zero_one_loss<H>(sample: &Sample, f: &H)
-///     -> f64
-///     where H: Classifier
+/// fn record<B, W, H, S, O>(booster: B, learner: W, train: &Sample, test: &Sample)
+///     -> std::io::Result<O>
+/// where
+///     B: Booster<H, Output = O> + CurrentHypothesis<Output = S>,
+///     W: WeakLearner<Hypothesis = H>,
+///     S: Classifier,
+///     O: Classifier,
 /// {
-///     let n_sample = sample.shape().0 as f64;
-/// 
-///     let target = sample.target();
-/// 
-///     f.predict_all(sample)
-///         .into_iter()
-///         .zip(target.into_iter())
-///         .map(|(hx, &y)| if hx != y as i64 { 1.0 } else { 0.0 })
-///         .sum::<f64>()
-///         / n_sample
-/// }
-/// 
-/// fn main() {
-///     let has_header = true;
-///     let train = Sample::from_csv(path_to_train_file, has_header)
-///         .expect("Failed to read the training sample")
-///         .set_target("class");
-///     let test = Sample::from_csv(path_to_test_file, has_header)
-///         .expect("Failed to read the test sample")
-///         .set_target("class");
-///
-///     let adaboost = AdaBoost::init(&train)
-///         .tolerance(0.01);
-///     
-///     let tree = DecisionTreeBuilder::new(&train)
-///         .max_depth(2)
-///         .criterion(Criterion::Entropy)
-///         .build();
-///
-///     let objective = ExponentialLoss::new();
-///
-///     let logger = LoggerBuilder::new()
-///         .booster(adaboost)
-///         .weak_learner(tree)
-///         .train_sample(train)
-///         .test_sample(test)
-///         .objective_function(objective)
-///         .loss_function(zero_one_loss)
-///         .time_limit_as_secs(300);
-///
-///     let file = "output.csv";
-///     let f = logger.run(file)
-///         .expect("Failed to run the boosting algorithm");
+///     let loss = |sample: &Sample, model: &S| {
+///         model.predict_all(sample).iter().zip(sample.target())
+///             .filter(|(prediction, label)| **prediction as f64 != **label).count()
+///             as f64 / sample.shape().0 as f64
+///     };
+///     LoggerBuilder::new()
+///         .booster(booster).weak_learner(learner)
+///         .train_sample(train).test_sample(test)
+///         .objective_function(LoggingSoftMarginObjective::new(1.0))
+///         .loss_function(loss).time_limit_as_secs(300)
+///         .build().run("output.csv")
 /// }
 /// ```
 pub struct LoggerBuilder<'a, B, W, F, G> {
@@ -135,8 +105,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     }
 
     /// Set the time limit for boosting algorithm as milliseconds.
-    /// If the boosting algorithm reaches this limit,
-    /// breaks immediately.
+    /// Checked between steps using cumulative boosting time; see [`Logger::run`].
     #[inline(always)]
     pub fn time_limit_as_millis(mut self, time_limit: u128) -> Self {
         self.time_limit = time_limit;
@@ -144,21 +113,21 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     }
 
     /// Set the time limit for boosting algorithm as seconds.
-    /// If the boosting algorithm reaches this limit,
-    /// breaks immediately.
+    /// Checked between steps using cumulative boosting time; see [`Logger::run`].
     #[inline(always)]
     pub fn time_limit_as_secs(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128).checked_mul(1_000_u128)
+        self.time_limit = (time_limit as u128)
+            .checked_mul(1_000_u128)
             .expect("The time limit (ms) cannot be represented as u128");
         self
     }
 
     /// Set the time limit for boosting algorithm as minutes.
-    /// If the boosting algorithm reaches this limit,
-    /// breaks immediately.
+    /// Checked between steps using cumulative boosting time; see [`Logger::run`].
     #[inline(always)]
     pub fn time_limit_as_mins(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128).checked_mul(60_u128)
+        self.time_limit = (time_limit as u128)
+            .checked_mul(60_u128)
             .expect("The time limit (s) cannot be represented as u128")
             .checked_mul(1_000u128)
             .expect("The time limit (ms) cannot be represented as u128");
@@ -171,24 +140,21 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// set `usize::MAX`.
     #[inline(always)]
     pub fn print_every(mut self, round: usize) -> Self {
+        assert!(round > 0, "print interval must be positive");
         self.round = round;
         self
     }
 
     /// Build [Logger] from the given components.
     pub fn build(self) -> Logger<'a, B, W, F, G> {
-        let booster = self.booster
-            .expect("Boosting algorithm is not specified");
-        let weak_learner = self.weak_learner
-            .expect("Weak learner is not specified");
-        let objective_func = self.objective_func
+        let booster = self.booster.expect("Boosting algorithm is not specified");
+        let weak_learner = self.weak_learner.expect("Weak learner is not specified");
+        let objective_func = self
+            .objective_func
             .expect("Objective function is not specified");
-        let loss_func = self.loss_func
-            .expect("Loss function is not specified");
-        let train = self.train
-            .expect("Training sample is not specified");
-        let test = self.test
-            .expect("Test sample is not specified");
+        let loss_func = self.loss_func.expect("Loss function is not specified");
+        let train = self.train.expect("Training sample is not specified");
+        let test = self.test.expect("Test sample is not specified");
         let time_limit = self.time_limit;
         let round = self.round;
 

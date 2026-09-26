@@ -1,16 +1,11 @@
-pub mod constants;
-pub mod tools;
-pub mod sample;
 pub mod booster;
-pub mod weak_learner;
+pub mod constants;
 pub mod hypothesis;
+pub mod sample;
+pub mod tools;
+pub mod weak_learner;
 
-pub use tools::{
-    binning,
-    checkers,
-    helpers,
-    tree,
-};
+pub use tools::{binning, checkers, helpers, tree};
 
 /// A struct that returns [`Sample`].
 /// Using this struct, one can read a CSV/SVMLIGHT format file to [`Sample`].
@@ -27,22 +22,17 @@ pub use tools::{
 ///     .read()
 ///     .unwrap();
 /// ```
-pub use sample::{
-    SampleReader,
-    Sample,
-    Feature,
-};
+pub use sample::{Feature, Sample, SampleReader};
 
-pub use weak_learner::{
-    WeakLearner,
-};
+pub use weak_learner::WeakLearner;
 
-pub use booster::{
-    Booster,
-};
+pub use booster::Booster;
 
-pub use hypothesis::{
-    Classifier,
-    Regressor,
-};
+pub use hypothesis::{Classifier, Regressor};
 
+/// A snapshot of a booster's current model, used by experiment loggers.
+/// Implementations must preserve the final model's prediction semantics.
+pub trait CurrentHypothesis {
+    type Output;
+    fn current_hypothesis(&self) -> Self::Output;
+}

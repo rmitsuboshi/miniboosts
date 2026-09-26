@@ -1,23 +1,17 @@
 //! This file defines `SoftBoost` based on the paper
 //! "Boosting Algorithms for Maximizing the Soft Margin"
 //! by Warmuth et al.
-//! 
+//!
 use crate::solver::SoftBoostSolver;
-use miniboosts_core::{
-    Sample,
-    Booster,
-    WeakLearner,
-    Classifier,
-    tools::helpers,
-    tools::checkers,
-    constants::{
-        DEFAULT_CAPPING,
-        DEFAULT_TOLERANCE,
-    },
-};
 use hypotheses::WeightedMajority;
+use miniboosts_core::CurrentHypothesis;
+use miniboosts_core::{
+    Booster, Classifier, Sample, WeakLearner,
+    constants::{DEFAULT_CAPPING, DEFAULT_TOLERANCE},
+    tools::checkers,
+    tools::helpers,
+};
 use optimization::soft_margin_optimization;
-use logging::CurrentHypothesis;
 
 use std::ops::ControlFlow;
 
@@ -42,7 +36,8 @@ pub struct SoftBoost<'a, H> {
 }
 
 impl<'a, H> SoftBoost<'a, H>
-    where H: Classifier
+where
+    H: Classifier,
 {
     /// Initialize the `SoftBoost`.
     pub fn init(sample: &'a Sample) -> Self {
@@ -52,23 +47,23 @@ impl<'a, H> SoftBoost<'a, H>
         SoftBoost {
             sample,
 
-            gamma_hat:  1f64,
-            tolerance:  DEFAULT_TOLERANCE,
-            nu:         DEFAULT_CAPPING,
+            gamma_hat: 1f64,
+            tolerance: DEFAULT_TOLERANCE,
+            nu: DEFAULT_CAPPING,
 
-            solver:     SoftBoostSolver::new(sample),
+            solver: SoftBoostSolver::new(sample),
 
-            dist:       Vec::new(),
-            weights:    Vec::new(),
+            dist: Vec::new(),
+            weights: Vec::new(),
             hypotheses: Vec::new(),
 
-            max_iter:   usize::MAX,
+            max_iter: usize::MAX,
             terminated: usize::MAX,
         }
     }
 
     /// Set the capping parameter.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn nu(mut self, nu: f64) -> Self {
@@ -80,10 +75,14 @@ impl<'a, H> SoftBoost<'a, H>
     }
 
     /// Set the tolerance parameter.
-    /// 
+    ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "SoftBoost tolerance must be finite and positive"
+        );
         self.tolerance = tolerance;
         self
     }
@@ -92,30 +91,29 @@ impl<'a, H> SoftBoost<'a, H>
         self.solver.initialize(self.nu);
     }
 
-    /// `max_loop` returns the maximum iteration
-    /// of the Adaboost to find a combined hypothesis
-    /// that has error at most `tolerance`.
-    /// 
+    /// Iteration bound for the soft-margin objective gap (Theorem 2 in
+    /// Warmuth, Glocer and Raetsch, 2007), not classification error.
+    ///
     /// Time complexity: `O(1)`.
     pub fn max_loop(&mut self) -> usize {
         let m = self.sample.shape().0 as f64;
 
         let ln_m = (m / self.nu).ln();
-        (2f64 * ln_m / self.tolerance.powi(2)).ceil() as usize
+        // Even at nu=m, obtain one hypothesis before forming the output.
+        ((2f64 * ln_m / self.tolerance.powi(2)).ceil() as usize).max(1)
     }
 }
 
 impl<H> SoftBoost<'_, H>
-    where H: Classifier,
+where
+    H: Classifier,
 {
     /// Updates `self.dist`
     /// Returns `None` if the stopping criterion satisfied.
     fn update_params_mut(&mut self) -> Option<()> {
-        let result = self.solver.solve(
-            self.gamma_hat,
-            self.tolerance,
-            &self.hypotheses[..],
-        );
+        let result = self
+            .solver
+            .solve(self.gamma_hat, self.tolerance, &self.hypotheses[..]);
         if let Some(_) = result {
             self.dist = self.solver.distribution_on_examples();
             if self.dist.iter().any(|&d| d == 0f64) {
@@ -127,11 +125,14 @@ impl<H> SoftBoost<'_, H>
 }
 
 impl<H> Booster<H> for SoftBoost<'_, H>
-    where H: Classifier + Clone,
+where
+    H: Classifier + Clone,
 {
     type Output = WeightedMajority<H>;
 
-    fn name(&self) -> &str { "SoftBoost" }
+    fn name(&self) -> &str {
+        "SoftBoost"
+    }
 
     fn info(&self) -> Option<Vec<(&str, String)>> {
         let (n_examples, n_feature) = self.sample.shape();
@@ -142,7 +143,7 @@ impl<H> Booster<H> for SoftBoost<'_, H>
             ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", self.tolerance)),
             ("Max iteration", format!("{}", self.max_iter)),
-            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)"))
+            ("Capping (outliers)", format!("{nu} ({ratio: >7.3} %)")),
         ]);
         Some(info)
     }
@@ -163,9 +164,9 @@ impl<H> Booster<H> for SoftBoost<'_, H>
         self.initialize_solver();
     }
 
-    fn boost<W>(&mut self, weak_learner: &W, iteration: usize)
-        -> ControlFlow<usize>
-        where W: WeakLearner<Hypothesis = H>,
+    fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
+    where
+        W: WeakLearner<Hypothesis = H>,
     {
         if self.max_iter < iteration {
             return ControlFlow::Break(self.max_iter);
@@ -189,27 +190,48 @@ impl<H> Booster<H> for SoftBoost<'_, H>
     }
 
     fn postprocess(&mut self) -> Self::Output {
-        let (_, weights) = soft_margin_optimization(
-            self.nu,
-            self.sample,
-            &self.hypotheses[..],
-        );
+        let (_, weights) = soft_margin_optimization(self.nu, self.sample, &self.hypotheses[..]);
         self.weights = weights;
         WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }
 }
 
 impl<H> CurrentHypothesis for SoftBoost<'_, H>
-    where H: Classifier + Clone,
+where
+    H: Classifier + Clone,
 {
     type Output = WeightedMajority<H>;
     fn current_hypothesis(&self) -> Self::Output {
-        let (_, weights) = soft_margin_optimization(
-            self.nu,
-            self.sample,
-            &self.hypotheses[..],
-        );
+        let (_, weights) = soft_margin_optimization(self.nu, self.sample, &self.hypotheses[..]);
         WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
     }
 }
 
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+
+    #[derive(Clone)]
+    struct Oracle;
+    impl Classifier for Oracle {
+        fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+            [1.0, 0.0, -1.0][row] * sample.target()[row]
+        }
+    }
+    impl WeakLearner for Oracle {
+        type Hypothesis = Self;
+        fn produce(&self, _: &Sample, dist: &[f64]) -> Self {
+            assert!(dist.iter().all(|d| (*d - 1.0 / 3.0).abs() < 1e-12));
+            Self
+        }
+    }
+    #[test]
+    fn full_capping_obtains_a_hypothesis_before_stopping() {
+        let sample = Sample::dummy(3);
+        let mut booster = SoftBoost::init(&sample).nu(3.0);
+        let output = booster.run(&Oracle);
+        assert_eq!(output.hypotheses.len(), 1);
+        assert!((output.weights[0] - 1.0).abs() < 1e-7);
+        assert!(output.confidence(&sample, 0).is_finite());
+    }
+}

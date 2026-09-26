@@ -2,15 +2,11 @@
 //! E.g., Shape of data
 
 use crate::Sample;
-use crate::constants::{
-    NUMERIC_TOLERANCE,
-    SIMPLEX_TOLERANCE,
-};
+use crate::constants::{NUMERIC_TOLERANCE, SIMPLEX_TOLERANCE};
 
 /// Check whether the training sample is valid or not.
 #[inline(always)]
-pub fn sample(sample: &Sample)
-{
+pub fn sample(sample: &Sample) {
     let (n_examples, n_feature) = sample.shape();
 
     // `data` and `target` must have the length greater than `0`.
@@ -53,7 +49,10 @@ pub fn capped_simplex_condition(slice: &[f64], nu: f64) {
     capping_parameter(nu, length);
 
     let sum = slice.iter().sum::<f64>();
-    assert!((sum - 1f64).abs() < SIMPLEX_TOLERANCE, "sum(dist[..]) = {sum}");
+    assert!(
+        (sum - 1f64).abs() < SIMPLEX_TOLERANCE,
+        "sum(dist[..]) = {sum}"
+    );
 
     let ub = 1f64 / nu + NUMERIC_TOLERANCE;
     assert!(
@@ -68,21 +67,21 @@ mod tests {
     use super::*;
     #[test]
     fn test_nu_success_01() {
-        let m  = 1_000;
+        let m = 1_000;
         let nu = 0.01 * m as f64;
         capping_parameter(nu, m);
     }
 
     #[test]
     fn test_nu_success_02() {
-        let m  = 1_000;
+        let m = 1_000;
         let nu = 1f64;
         capping_parameter(nu, m);
     }
 
     #[test]
     fn test_nu_success_03() {
-        let m  = 1_000;
+        let m = 1_000;
         let nu = m as f64;
         capping_parameter(nu, m);
     }
@@ -90,7 +89,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_nu_failure_01() {
-        let m  = 1_000;
+        let m = 1_000;
         let nu = 0f64;
         capping_parameter(nu, m);
     }
@@ -98,7 +97,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_nu_failure_02() {
-        let m  = 1_000;
+        let m = 1_000;
         let nu = (m + 1) as f64;
         capping_parameter(nu, m);
     }
@@ -167,4 +166,3 @@ mod tests {
         deformation_parameter(s);
     }
 }
-
