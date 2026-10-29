@@ -1,0 +1,21 @@
+{
+  "python": "3.12.15",
+  "numpy": "2.5.3",
+  "sklearn": "1.9.1",
+  "matplotlib": "3.11.2",
+  "miniboosts": "0.5.0",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "processor": "arm",
+  "cpu_count": 8,
+  "git_commit": "4ae05a715d59826260401f18173d6005c9eeecc6",
+  "git_dirty": true,
+  "build": "maturin release wheel, local uncommitted Python bindings",
+  "timing": "wall time of Python fit only, includes validation/copies and Python/Rust callbacks; excludes prediction",
+  "seeds": {
+    "train": 42,
+    "test": 142
+  },
+  "split": "independently generated test sample; no parameter selection on test",
+  "RAYON_NUM_THREADS": "default"
+}

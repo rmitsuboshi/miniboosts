@@ -69,6 +69,39 @@ This builds the extension locally; the Python package is not yet on PyPI.
 Rust users need no Python dependencies. See the Python guide for examples,
 algorithm parameters, the explicit sklearn `PredictionAdapter`, and limits.
 
+## Decision boundaries from Python
+
+These figures use the Python API to run all 11 algorithms with the same data
+and depth-2 Rust decision trees. Point colors show training labels, background
+colors show predicted classes, and black lines mark zero ensemble confidence.
+`train` and `test` report accuracy; test points are generated independently.
+
+### Two moons
+
+80 training points with coordinate noise, with a limit of 100 rounds.
+SoftBoost failed with solver status `AlmostSolved` at `nu=5`; its panel explicitly
+shows a separate run with `nu=1`. The other capped methods use `nu=5`.
+
+![Python decision boundaries on two moons](img/python/two-moons/decision-boundaries.png)
+
+### Overlapping spirals with label noise
+
+160 training points with stronger coordinate noise; 20 training labels (12.5%)
+are flipped and marked with rings. Test labels are not flipped. The iteration
+limit is 60, and capped methods use `nu=16`. All 11 runs completed successfully.
+Fine-grained boundaries can fit corrupted labels without improving test accuracy.
+
+![Python decision boundaries on noisy spirals](img/python/noisy-spirals/decision-boundaries.png)
+
+These are illustrative runs, not a performance ranking or a comparison at equal
+optimization accuracy. `(cap)` marks an iteration-limit stop. In particular,
+CorrectiveERLP uses ShortStep and is capped at 60 in this figure; a separate
+300-round-budget run stopped at round 91. Algorithm stopping conditions depend
+on weak-learner assumptions and do not by themselves certify global optimality.
+
+Reproduction scripts, seeds, parameters, results, and environment records are
+available in [the figure directory](img/python/README.md).
+
 ## Algorithms
 
 Import these types from `miniboosts` or `miniboosts::prelude`:
