@@ -82,6 +82,9 @@ bound. Theoretical guarantees require the corresponding paper's weak-learning
 or optimization-oracle assumptions and accurate subproblem solutions; using a
 decision tree does not by itself ensure that these assumptions hold.
 
+MLPBoost defaults to line-search Frank–Wolfe updates. Classic and ShortStep
+are available explicitly through `update_rule`.
+
 For soft-margin methods, `nu` caps example weights at `1 / nu`, with
 `1 <= nu <= number_of_examples`. It does not guarantee a particular number of
 misclassified examples. SmoothBoost requires a weak-learning advantage `gamma` and a target

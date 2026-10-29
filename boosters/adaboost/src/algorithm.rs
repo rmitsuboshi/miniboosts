@@ -63,15 +63,26 @@ impl<'a, F> AdaBoost<'a, F> {
         }
     }
 
-    /// Returns the configured iteration budget, `ceil(ln(m) / tolerance²)`.
+    /// Returns the configured iteration budget, `ceil(ln(m) / tolerance²)`,
+    /// with at least one round for a nonempty sample. Budgets exceeding
+    /// `usize::MAX` saturate at that value.
     /// This is not a measured training-error stopping condition. Convergence
     /// guarantees require the weak-learning assumptions in the source method.
+    /// See [Freund and Schapire, 1997](https://www.sciencedirect.com/science/article/pii/S002200009791504X).
+    /// Rounding up and the one-round minimum are implementation budget policies,
+    /// not additional convergence guarantees. A singleton budget can be queried,
+    /// but training still requires the core's valid binary sample contract.
     ///
     /// Time complexity: `O(1)`.
     pub fn max_loop(&self) -> usize {
         let n_sample = self.sample.shape().0 as f64;
 
-        (n_sample.ln() / self.tolerance.powi(2)) as usize
+        let budget = (n_sample.ln() / self.tolerance.powi(2)).ceil() as usize;
+        if n_sample > 0.0 {
+            budget.max(1)
+        } else {
+            budget
+        }
     }
 
     /// Force quits after at most `it` iterations.
@@ -88,7 +99,14 @@ impl<'a, F> AdaBoost<'a, F> {
     /// Training error is not checked against this value each round.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if `tolerance` is not finite and strictly positive.
     pub fn tolerance(mut self, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "tolerance must be finite and strictly positive"
+        );
         self.tolerance = tolerance;
         self
     }
@@ -227,6 +245,37 @@ mod log_weight_tests {
     }
 
     #[test]
+    fn budget_rounds_up_and_allows_a_round_for_nonempty_samples() {
+        let sample = Sample::dummy(2);
+        // ln(2) / 0.5² = 2.77258... must allow the third round.
+        let mut booster = AdaBoost::<Hypothesis>::init(&sample).tolerance(0.5);
+        assert_eq!(booster.max_loop(), 3);
+        booster.preprocess();
+        assert_eq!(booster.max_iter, 3);
+        assert_eq!(AdaBoost::<()>::init(&sample).tolerance(2.0).max_loop(), 1);
+        let singleton = Sample::dummy(1);
+        assert_eq!(AdaBoost::<()>::init(&singleton).max_loop(), 1);
+        assert_eq!(
+            AdaBoost::<()>::init(&sample)
+                .tolerance(f64::MIN_POSITIVE)
+                .max_loop(),
+            usize::MAX
+        );
+    }
+
+    #[test]
+    fn explicit_iteration_override_is_preserved() {
+        let sample = Sample::dummy(2);
+        for rounds in [0, 1, 10] {
+            let mut booster = AdaBoost::<Hypothesis>::init(&sample)
+                .tolerance(0.5)
+                .force_quit_at(rounds);
+            booster.preprocess();
+            assert_eq!(booster.max_iter, rounds);
+        }
+    }
+
+    #[test]
     fn underflowed_mass_recovers_and_preprocessing_resets_logs() {
         let sample = Sample::dummy(2);
         let mut booster = AdaBoost::<Hypothesis>::init(&sample).tolerance(0.25);
@@ -313,5 +362,33 @@ mod log_weight_tests {
         assert!(booster.weights[0].is_finite());
         assert!(booster.dist[0] > 0.1);
         assert!((booster.dist.iter().sum::<f64>() - 1.0).abs() < 1e-14);
+    }
+}
+
+#[cfg(test)]
+mod parameter_tests {
+    use super::*;
+
+    #[test]
+    fn tolerance_rejects_nonpositive_and_nonfinite_values() {
+        let sample = Sample::dummy(2);
+        for value in [0.0, -0.0, -0.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                std::panic::catch_unwind(|| {
+                    AdaBoost::<()>::init(&sample).tolerance(value);
+                })
+                .is_err(),
+                "accepted invalid tolerance {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn tolerance_preserves_positive_finite_values() {
+        let sample = Sample::dummy(2);
+        for value in [f64::MIN_POSITIVE, 0.25, 2.0, f64::MAX] {
+            let booster = AdaBoost::<()>::init(&sample).tolerance(value);
+            assert_eq!(booster.tolerance, value);
+        }
     }
 }

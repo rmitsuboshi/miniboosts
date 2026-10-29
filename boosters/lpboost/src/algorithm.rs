@@ -85,8 +85,15 @@ where
     /// Default value is `0.01`.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if `tolerance` is not finite and strictly positive.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "tolerance must be finite and strictly positive"
+        );
         self.tolerance = tolerance;
         self
     }
@@ -197,5 +204,40 @@ where
         let weights = self.solver.weights_on_hypotheses();
 
         WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
+    }
+}
+
+#[cfg(test)]
+mod parameter_tests {
+    use super::*;
+
+    struct Hypothesis;
+    impl Classifier for Hypothesis {
+        fn confidence(&self, _: &Sample, _: usize) -> f64 {
+            0.0
+        }
+    }
+
+    #[test]
+    fn tolerance_rejects_nonpositive_and_nonfinite_values() {
+        let sample = Sample::dummy(2);
+        for value in [0.0, -0.0, -0.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                std::panic::catch_unwind(|| {
+                    LpBoost::<Hypothesis>::init(&sample).tolerance(value);
+                })
+                .is_err(),
+                "accepted invalid tolerance {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn tolerance_preserves_positive_finite_values() {
+        let sample = Sample::dummy(2);
+        for value in [f64::MIN_POSITIVE, 0.25, 2.0, f64::MAX] {
+            let booster = LpBoost::<Hypothesis>::init(&sample).tolerance(value);
+            assert_eq!(booster.tolerance, value);
+        }
     }
 }

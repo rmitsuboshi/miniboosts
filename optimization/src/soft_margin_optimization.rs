@@ -81,18 +81,38 @@ where
     let mut solver = build_solver(obj, mat, sns, rhs);
     solver.solve();
 
+    // AlmostSolved is a numerical status, not an optimality certificate.
+    // Apply the same explicit residual/gap checks to both successful statuses.
+    let solution = &solver.solution;
+    let tolerance = 1e-7;
     assert!(
-        matches! { solver.solution.status, SolverStatus::Solved },
-        "unexped solver status. got {}",
-        solver.solution.status,
+        matches!(
+            solution.status,
+            SolverStatus::Solved | SolverStatus::AlmostSolved
+        ) && solution.x.iter().chain(&solution.z).all(|v| v.is_finite())
+            && solution.obj_val.is_finite()
+            && solution.obj_val_dual.is_finite()
+            && solution.r_prim.is_finite()
+            && solution.r_dual.is_finite()
+            && solution.r_prim <= tolerance
+            && solution.r_dual <= tolerance
+            && (solution.obj_val - solution.obj_val_dual).abs() <= tolerance,
+        "soft-margin LP failed numerical checks: status={}, primal residual={}, dual residual={}, gap={}",
+        solution.status,
+        solution.r_prim,
+        solution.r_dual,
+        (solution.obj_val - solution.obj_val_dual).abs(),
     );
 
-    let objval = -solver.solution.obj_val;
+    let objval = -solution.obj_val;
     let start = 1 + n_examples;
-    let weight = solver.solution.x[start..]
-        .iter()
-        .map(|w| w.max(0f64))
-        .collect::<Vec<f64>>();
+    let raw_weights = &solution.x[start..];
+    assert!(raw_weights.iter().all(|w| *w >= -tolerance));
+    assert!((raw_weights.iter().sum::<f64>() - 1.0).abs() <= tolerance);
+    let mut weight: Vec<_> = raw_weights.iter().map(|w| w.max(0.0)).collect();
+    let sum: f64 = weight.iter().sum();
+    assert!(sum.is_finite() && sum > 0.0);
+    weight.iter_mut().for_each(|w| *w /= sum);
 
     (objval, weight)
 }
@@ -365,6 +385,23 @@ mod regression_tests {
         fn confidence(&self, sample: &Sample, row: usize) -> f64 {
             self.0[row] * sample.target()[row]
         }
+    }
+
+    #[test]
+    fn final_soft_margin_lp_returns_the_known_simplex_optimum() {
+        let sample = Sample::dummy(3);
+        let (value, weights) = soft_margin_optimization(
+            1.0,
+            &sample,
+            [Margins([1.0, 0.0, -1.0]), Margins([-1.0, 0.0, 1.0])],
+        );
+        assert!(value.abs() < 1e-7);
+        assert!(
+            weights
+                .iter()
+                .all(|w| w.is_finite() && (*w - 0.5).abs() < 1e-7)
+        );
+        assert!((weights.iter().sum::<f64>() - 1.0).abs() < 1e-14);
     }
 
     #[test]

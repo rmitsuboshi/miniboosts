@@ -1,5 +1,5 @@
 use miniboosts::prelude::*;
-use miniboosts::{FwUpdateRule, Logger, LoggingSoftMarginObjective, Sample};
+use miniboosts::{Logger, LoggingSoftMarginObjective, Sample};
 use std::{error::Error, path::PathBuf};
 
 const ALGORITHMS: &[&str] = &[
@@ -143,12 +143,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "softboost" => run!(SoftBoost::init(&train).tolerance(tolerance).nu(nu)),
         "lpboost" => run!(LpBoost::init(&train).tolerance(tolerance).nu(nu)),
         "erlpboost" => run!(ErlpBoost::init(&train).tolerance(tolerance).nu(nu)),
-        "mlpboost" => run!(
-            MlpBoost::init(&train)
-                .tolerance(tolerance)
-                .nu(nu)
-                .update_rule(FwUpdateRule::Classic)
-        ),
+        "mlpboost" => run!(MlpBoost::init(&train).tolerance(tolerance).nu(nu)),
         "cerlpboost" => run!(
             CorrectiveErlpBoost::init(&train)
                 .tolerance(tolerance)

@@ -64,3 +64,67 @@ The experiment runner uses the booster's default ShortStep rule; Classic remains
 available explicitly, but its fixed schedule need not improve the objective each
 round and can converge slowly for small tolerances. Regenerate earlier CERLPBoost
 CSVs before comparing runs.
+
+Booster refinements after the main-branch review:
+
+- AdaBoost, MadaBoost, LPBoost, ERLPBoost, CorrectiveERLPBoost and MLPBoost
+  reject non-finite or nonpositive tolerances. The entropy-regularized methods
+  also reject tolerances whose half underflows or whose derived regularization
+  parameter is not representable. Parameter meanings are unchanged.
+- AdaBoost's calculated round budget now uses the documented ceiling, with
+  at least one round for a nonempty sample. An explicit `force_quit_at` still
+  overrides that budget. The existing training-data validator still requires
+  both label classes; this does not enable singleton training.
+- MLPBoost's Classic schedule counts the initial atom as `w_1`, so the next
+  FW candidate uses `2/3`, then `1/2`, following
+  [Algorithm 1 and Theorem 3](https://arxiv.org/abs/2209.10831).
+  Previously that first candidate used a full step. Classic remains available explicitly.
+- CorrectiveERLPBoost caches the current training margin vector in O(m) space.
+  MLPBoost caches one margin column per accepted hypothesis in O(mT) additional
+  space. Weak hypotheses must return stable predictions for a fixed sample;
+  historical hypotheses are no longer repeatedly evaluated during these updates.
+  Summation order changes can affect rounding near stopping thresholds.
+- GraphSeparationBoosting stores prediction-history groups instead of all
+  opposite-label pairs. Its graph maintenance takes expected O(m) time per
+  round and O(m) space, excluding hypothesis prediction and final aggregation.
+  Its degree distribution and existing one-round stall rule are unchanged for
+  valid binary labels. Labels other than -1 and +1 now fail before training.
+- ERLPBoost's Shannon-entropy subproblem now uses an exponential-cone
+  formulation of the same KL-regularized problem, following
+  [Warmuth et al., Algorithm 1](https://mwarmuth.bitbucket.io/pubs/C83.pdf).
+  The earlier SQP descent safeguard could panic on the ordinary breast-cancer
+  example; quadratic-model accuracy did not certify entropy-objective descent.
+  The new path checks the repaired primal objective against an independent
+  capped-entropy dual lower bound (gap at most `1e-7`) and uses that lower bound
+  for the outer stopping test. This is a floating-point numerical certificate,
+  not an interval-arithmetic proof. Extremely small outer tolerances may require
+  a tighter inner solver policy. Solver failures still panic and clear old
+  results; they are not accepted as convergence. Generic non-Shannon objectives
+  keep their SQP path. `RowGenerationObjective::entropy_parameter()` defaults
+  to `None`, so existing custom objective implementations remain compatible.
+
+
+These are computational and numerical changes, not a measured end-to-end
+speedup claim. Regenerate experiment results when comparing with earlier commits.
+
+MLPBoost now defaults to `FwUpdateRule::LineSearch` instead of `ShortStep`.
+The example runner also uses this default instead of explicitly selecting Classic.
+Classic and ShortStep remain opt-in. Line search numerically minimizes the same
+regularized objective along the FW segment; see the discussion following Theorem 3
+in [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831).
+This changes learned trajectories and stopping times, so regenerate MLPBoost
+experiment outputs. CorrectiveERLPBoost's default remains ShortStep.
+
+Final soft-margin LP postprocessing now accepts `AlmostSolved` only after explicit
+finite-value, primal/dual residual, absolute duality-gap, and simplex checks
+(at `1e-7`). `Solved` receives the same checks. Tiny negative weights are
+clamped and the weights normalized; failed or insufficiently accurate solves
+still raise an error. This fixes a postprocessing panic exposed by the
+MLPBoost line-search run.
+
+Generic SQP treats a small objective increase as numerical stationarity only
+when the current point's quadratic-model gap is within the measured QP gap
+(with a roundoff floor). This replaces a fixed coordinate-distance cutoff that
+could panic near a simplex boundary despite an accurate deformed-entropy solve.
+It checks model accuracy, not an independent original-objective certificate;
+the Shannon-entropy path retains its separate primal/dual certificate.

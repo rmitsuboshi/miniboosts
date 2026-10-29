@@ -1,4 +1,6 @@
 pub mod edge_minimization;
+mod entropy_certificate;
+mod entropy_solver;
 pub mod frank_wolfe;
 pub mod objective_function;
 pub mod soft_margin_optimization;

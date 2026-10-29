@@ -6,6 +6,6 @@ rust-version.workspace = true
 
 [dependencies]
 colored         = { workspace = true }
-miniboosts_core = { path = "../miniboosts-core" }
-optimization    = { path = "../optimization" }
+miniboosts_core = { path = "../miniboosts-core", version = "0.1.0" }
+optimization    = { path = "../optimization", version = "0.1.0" }
 

@@ -10,7 +10,7 @@
 //! since it is referred as `the Corrective version of CorrectiveErlpBoost`
 //! in "Entropy Regularized LPBoost" by Warmuth et al.
 //!
-use hypotheses::{RefWeightedMajority, WeightedMajority};
+use hypotheses::WeightedMajority;
 use miniboosts_core::CurrentHypothesis;
 use miniboosts_core::{
     Booster, Classifier, Sample, WeakLearner,
@@ -39,6 +39,8 @@ pub struct CorrectiveErlpBoost<'a, H> {
     frank_wolfe: FrankWolfe<CorrErlpFwObjective>,
     update_rule: FwUpdateRule,
     weights: Vec<f64>,
+    // Cached training margins Aw; no historical hypothesis inference per step.
+    margins: Vec<f64>,
     hypotheses: Vec<H>,
 
     max_iter: usize,
@@ -77,6 +79,7 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
             update_rule,
 
             weights: Vec::new(),
+            margins: Vec::new(),
             hypotheses: Vec::new(),
             max_iter: usize::MAX,
             terminated: usize::MAX,
@@ -95,10 +98,20 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
 
     /// Set the soft-margin objective tolerance. The stopping gap uses half
     /// this value; it is not a classification-error threshold.
+    /// Panics unless the value is finite, positive, and its half is nonzero.
+    /// Preprocessing also rejects an unrepresentable regularization parameter.
     ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "tolerance must be finite and positive"
+        );
+        assert!(
+            tolerance / 2.0 > 0.0,
+            "half tolerance must be representable"
+        );
         self.half_tolerance = tolerance / 2.0;
         self
     }
@@ -133,6 +146,10 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
         } else {
             ln_part / self.half_tolerance
         };
+        assert!(
+            self.eta.is_finite() && self.eta > 0.0,
+            "regularization parameter must be finite and positive"
+        );
     }
 
     /// Returns the iteration budget for the configured soft-margin objective
@@ -166,30 +183,26 @@ where
 {
     /// Updates weight on hypotheses and `self.dist` in this order.
     fn update_distribution_mut(&mut self) {
-        let f = RefWeightedMajority::new(&self.weights[..], &self.hypotheses[..]);
-        let neg_margins = helpers::margins(self.sample, &f)
-            .map(|yf| -yf)
-            .collect::<Vec<_>>();
+        let neg_margins: Vec<_> = self.margins.iter().map(|m| -m).collect();
         self.dist = self.objective.gradient(&neg_margins[..]);
     }
 
-    fn update_params_mut(&mut self, h: H, mut cur_margins: Vec<f64>, mut new_margins: Vec<f64>) {
+    fn update_params_mut(&mut self, h: H, new_margins: Vec<f64>) {
         // Shalev-Shwartz and Singer (2008), Fig. 1, starts at w=0 and
         // applies the same update on every round. Forcing the first weight
         // to one skips the short step and restarts Classic's schedule.
-        cur_margins.iter_mut().for_each(|yf| {
-            *yf *= -1f64;
-        });
-
-        new_margins.iter_mut().for_each(|yh| {
-            *yh *= -1f64;
-        });
-
+        let negative_current: Vec<_> = self.margins.iter().map(|m| -m).collect();
+        let negative_new: Vec<_> = new_margins.iter().map(|m| -m).collect();
         let stepsize = self
             .frank_wolfe
-            .get_stepsize_mut(&cur_margins[..], &new_margins[..]);
+            .get_stepsize_mut(&negative_current, &negative_new);
         match stepsize {
             StepSize::Normal(stepsize) => {
+                // Fig. 1: A((1-a)w + a e_h) = (1-a)Aw + a Ah.
+                // This uses O(m) state instead of re-evaluating all past trees.
+                for (margin, new) in self.margins.iter_mut().zip(new_margins) {
+                    *margin = (1.0 - stepsize) * *margin + stepsize * new;
+                }
                 self.weights.iter_mut().for_each(|w| {
                     *w *= 1f64 - stepsize;
                 });
@@ -241,6 +254,7 @@ where
         let uni = 1f64 / n_examples as f64;
 
         self.dist = vec![uni; n_examples];
+        self.margins = vec![0.0; n_examples];
 
         self.regularization_param();
         self.max_iter = self.max_loop();
@@ -264,24 +278,27 @@ where
         // Receive a hypothesis from the base learner
         let h = weak_learner.produce(self.sample, &self.dist);
 
+        let new_margins: Vec<_> = helpers::margins(self.sample, &h).collect();
+        assert!(
+            new_margins
+                .iter()
+                .all(|m| m.is_finite() && (-1.0..=1.0).contains(m)),
+            "weak hypothesis margins must be finite and lie in [-1, 1]"
+        );
+
         // With nu=m the dual feasible set is the singleton uniform distribution.
         // One oracle call suffices; retain it even when its edge is nonpositive.
         if self.nu == self.sample.shape().0 as f64 {
+            self.margins = new_margins;
             self.hypotheses.push(h);
             self.weights = vec![1.0];
             self.terminated = iteration;
             return ControlFlow::Break(iteration);
         }
 
-        let cur_margins = {
-            let f = RefWeightedMajority::new(&self.weights, &self.hypotheses[..]);
-            helpers::margins(self.sample, &f).collect::<Vec<_>>()
-        };
-        let new_margins = helpers::margins(self.sample, &h).collect::<Vec<_>>();
-
         let duality_gap = {
             let e1 = helpers::inner_product(&new_margins[..], &self.dist[..]);
-            let e2 = helpers::inner_product(&cur_margins[..], &self.dist[..]);
+            let e2 = helpers::inner_product(&self.margins, &self.dist[..]);
             e1 - e2
         };
 
@@ -291,7 +308,7 @@ where
             return ControlFlow::Break(iteration);
         }
 
-        self.update_params_mut(h, cur_margins, new_margins);
+        self.update_params_mut(h, new_margins);
 
         ControlFlow::Continue(())
     }
@@ -360,6 +377,112 @@ mod regression_tests {
         type Hypothesis = Self;
         fn produce(&self, _: &Sample, _: &[f64]) -> Self {
             self.clone()
+        }
+    }
+
+    #[test]
+    fn rejects_nonfinite_oracle_and_unrepresentable_eta() {
+        let sample = Sample::dummy(3);
+        let mut tiny = CorrectiveErlpBoost::<Margins>::init(&sample).tolerance(f64::from_bits(2));
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tiny.preprocess())).is_err()
+        );
+        for nu in [1.0, 3.0] {
+            let mut booster = CorrectiveErlpBoost::init(&sample).nu(nu);
+            booster.preprocess();
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                    || booster.boost(&Margins([f64::NAN, 0.0, 0.0]), 1)
+                ))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_tolerance() {
+        let sample = Sample::dummy(3);
+        for tolerance in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::from_bits(1)] {
+            assert!(
+                std::panic::catch_unwind(
+                    || CorrectiveErlpBoost::<Margins>::init(&sample).tolerance(tolerance)
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn cached_margins_match_model_and_do_not_reinfer_old_hypotheses() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        #[derive(Clone, Debug, PartialEq)]
+        struct Counted {
+            values: [f64; 3],
+            calls: Rc<Cell<usize>>,
+        }
+        impl Classifier for Counted {
+            fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+                self.calls.set(self.calls.get() + 1);
+                self.values[row] * sample.target()[row]
+            }
+        }
+        impl WeakLearner for Counted {
+            type Hypothesis = Self;
+            fn produce(&self, _: &Sample, _: &[f64]) -> Self {
+                self.clone()
+            }
+        }
+        let sample = Sample::dummy(3);
+        let calls = Rc::new(Cell::new(0));
+        let atoms = [[1.0, 1.0, -1.0], [-1.0, 1.0, 1.0], [1.0, -1.0, 1.0]];
+        for rule in [
+            FwUpdateRule::Classic,
+            FwUpdateRule::ShortStep,
+            FwUpdateRule::LineSearch,
+        ] {
+            let mut booster = CorrectiveErlpBoost::init(&sample)
+                .update_rule(rule)
+                .tolerance(0.01);
+            // Reusing the booster must reset all cached margins and schedules.
+            for _ in 0..2 {
+                booster.preprocess();
+                for round in 1..=20 {
+                    let values = *atoms
+                        .iter()
+                        .max_by(|a, b| {
+                            helpers::edge_from_margins(*a, &booster.dist)
+                                .total_cmp(&helpers::edge_from_margins(*b, &booster.dist))
+                        })
+                        .unwrap();
+                    calls.set(0);
+                    let flow = booster.boost(
+                        &Counted {
+                            values,
+                            calls: calls.clone(),
+                        },
+                        round,
+                    );
+                    assert!(calls.get() <= 3, "old hypotheses were evaluated again");
+                    let model = booster.current_hypothesis();
+                    let direct: Vec<_> = helpers::margins(&sample, &model).collect();
+                    let cached: Vec<f64> = booster.margins.clone();
+                    for (a, b) in direct.iter().zip(&cached) {
+                        // At most 20 convex updates of bounded margins; covers
+                        // accumulated rounding, far below the stopping gap.
+                        assert!((a - b).abs() < 1e-12, "{a} != {b}");
+                    }
+                    let expected = booster
+                        .objective
+                        .gradient(&direct.iter().map(|m| -m).collect::<Vec<_>>());
+                    for (a, b) in expected.iter().zip(&booster.dist) {
+                        assert!((a - b).abs() < 1e-10);
+                    }
+                    if flow.is_break() {
+                        break;
+                    }
+                }
+            }
         }
     }
 
