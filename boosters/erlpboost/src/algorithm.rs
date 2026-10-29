@@ -87,7 +87,7 @@ impl<'a, H> ErlpBoost<'a, H> {
         }
     }
 
-    /// Initialize the sequential quadratic programming solver.
+    /// Initialize the entropy-cone solver.
     fn init_solver(&mut self) {
         let objective = EntropyRegularizedMaxEdge::new(self.eta);
         self.solver.initialize(self.nu, objective);
@@ -109,11 +109,20 @@ impl<'a, H> ErlpBoost<'a, H> {
         self.terminated
     }
 
-    /// Sets the tolerance parameter.
+    /// Sets the finite, positive optimization tolerance.
+    /// Panics if its half underflows; preprocessing also rejects a non-finite eta.
     ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "tolerance must be finite and positive"
+        );
+        assert!(
+            tolerance / 2.0 > 0.0,
+            "half tolerance must be representable"
+        );
         self.half_tolerance = tolerance / 2f64;
         self
     }
@@ -124,6 +133,10 @@ impl<'a, H> ErlpBoost<'a, H> {
     fn regularization_param(&mut self) {
         let ln_m = (self.n_sample as f64 / self.nu).ln();
         self.eta = 0.5f64.max(ln_m / self.half_tolerance);
+        assert!(
+            self.eta.is_finite(),
+            "regularization parameter must be finite"
+        );
     }
 
     /// Returns the entropy-regularized soft-margin iteration budget.
@@ -241,7 +254,13 @@ where
         self.update_distribution_mut();
 
         // update `self.gamma_star`.
-        self.gamma_star = self.solver.optval();
+        // Algorithm 1 requires the restricted optimum. A numerically feasible
+        // primal value is an upper bound, so use the entropy dual lower bound
+        // to avoid stopping early on an inaccurate inner solution.
+        self.gamma_star = self
+            .solver
+            .objective_lower_bound()
+            .expect("ERLPBoost requires an entropy dual lower bound");
         ControlFlow::Continue(())
     }
 
@@ -261,5 +280,27 @@ where
         let weights = self.solver.weights_on_hypotheses();
 
         WeightedMajority::from_slices(&weights[..], &self.hypotheses[..])
+    }
+}
+
+#[cfg(test)]
+mod parameter_tests {
+    use super::*;
+    #[test]
+    fn rejects_invalid_tolerance() {
+        let sample = Sample::dummy(3);
+        for tolerance in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::from_bits(1)] {
+            assert!(
+                std::panic::catch_unwind(|| ErlpBoost::<()>::init(&sample).tolerance(tolerance))
+                    .is_err()
+            );
+        }
+        let mut booster = ErlpBoost::<()>::init(&sample).tolerance(f64::from_bits(2));
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                || booster.regularization_param()
+            ))
+            .is_err()
+        );
     }
 }

@@ -6,9 +6,9 @@ rust-version.workspace = true
 
 [dependencies]
 rayon           = { workspace = true }
-miniboosts_core = { path = "../../miniboosts-core" }
-hypotheses      = { path = "../../hypotheses" }
+miniboosts_core = { path = "../../miniboosts-core", version = "0.1.0" }
+hypotheses      = { path = "../../hypotheses", version = "0.1.0" }
 
 
 [dev-dependencies]
-decision_tree   = { path = "../../weak-learners/decision-tree" }
+decision_tree   = { path = "../../weak-learners/decision-tree", version = "0.1.0" }

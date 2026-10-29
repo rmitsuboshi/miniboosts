@@ -88,7 +88,14 @@ impl<'a, F> MadaBoost<'a, F> {
     /// This does not test the training error after each round.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if `tolerance` is not finite and strictly positive.
     pub fn tolerance(mut self, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "tolerance must be finite and strictly positive"
+        );
         self.tolerance = tolerance;
         self
     }
@@ -334,5 +341,33 @@ mod regression_tests {
         assert!(booster.boost(&RecoversMass, 1).is_continue());
         assert!(booster.alphas[0].is_finite());
         assert!((booster.distribution()[0] - 0.5).abs() < 1e-12);
+    }
+}
+
+#[cfg(test)]
+mod parameter_tests {
+    use super::*;
+
+    #[test]
+    fn tolerance_rejects_nonpositive_and_nonfinite_values() {
+        let sample = Sample::dummy(2);
+        for value in [0.0, -0.0, -0.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                std::panic::catch_unwind(|| {
+                    MadaBoost::<()>::init(&sample).tolerance(value);
+                })
+                .is_err(),
+                "accepted invalid tolerance {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn tolerance_preserves_positive_finite_values() {
+        let sample = Sample::dummy(2);
+        for value in [f64::MIN_POSITIVE, 0.25, 2.0, f64::MAX] {
+            let booster = MadaBoost::<()>::init(&sample).tolerance(value);
+            assert_eq!(booster.tolerance, value);
+        }
     }
 }

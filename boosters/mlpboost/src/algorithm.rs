@@ -3,7 +3,7 @@
 //! by Mitsuboshi et al.
 //!
 use corrective_erlpboost::CorrErlpFwObjective;
-use hypotheses::{RefWeightedMajority, WeightedMajority};
+use hypotheses::WeightedMajority;
 use miniboosts_core::CurrentHypothesis;
 use miniboosts_core::{
     Booster, Classifier, Sample, WeakLearner,
@@ -49,6 +49,8 @@ pub struct MlpBoost<'a, F> {
 
     // Hypotheses
     hypotheses: Vec<F>,
+    // One training margin column per accepted hypothesis (O(mT) memory).
+    margin_columns: Vec<Vec<f64>>,
 
     terminated: usize,
     max_iter: usize,
@@ -57,7 +59,12 @@ pub struct MlpBoost<'a, F> {
 }
 
 impl<'a, F> MlpBoost<'a, F> {
-    /// Construct a new instance of `MlpBoost`.
+    /// Construct a new instance of `MlpBoost` using line-search FW updates.
+    /// See the discussion after Theorem 3 in
+    /// <https://arxiv.org/abs/2209.10831>: exact line search is at least as
+    /// good as the short-step candidate on the same segment. This implementation
+    /// uses the shared numerical line-search tolerance. Classic and ShortStep
+    /// remain available through [`Self::update_rule`].
     ///
     /// Time complexity: `O(1)`.
     pub fn init(sample: &'a Sample) -> Self {
@@ -68,7 +75,7 @@ impl<'a, F> MlpBoost<'a, F> {
         let nu = DEFAULT_CAPPING;
         let eta = (n_examples as f64 / nu).ln() / half_tolerance;
 
-        let update_rule = FwUpdateRule::ShortStep;
+        let update_rule = FwUpdateRule::LineSearch;
         let objective = ErlpSoftMarginObjective::new(nu, eta);
         let fw_objective = CorrErlpFwObjective::new(objective.clone());
         let frank_wolfe = FrankWolfe::new(fw_objective, update_rule);
@@ -91,6 +98,7 @@ impl<'a, F> MlpBoost<'a, F> {
 
             weights: Vec::new(),
             hypotheses: Vec::new(),
+            margin_columns: Vec::new(),
             dist: Vec::new(),
 
             terminated: usize::MAX,
@@ -130,10 +138,20 @@ impl<'a, F> MlpBoost<'a, F> {
 
     /// Set the soft-margin objective tolerance. The stopping gap uses half
     /// this value; it is not a classification-error threshold.
+    /// Panics unless the value is finite, positive, and its half is nonzero.
+    /// Preprocessing also rejects an unrepresentable regularization parameter.
     ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "tolerance must be finite and positive"
+        );
+        assert!(
+            tolerance / 2.0 > 0.0,
+            "half tolerance must be representable"
+        );
         self.half_tolerance = tolerance / 2f64;
         self
     }
@@ -151,6 +169,10 @@ impl<'a, F> MlpBoost<'a, F> {
         } else {
             ln_m / self.half_tolerance
         };
+        assert!(
+            self.eta.is_finite() && self.eta > 0.0,
+            "regularization parameter must be finite and positive"
+        );
     }
 
     fn initialize_objective(&mut self) {
@@ -191,6 +213,22 @@ impl<F> MlpBoost<'_, F>
 where
     F: Classifier,
 {
+    // Preserve hypothesis order when summing, as in RefWeightedMajority.
+    // Algorithm 1 of Boosting as Frank-Wolfe uses Aw; cached columns of A
+    // avoid repeated calls to old hypotheses without changing that expression.
+    fn negative_margins(&self, weights: &[f64]) -> Vec<f64> {
+        assert!(weights.len() <= self.margin_columns.len());
+        (0..self.n_examples)
+            .map(|row| {
+                -weights
+                    .iter()
+                    .zip(&self.margin_columns)
+                    .map(|(w, column)| w * column[row])
+                    .sum::<f64>()
+            })
+            .collect()
+    }
+
     /// Returns the smoothed objective value
     /// `-f*` at the current weighting `self.weights`.
     ///
@@ -204,25 +242,19 @@ where
     /// s.t. sum_i di = 1, 0 <= di <= 1 / self.nu, for all i <= m.
     /// ```
     ///
-    /// Time complexity: `O( # of training examples )`.
+    /// Time complexity: `O(examples * hypotheses)` with no hypothesis inference.
     fn objval(&self, weights: &[f64]) -> f64 {
         assert_eq!(weights.len(), self.hypotheses.len());
         if weights.is_empty() {
             return -1f64;
         }
-        let f = RefWeightedMajority::new(&weights[..], &self.hypotheses[..]);
-        let neg_margins = helpers::margins(self.sample, &f)
-            .map(|yf| -yf)
-            .collect::<Vec<_>>();
+        let neg_margins = self.negative_margins(weights);
         self.objective.objective_value(&neg_margins[..])
     }
 
     /// Updates weight on hypotheses and `self.dist` in this order.
     fn update_distribution_mut(&mut self) {
-        let f = RefWeightedMajority::new(&self.weights[..], &self.hypotheses[..]);
-        let neg_margins = helpers::margins(self.sample, &f)
-            .map(|yf| -yf)
-            .collect::<Vec<_>>();
+        let neg_margins = self.negative_margins(&self.weights);
         self.dist = self.objective.gradient(&neg_margins[..]);
     }
 
@@ -235,20 +267,22 @@ where
 
     fn update_frank_wolfe(&mut self) -> (f64, Vec<f64>) {
         if self.weights.is_empty() {
+            // Algorithm 1 initializes w_1 with one atom; its first subsequent
+            // Classic update is t=1, lambda=2/(t+2)=2/3, not lambda=1.
+            self.frank_wolfe.iteration(1);
             let weight = vec![1f64];
             let objval = self.objval(&weight[..]);
             return (objval, weight);
         }
 
-        let cur_margins = {
-            let f = RefWeightedMajority::new(&self.weights, &self.hypotheses[..self.weights.len()]);
-            helpers::margins(self.sample, &f)
-                .map(|yf| -yf)
-                .collect::<Vec<_>>()
-        };
-        let new_margins = helpers::margins(self.sample, self.hypotheses.last().unwrap())
-            .map(|yh| -yh)
-            .collect::<Vec<_>>();
+        let cur_margins = self.negative_margins(&self.weights);
+        let new_margins: Vec<_> = self
+            .margin_columns
+            .last()
+            .unwrap()
+            .iter()
+            .map(|m| -m)
+            .collect();
 
         let mut weights = self.weights.clone();
 
@@ -313,6 +347,7 @@ where
         self.terminated = self.max_iter;
 
         self.hypotheses = Vec::new();
+        self.margin_columns = Vec::new();
         self.weights = Vec::new();
         self.dist = vec![1f64 / self.n_examples as f64; self.n_examples];
 
@@ -329,16 +364,25 @@ where
         }
         let h = weak_learner.produce(self.sample, &self.dist[..]);
 
+        let new_margins: Vec<_> = helpers::margins(self.sample, &h).collect();
+        assert!(
+            new_margins
+                .iter()
+                .all(|m| m.is_finite() && (-1.0..=1.0).contains(m)),
+            "weak hypothesis margins must be finite and lie in [-1, 1]"
+        );
+
         // With nu=m the dual feasible set is the singleton uniform distribution.
         // One oracle call suffices; retain it even when its edge is nonpositive.
         if self.nu == self.sample.shape().0 as f64 {
+            self.margin_columns.push(new_margins);
             self.hypotheses.push(h);
             self.weights = vec![1.0];
             self.terminated = iteration;
             return ControlFlow::Break(iteration);
         }
 
-        let edge = helpers::edge(self.sample, &self.dist[..], &h);
+        let edge = helpers::edge_from_margins(&new_margins, &self.dist);
 
         // Update the estimation of `edge`.
         self.gamma = self.gamma.min(edge);
@@ -357,6 +401,7 @@ where
         // Boosting as Frank-Wolfe, Algorithm 1, lines 11-13:
         // evaluate both candidates on the same atoms, including the new hypothesis.
         self.hypotheses.push(h);
+        self.margin_columns.push(new_margins);
         let (objval_lp, weight_lp) = self.update_lpboost();
         let (objval_fw, weight_fw) = self.update_frank_wolfe();
 
@@ -410,6 +455,148 @@ mod regression_tests {
     }
 
     #[test]
+    fn default_line_search_is_no_worse_than_short_step_on_the_same_segment() {
+        let sample = Sample::dummy(3);
+        let mut line = MlpBoost::init(&sample);
+        let mut short = MlpBoost::init(&sample).update_rule(FwUpdateRule::ShortStep);
+        assert!(matches!(line.update_rule, FwUpdateRule::LineSearch));
+        for booster in [&mut line, &mut short] {
+            booster.preprocess();
+            assert!(booster.boost(&Margins([1.0, 1.0, -1.0]), 1).is_continue());
+            booster.hypotheses.push(Margins([-1.0, 1.0, 1.0]));
+            booster.margin_columns.push(vec![-1.0, 1.0, 1.0]);
+        }
+        let before = line
+            .objective
+            .objective_value(&line.negative_margins(&line.weights));
+        let (line_score, line_weights) = line.update_frank_wolfe();
+        let (short_score, _) = short.update_frank_wolfe();
+        // The binary line search locates lambda within 1e-10. A bounded
+        // margin segment has objective slope at most 2, so allow 3e-10.
+        assert!(line_score + 3e-10 >= short_score);
+        assert!(line_score + 3e-10 >= before);
+        assert!(line_weights.iter().all(|w| w.is_finite() && *w >= 0.0));
+        assert!((line_weights.iter().sum::<f64>() - 1.0).abs() < 1e-7);
+    }
+
+    #[test]
+    fn rejects_nonfinite_oracle_and_unrepresentable_eta() {
+        let sample = Sample::dummy(3);
+        let mut tiny = MlpBoost::<Margins>::init(&sample).tolerance(f64::from_bits(2));
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tiny.preprocess())).is_err()
+        );
+        for nu in [1.0, 3.0] {
+            let mut booster = MlpBoost::init(&sample).nu(nu);
+            booster.preprocess();
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                    || booster.boost(&Margins([f64::NAN, 0.0, 0.0]), 1)
+                ))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn classic_schedule_starts_after_the_initial_atom() {
+        let sample = Sample::dummy(3);
+        let mut booster = MlpBoost::init(&sample).update_rule(FwUpdateRule::Classic);
+        booster.preprocess();
+        assert!(booster.boost(&Margins([1.0, 1.0, -1.0]), 1).is_continue());
+        let previous_weight = booster.weights[0];
+        booster.hypotheses.push(Margins([-1.0, 1.0, 1.0]));
+        booster.margin_columns.push(vec![-1.0, 1.0, 1.0]);
+        let (_, weights) = booster.update_frank_wolfe();
+        assert!((weights[0] - previous_weight / 3.0).abs() < 1e-15);
+        assert!((weights[1] - 2.0 / 3.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn rejects_invalid_tolerance() {
+        let sample = Sample::dummy(3);
+        for tolerance in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::from_bits(1)] {
+            assert!(std::panic::catch_unwind(|| MlpBoost::<Margins>::init(&sample).tolerance(tolerance)).is_err());
+        }
+    }
+
+    #[test]
+    fn cached_margins_match_model_and_do_not_reinfer_old_hypotheses() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        #[derive(Clone, Debug, PartialEq)]
+        struct Counted {
+            values: [f64; 3],
+            calls: Rc<Cell<usize>>,
+        }
+        impl Classifier for Counted {
+            fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+                self.calls.set(self.calls.get() + 1);
+                self.values[row] * sample.target()[row]
+            }
+        }
+        impl WeakLearner for Counted {
+            type Hypothesis = Self;
+            fn produce(&self, _: &Sample, _: &[f64]) -> Self {
+                self.clone()
+            }
+        }
+        let sample = Sample::dummy(3);
+        let calls = Rc::new(Cell::new(0));
+        let atoms = [[1.0, 1.0, -1.0], [-1.0, 1.0, 1.0], [1.0, -1.0, 1.0]];
+        for rule in [
+            FwUpdateRule::Classic,
+            FwUpdateRule::ShortStep,
+            FwUpdateRule::LineSearch,
+        ] {
+            let mut booster = MlpBoost::init(&sample).update_rule(rule).tolerance(0.01);
+            // Reusing the booster must reset all cached margins and schedules.
+            for _ in 0..2 {
+                booster.preprocess();
+                for round in 1..=20 {
+                    let values = *atoms
+                        .iter()
+                        .max_by(|a, b| {
+                            helpers::edge_from_margins(*a, &booster.dist)
+                                .total_cmp(&helpers::edge_from_margins(*b, &booster.dist))
+                        })
+                        .unwrap();
+                    calls.set(0);
+                    let flow = booster.boost(
+                        &Counted {
+                            values,
+                            calls: calls.clone(),
+                        },
+                        round,
+                    );
+                    assert!(calls.get() <= 6, "old hypotheses were evaluated again");
+                    let model = booster.current_hypothesis();
+                    let direct: Vec<_> = helpers::margins(&sample, &model).collect();
+                    let cached: Vec<f64> = booster
+                        .negative_margins(&booster.weights)
+                        .iter()
+                        .map(|m| -m)
+                        .collect();
+                    for (a, b) in direct.iter().zip(&cached) {
+                        // At most 20 convex updates of bounded margins; covers
+                        // accumulated rounding, far below the stopping gap.
+                        assert!((a - b).abs() < 1e-12, "{a} != {b}");
+                    }
+                    let expected = booster
+                        .objective
+                        .gradient(&direct.iter().map(|m| -m).collect::<Vec<_>>());
+                    for (a, b) in expected.iter().zip(&booster.dist) {
+                        assert!((a - b).abs() < 1e-10);
+                    }
+                    if flow.is_break() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     #[should_panic(expected = "BlendedPairwise is not supported")]
     fn unsupported_rule_is_rejected_at_configuration() {
         let sample = Sample::dummy(3);
@@ -443,6 +630,7 @@ mod regression_tests {
         let mut candidates = MlpBoost::init(&sample);
         candidates.preprocess();
         assert!(candidates.boost(&first, 1).is_continue());
+        candidates.margin_columns.push(second.0.to_vec());
         candidates.hypotheses.push(second.clone());
         let (lp_score, lp_weights) = candidates.update_lpboost();
         let (fw_score, fw_weights) = candidates.update_frank_wolfe();

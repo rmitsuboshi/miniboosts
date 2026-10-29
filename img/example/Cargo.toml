@@ -6,4 +6,4 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-miniboosts = { path = "../.." }
+miniboosts = { path = "../..", version = "0.1.0" }

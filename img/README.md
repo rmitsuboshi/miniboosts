@@ -51,7 +51,7 @@ for SmoothBoost it sets `kappa`, with `gamma = 0.006` (override with `--gamma`).
 That gamma is an assumed weak-learner advantage, not a guarantee inferred from
 the data. GraphSeparationBoosting has no tolerance parameter; TotalBoost uses a hard
 margin. `nu` configures the algorithms that support capping and the common
-logged soft-margin metric. MLPBoost uses classic Frank–Wolfe updates.
+logged soft-margin metric. MLPBoost uses its default line-search Frank–Wolfe updates.
 Corrective ERLPBoost uses its default short-step updates. Its coefficient sum
 can be below one; logged margins retain that scale rather than renormalizing
 the model. Equal tolerances do not imply equal accuracy or stopping

@@ -39,24 +39,24 @@ edition = "2024"
 rust-version.workspace = true
 
 [dependencies]
-miniboosts_core = { path = "./miniboosts-core" }
-logging         = { path = "./logging" }
-hypotheses      = { path = "./hypotheses" }
-optimization    = { path = "./optimization" }
+miniboosts_core = { path = "./miniboosts-core", version = "0.1.0" }
+logging         = { path = "./logging", version = "0.1.0" }
+hypotheses      = { path = "./hypotheses", version = "0.1.0" }
+optimization    = { path = "./optimization", version = "0.1.0" }
 
-adaboost                  = { path = "./boosters/adaboost" }
-adaboostv                 = { path = "./boosters/adaboostv" }
-corrective_erlpboost      = { path = "./boosters/corrective-erlpboost" }
-erlpboost                 = { path = "./boosters/erlpboost" }
-# gradient_boosting_machine = { path = "./boosters/gradient-boosting-machine" }
-graph_separation_boosting = { path = "./boosters/graph-separation-boosting" }
-lpboost                   = { path = "./boosters/lpboost" }
-madaboost                 = { path = "./boosters/madaboost" }
-mlpboost                  = { path = "./boosters/mlpboost" }
-smoothboost               = { path = "./boosters/smoothboost" }
-softboost                 = { path = "./boosters/softboost" }
-totalboost                = { path = "./boosters/totalboost" }
+adaboost                  = { path = "./boosters/adaboost", version = "0.1.0" }
+adaboostv                 = { path = "./boosters/adaboostv", version = "0.1.0" }
+corrective_erlpboost      = { path = "./boosters/corrective-erlpboost", version = "0.1.0" }
+erlpboost                 = { path = "./boosters/erlpboost", version = "0.1.0" }
+# gradient_boosting_machine = { path = "./boosters/gradient-boosting-machine", version = "0.1.0" }
+graph_separation_boosting = { path = "./boosters/graph-separation-boosting", version = "0.1.0" }
+lpboost                   = { path = "./boosters/lpboost", version = "0.1.0" }
+madaboost                 = { path = "./boosters/madaboost", version = "0.1.0" }
+mlpboost                  = { path = "./boosters/mlpboost", version = "0.1.0" }
+smoothboost               = { path = "./boosters/smoothboost", version = "0.1.0" }
+softboost                 = { path = "./boosters/softboost", version = "0.1.0" }
+totalboost                = { path = "./boosters/totalboost", version = "0.1.0" }
 
-decision_tree   = { path = "./weak-learners/decision-tree" }
-# regression_tree = { path = "./weak-learners/regression-tree" }
+decision_tree   = { path = "./weak-learners/decision-tree", version = "0.1.0" }
+# regression_tree = { path = "./weak-learners/regression-tree", version = "0.1.0" }
 

@@ -1,5 +1,6 @@
 /target
 /tmp/
+/.venv/
 
 .DS_Store
 local_test.rs
