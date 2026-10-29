@@ -1,9 +1,13 @@
 [package]
 name = "miniboosts-example"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 rust-version.workspace = true
+description = "Command-line experiments for MiniBoosts."
+license.workspace = true
+repository.workspace = true
+
 publish = false
 
 [dependencies]
-miniboosts = { path = "../..", version = "0.1.0" }
+miniboosts = { path = "../..", version = "0.5.0" }

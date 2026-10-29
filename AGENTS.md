@@ -4,10 +4,12 @@ This Rust workspace supports research and fair comparisons of boosting algorithm
 Prioritize mathematical correctness, reproducible experiments, and clear APIs.
 
 ## Layout
-- `miniboosts-core`: shared traits, samples, and utilities.
-- `boosters`, `weak-learners`: algorithm implementations.
-- `hypotheses`, `optimization`, `logging`: aggregation, solvers, and measurement.
-- `src`: public exports. Check `Cargo.toml` for active workspace members.
+- `src/core`: shared traits, samples, and utilities.
+- `src/boosters`, `src/weak_learners`: algorithm implementations.
+- `src/hypotheses`, `src/optimization`, `src/logging`: aggregation, solvers, and measurement.
+- `src/lib.rs`, `src/prelude.rs`: public exports.
+- `tests`: integration tests and shared data.
+- `img/example`: non-published experiment runner; the root library is the only public crate.
 
 ## Changes
 - Keep boosters independent of concrete weak learners.
