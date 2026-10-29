@@ -1,4 +1,4 @@
-use miniboosts_core::{Booster, Classifier, Sample, WeakLearner};
+use miniboosts::{Booster, Classifier, Sample, WeakLearner};
 use std::io::{BufReader, Cursor};
 
 pub fn separable_sample() -> Sample {

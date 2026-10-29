@@ -1,8 +1,19 @@
-# Migrating to this workspace branch
+# Migrating to 0.5.0
 
-This is an unpublished development layout, not a drop-in crates.io release.
-Use a local `path` dependency and generate documentation from this checkout.
-Package names, versions, metadata, and publishing order still need a release plan.
+Version 0.5.0 ships as a single `miniboosts` crate. Set your dependency to
+`miniboosts = "0.5.0"` and use the documentation for that version.
+See [RELEASING.md](RELEASING.md) for the publishing procedure.
+
+The development workspace's internal crates have become modules in `src/`.
+Root exports and `miniboosts::prelude` are preserved. Replace direct imports of
+`miniboosts_core` with `miniboosts::core`, and imports of internal algorithm
+crates with `miniboosts::boosters::<algorithm>` (or the root type re-exports).
+Use `miniboosts::weak_learners::decision_tree`, `miniboosts::hypotheses`,
+`miniboosts::optimization`, and `miniboosts::logging` for their corresponding
+support APIs. Only `miniboosts` is published; `miniboosts-example` stays private.
+
+The following notes describe the API changes from the earlier published releases
+and the numerical changes developed in the former workspace layout.
 
 | Previous usage | Workspace usage |
 | --- | --- |
@@ -19,7 +30,7 @@ The prelude exports common boosters and traits, `SampleReader`,
 `DecisionTreeBuilder`, and `SplitBy`. Import `Sample`, logger types, and objective
 adapters explicitly from `miniboosts`.
 
-GBM and regression-tree sources remain disabled in Cargo.toml. Gaussian naive
+GBM and regression-tree sources remain outside the compiled library. Gaussian naive
 Bayes, neural networks, the worst-case LPBoost learner, and the previous
 cross-validation helper are not exposed by this workspace. There is no automatic
 replacement: retain a compatible older checkout if required, or implement the
@@ -32,9 +43,8 @@ Compare documented objectives and stopping conditions when migrating experiments
 Solver and numerical changes require revalidation; this refactor makes no claim
 of identical models or improved runtime against the older implementation.
 
-`CurrentHypothesis` now lives in `miniboosts_core`; the `logging` and root
-re-exports remain available. Simple booster crates no longer require the logger
-or its optimizer dependencies. `BlendedPairwise` is rejected by the MLPBoost and
+`CurrentHypothesis` lives in `miniboosts::core`; the logging and root
+re-exports remain available. `BlendedPairwise` is rejected by the MLPBoost and
 CorrectiveERLPBoost setters until their coefficient-space implementation is available.
 SoftBoost now solves the entropy projection using exponential cones instead of SQP.
 SmoothBoost defaults to a weak-learning advantage of 0.25 and starts cumulative
@@ -48,7 +58,7 @@ checks use log-domain mass near extreme edges, so rounding an edge to one no lon
 ends training early. These changes can affect long or numerically extreme runs.
 The capped-simplex projection retains its sorted active-set algorithm.
 
-External dependencies are declared once in the root workspace. The checked-in
+External dependencies are declared once in the root package. The checked-in
 Cargo.lock records tested versions; use `--locked` when reproducing experiments.
 Clarabel 0.11 constructors are validated before solving. The numerical regression
 tests retain their existing tolerances across this solver upgrade.

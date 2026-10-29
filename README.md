@@ -4,19 +4,18 @@ MiniBoosts is a Rust library for implementing and comparing boosting algorithms.
 Its algorithms share the `Booster`, `WeakLearner`, and `Classifier` traits, so you
 can use the same data and weak learner across experiments.
 
-This workspace version has not been published to crates.io. Earlier releases
-used a single-crate layout and a different API; their docs.rs documentation does
-not describe this checkout. Use a local checkout and see the
-[migration notes](MIGRATION.md) when moving from a published release.
+Version 0.5.0 ships as one `miniboosts` crate; algorithms and utilities are
+internal modules, not separate registry packages. Earlier releases have a
+different API; see the [migration notes](MIGRATION.md) when upgrading.
 Rust 1.85 or newer is required (edition 2024).
 
 ## Getting started
 
-Clone this repository, then point your application's dependency at the checkout:
+Add MiniBoosts to your application's `Cargo.toml`:
 
 ```toml
 [dependencies]
-miniboosts = { path = "/path/to/miniboosts" }
+miniboosts = "0.5.0"
 ```
 
 The optimization routines use Clarabel for linear, quadratic, and conic
@@ -71,7 +70,7 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 
 The built-in weak learner is a [decision tree][decisiontree]. Implement
 `WeakLearner` to use your own learner. The gradient boosting machine (GBM) and
-regression tree implementations are not included in the active workspace.
+regression tree implementations are not compiled into the library.
 See the [migration notes](MIGRATION.md) for removed APIs.
 
 Custom hypotheses must return consistent predictions for a fixed sample.
@@ -132,11 +131,12 @@ cargo run --release --locked -p miniboosts-example -- --list
 
 ## Development
 
-- `miniboosts-core`: data, traits, and shared utilities.
-- `boosters/`, `weak-learners/`: algorithm crates.
-- `optimization/`, `hypotheses/`, `logging/`: solvers, aggregation, and measurement.
-- `src/`: public exports and prelude.
-- `img/example/`: command-line experiment runner.
+- `src/core/`: data, traits, and shared utilities.
+- `src/boosters/`, `src/weak_learners/`: algorithm implementations.
+- `src/optimization/`, `src/hypotheses/`, `src/logging/`: solvers, aggregation, and measurement.
+- `src/lib.rs`, `src/prelude.rs`: public exports.
+- `tests/`: integration tests and shared fixtures.
+- `img/example/`: non-published command-line experiment runner.
 
 ```sh
 cargo test --workspace --locked
@@ -145,15 +145,19 @@ cargo fmt --all -- --check
 cargo doc --workspace --locked --no-deps --open
 ```
 
-See [logging usage](logging/src/README.md) for CSV learning curves and timing
+See [logging usage](docs/logging.md) for CSV learning curves and timing
 details. `Cargo.toml` lists the active workspace members and dependencies.
-External dependency versions are shared through `[workspace.dependencies]`;
-internal dependencies specify both a local path and a version. These declarations
-alone do not make this workspace ready to publish: package metadata and the
-release versions and publishing order still need to be finalized. Keep `Cargo.lock`
-with experiment results. CI uses `--locked` to test those versions on stable Rust
-and the minimum supported Rust version (1.85). Dependency updates should be
-separate from numerical changes, with solver accuracy and convergence retested.
+The root `Cargo.toml` declares the library's dependencies; `Cargo.lock` records
+exact versions. Keep the lockfile with experiment results. CI uses `--locked`
+on stable Rust and the minimum supported Rust version (1.85). Dependency updates
+should be separate from numerical changes, with solver accuracy and convergence
+retested. See the [release guide](RELEASING.md) for publishing `miniboosts`.
+
+## License
+
+MiniBoosts is licensed under [MIT](https://github.com/rmitsuboshi/miniboosts/blob/main/LICENSE). Clarabel 0.11.1 is licensed under
+[Apache-2.0](https://github.com/oxfordcontrol/Clarabel.rs/blob/v0.11.1/LICENSE.md);
+its license remains separate from MiniBoosts' license.
 
 [adaboost]: https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub
 [adaboostv]: http://jmlr.org/papers/v6/ratsch05a.html
