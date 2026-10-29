@@ -1,0 +1,183 @@
+[
+  {
+    "algorithm": "AdaBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03
+    },
+    "fit_seconds": 0.04239733301801607,
+    "status": "ok",
+    "train_accuracy": 0.74375,
+    "test_accuracy": 0.742,
+    "n_iter": 60,
+    "stop_reason": "max_iterations",
+    "score_min": -0.7568236583516844,
+    "score_max": 0.2007974177302669
+  },
+  {
+    "algorithm": "AdaBoostV",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03
+    },
+    "fit_seconds": 0.03881691599963233,
+    "status": "ok",
+    "train_accuracy": 0.725,
+    "test_accuracy": 0.735,
+    "n_iter": 60,
+    "stop_reason": "max_iterations",
+    "score_min": -0.7694824493393596,
+    "score_max": 0.18445070545607165
+  },
+  {
+    "algorithm": "MadaBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03
+    },
+    "fit_seconds": 0.038544041046407074,
+    "status": "ok",
+    "train_accuracy": 0.74375,
+    "test_accuracy": 0.733,
+    "n_iter": 60,
+    "stop_reason": "max_iterations",
+    "score_min": -0.6890684786649193,
+    "score_max": 0.209933854064125
+  },
+  {
+    "algorithm": "LPBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03,
+      "nu": 16.0
+    },
+    "fit_seconds": 0.1861558749806136,
+    "status": "ok",
+    "train_accuracy": 1.0,
+    "test_accuracy": 0.702,
+    "n_iter": 47,
+    "stop_reason": "algorithm_stop",
+    "score_min": -0.16307826428872488,
+    "score_max": 0.21808207767904966
+  },
+  {
+    "algorithm": "ERLPBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03,
+      "nu": 16.0
+    },
+    "fit_seconds": 0.18327462498564273,
+    "status": "ok",
+    "train_accuracy": 0.96875,
+    "test_accuracy": 0.6745,
+    "n_iter": 26,
+    "stop_reason": "algorithm_stop",
+    "score_min": -0.22669157714256277,
+    "score_max": 0.13742708282115795
+  },
+  {
+    "algorithm": "CorrectiveERLPBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03,
+      "nu": 16.0
+    },
+    "fit_seconds": 0.043335292022675276,
+    "status": "ok",
+    "train_accuracy": 0.74375,
+    "test_accuracy": 0.733,
+    "n_iter": 60,
+    "stop_reason": "max_iterations",
+    "score_min": -0.01558387554146206,
+    "score_max": 0.004113578141464698
+  },
+  {
+    "algorithm": "MLPBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03,
+      "nu": 16.0
+    },
+    "fit_seconds": 0.11158416699618101,
+    "status": "ok",
+    "train_accuracy": 0.99375,
+    "test_accuracy": 0.693,
+    "n_iter": 29,
+    "stop_reason": "algorithm_stop",
+    "score_min": -0.30336265410968843,
+    "score_max": 0.18527801848353748
+  },
+  {
+    "algorithm": "SmoothBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "gamma": 0.05,
+      "kappa": 0.1
+    },
+    "fit_seconds": 0.0377541669877246,
+    "status": "ok",
+    "train_accuracy": 0.64375,
+    "test_accuracy": 0.6665,
+    "n_iter": 60,
+    "stop_reason": "max_iterations",
+    "score_min": -0.9247223325393275,
+    "score_max": 0.1500469916641671
+  },
+  {
+    "algorithm": "SoftBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03,
+      "nu": 16.0
+    },
+    "fit_seconds": 0.11818220902932808,
+    "status": "ok",
+    "train_accuracy": 0.95625,
+    "test_accuracy": 0.7355,
+    "n_iter": 18,
+    "stop_reason": "algorithm_stop",
+    "score_min": -0.5086413257888527,
+    "score_max": 0.09759381836875843
+  },
+  {
+    "algorithm": "TotalBoost",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60,
+      "tolerance": 0.03
+    },
+    "fit_seconds": 0.12232820800272748,
+    "status": "ok",
+    "train_accuracy": 0.96875,
+    "test_accuracy": 0.722,
+    "n_iter": 18,
+    "stop_reason": "algorithm_stop",
+    "score_min": -0.3081007157710493,
+    "score_max": 0.12589703439973476
+  },
+  {
+    "algorithm": "GraphSeparationBoosting",
+    "parameters": {
+      "estimator": "DecisionTreeClassifier(max_depth=2)",
+      "max_iterations": 60
+    },
+    "fit_seconds": 0.014222250028979033,
+    "status": "ok",
+    "train_accuracy": 1.0,
+    "test_accuracy": 0.6725,
+    "n_iter": 26,
+    "stop_reason": "algorithm_stop",
+    "score_min": -1.0,
+    "score_max": 1.0
+  }
+]
