@@ -4,9 +4,11 @@ MiniBoosts is a Rust library for implementing and comparing boosting algorithms.
 Its algorithms share the `Booster`, `WeakLearner`, and `Classifier` traits, so you
 can use the same data and weak learner across experiments.
 
-This workspace version has not been published to crates.io. Use a local checkout;
-the documentation on docs.rs may refer to an older API. Rust 1.85 or newer is
-required (edition 2024).
+This workspace version has not been published to crates.io. Earlier releases
+used a single-crate layout and a different API; their docs.rs documentation does
+not describe this checkout. Use a local checkout and see the
+[migration notes](MIGRATION.md) when moving from a published release.
+Rust 1.85 or newer is required (edition 2024).
 
 ## Getting started
 
@@ -45,8 +47,9 @@ fn main() {
 ```
 
 For CSV or SVMlight files, use `SampleReader::default()`. Binary classification
-labels must be `-1` and `1`. The assertion checks predictions on this training
-sample; use a separate test set to evaluate performance on unseen data.
+labels must be `-1` and `1`, with both classes present in the training sample.
+The assertion checks predictions on this training sample; use a separate test
+set to evaluate performance on unseen data.
 
 ## Algorithms
 
@@ -71,6 +74,11 @@ The built-in weak learner is a [decision tree][decisiontree]. Implement
 regression tree implementations are not included in the active workspace.
 See the [migration notes](MIGRATION.md) for removed APIs.
 
+Custom hypotheses must return consistent predictions for a fixed sample.
+CorrectiveERLPBoost and MLPBoost cache training margins instead of repeatedly
+evaluating earlier hypotheses. MLPBoost's cache uses O(mT) additional memory
+for m training examples and T accepted hypotheses.
+
 ## Parameters and comparisons
 
 `tolerance` is algorithm-specific. AdaBoost and MadaBoost use it to set iteration
@@ -82,14 +90,25 @@ bound. Theoretical guarantees require the corresponding paper's weak-learning
 or optimization-oracle assumptions and accurate subproblem solutions; using a
 decision tree does not by itself ensure that these assumptions hold.
 
-MLPBoost defaults to line-search Frank–Wolfe updates. Classic and ShortStep
-are available explicitly through `update_rule`.
+MLPBoost defaults to line-search Frank–Wolfe updates; CorrectiveERLPBoost defaults
+to ShortStep. Both support Classic, ShortStep, and LineSearch through
+`update_rule`. CorrectiveERLPBoost's coefficient sum can be below one; its
+confidence values and logged margins preserve that scale.
 
 For soft-margin methods, `nu` caps example weights at `1 / nu`, with
 `1 <= nu <= number_of_examples`. It does not guarantee a particular number of
 misclassified examples. SmoothBoost requires a weak-learning advantage `gamma` and a target
 error parameter `kappa`; its guarantee depends on that advantage holding on each
 training distribution.
+
+ERLPBoost solves its entropy-regularized subproblems using exponential cones and
+checks an independent primal/dual gap before using the dual lower bound for
+stopping. This is a floating-point accuracy check; extremely small outer
+tolerances can exceed the inner solver's accuracy. Failed solves panic rather
+than count as convergence. SoftBoost and TotalBoost can instead stop early on
+an entropy-solver accuracy failure; inspect `numerical_stop_reason()` after
+training. Such a stop does not certify convergence, and final LP fitting can
+still fail. See the [migration notes](MIGRATION.md) for numerical changes.
 
 For fair comparisons, use the same data splits, preprocessing, weak learner,
 and evaluation metrics. State each algorithm's stopping rule and use a common
@@ -128,7 +147,10 @@ cargo doc --workspace --locked --no-deps --open
 
 See [logging usage](logging/src/README.md) for CSV learning curves and timing
 details. `Cargo.toml` lists the active workspace members and dependencies.
-Dependency versions are shared through `[workspace.dependencies]`. Keep `Cargo.lock`
+External dependency versions are shared through `[workspace.dependencies]`;
+internal dependencies specify both a local path and a version. These declarations
+alone do not make this workspace ready to publish: package metadata and the
+release versions and publishing order still need to be finalized. Keep `Cargo.lock`
 with experiment results. CI uses `--locked` to test those versions on stable Rust
 and the minimum supported Rust version (1.85). Dependency updates should be
 separate from numerical changes, with solver accuracy and convergence retested.
