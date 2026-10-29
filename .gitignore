@@ -1,6 +1,13 @@
 /target
 /tmp/
 /.venv/
+/python/target/
+/python/.pytest_cache/
+/python/dist/
+__pycache__/
+*.egg-info/
+/python/miniboosts/*.so
+/python/miniboosts/*.pyd
 
 .DS_Store
 local_test.rs

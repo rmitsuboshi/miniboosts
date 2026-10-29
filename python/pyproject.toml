@@ -1,0 +1,23 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "miniboosts"
+version = "0.5.0"
+description = "Rust boosting algorithms with scikit-learn-style Python estimators"
+requires-python = ">=3.10"
+license = "MIT"
+readme = "README.md"
+dependencies = ["numpy>=1.24", "scikit-learn>=1.6,<2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.maturin]
+python-source = "."
+module-name = "miniboosts._native"
+features = ["extension-module"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

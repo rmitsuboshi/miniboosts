@@ -19,6 +19,52 @@ pub struct Sample {
 }
 
 impl Sample {
+    /// Construct owned, column-oriented data from a dense row-major matrix.
+    /// Feature names are `feature_0`, `feature_1`, and so on. Pass `None` for
+    /// prediction data without labels. This does not validate a task-specific
+    /// label encoding; boosters still enforce their training requirements.
+    ///
+    /// Returns an error for empty or ragged matrices, non-finite entries, or
+    /// a target whose length differs from the number of rows.
+    pub fn from_dense(rows: &[Vec<f64>], target: Option<&[f64]>) -> Result<Self, String> {
+        let n_sample = rows.len();
+        let n_feature = rows.first().map_or(0, Vec::len);
+        if n_sample == 0 || n_feature == 0 {
+            return Err("dense data must contain at least one row and one feature".into());
+        }
+        for (row, values) in rows.iter().enumerate() {
+            if values.len() != n_feature {
+                return Err(format!("row {row} has a different number of features"));
+            }
+            if values.iter().any(|v| !v.is_finite()) {
+                return Err(format!("row {row} contains a non-finite feature"));
+            }
+        }
+        if let Some(y) = target {
+            if y.len() != n_sample || y.iter().any(|v| !v.is_finite()) {
+                return Err("target must be finite and have one value per row".into());
+            }
+        }
+        let features = (0..n_feature)
+            .map(|column| Feature::Dense {
+                name: format!("feature_{column}"),
+                vals: rows.iter().map(|row| row[column]).collect(),
+            })
+            .collect::<Vec<_>>();
+        let name_to_index = features
+            .iter()
+            .enumerate()
+            .map(|(index, feature)| (feature.name().to_owned(), index))
+            .collect();
+        Ok(Self {
+            name_to_index,
+            features,
+            target: target.unwrap_or_default().to_vec(),
+            n_sample,
+            n_feature,
+        })
+    }
+
     /// Construct a new dummy instance of `Self.`
     /// This method is effective when you use a `BadBaseLearner.`
     pub fn dummy(n_sample: usize) -> Self {

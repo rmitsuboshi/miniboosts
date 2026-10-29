@@ -50,6 +50,25 @@ labels must be `-1` and `1`, with both classes present in the training sample.
 The assertion checks predictions on this training sample; use a separate test
 set to evaluate performance on unseen data.
 
+## Python bindings
+
+The optional [Python package](python/README.md) exposes the same Rust algorithms
+through classes such as `AdaBoostClassifier`, with `fit(X, y)`, `predict(X)`,
+and `decision_function(X)`. Weak learners can be native decision trees or
+compatible custom Python/sklearn estimators; confidence values are strictly
+validated in [-1, +1]. Binary labels are encoded with a mapping warning and
+restored on prediction.
+
+From a checkout, with Rust and a Python virtual environment available:
+
+```sh
+python -m pip install ./python
+```
+
+This builds the extension locally; the Python package is not yet on PyPI.
+Rust users need no Python dependencies. See the Python guide for examples,
+algorithm parameters, the explicit sklearn `PredictionAdapter`, and limits.
+
 ## Algorithms
 
 Import these types from `miniboosts` or `miniboosts::prelude`:
