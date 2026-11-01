@@ -124,8 +124,12 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 
 The built-in weak learners are a [decision tree][decisiontree], `FiniteClass`
 (an exact edge maximizer over a finite hypothesis class, including one given as
-a table of confidences), and `RbfClassBuilder` (Gaussian bumps centered at
-training examples, as a `FiniteClass`). Implement `WeakLearner` to use your own
+a table of confidences), `RbfClassBuilder` (Gaussian bumps centered at training
+examples, as a `FiniteClass`), `BoundedLinear` (exact edge maximization over
+bounded linear functions; boosting it yields a linear classifier),
+`LogisticRegression` (weighted logistic regression returning halfspaces or
+`tanh` rules, with no edge guarantee), and `NaiveBayes` (weighted Gaussian naive
+Bayes). Implement `WeakLearner` to use your own
 learner. The gradient boosting machine (GBM) and
 regression tree are not included; see the migration notes.
 See the [migration notes](MIGRATION.md) for removed APIs.

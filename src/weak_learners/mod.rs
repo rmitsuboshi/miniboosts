@@ -7,11 +7,16 @@
 //!   class, given as [`Classifier`](crate::Classifier)s or as a table of
 //!   confidences;
 //! - [`rbf`]: a finite class of Gaussian radial basis functions centered at
-//!   training examples.
+//!   training examples;
+//! - [`linear`]: bounded linear functions (exact edge maximization) and
+//!   weighted logistic regression (halfspaces or `tanh` rules);
+//! - [`naive_bayes`]: weighted Gaussian naive Bayes.
 //!
 //! Implement `WeakLearner` for your own hypothesis class to compare
 //! boosters with other learners.
 
 pub mod decision_tree;
 pub mod finite_class;
+pub mod linear;
+pub mod naive_bayes;
 pub mod rbf;

@@ -8,8 +8,9 @@
 //!   [`LpBoost`], [`MadaBoost`], [`MlpBoost`], [`SmoothBoost`],
 //!   [`SoftBoost`], [`SparsiBoost`], [`TotalBoost`]);
 //! - the weak learners' entry points: the decision tree's
-//!   [`DecisionTreeBuilder`] and [`SplitBy`], [`FiniteClass`], and
-//!   [`RbfClassBuilder`].
+//!   [`DecisionTreeBuilder`] and [`SplitBy`], [`FiniteClass`],
+//!   [`RbfClassBuilder`], [`BoundedLinear`], [`LogisticRegression`] with
+//!   [`LinearOutput`], and [`NaiveBayes`].
 //!
 //! It does **not** import [`Sample`](crate::Sample),
 //! [`Regressor`](crate::Regressor), the combined hypotheses
@@ -61,4 +62,6 @@ pub use crate::boosters::sparsiboost::SparsiBoost;
 pub use crate::boosters::totalboost::TotalBoost;
 pub use crate::weak_learners::decision_tree::{DecisionTreeBuilder, SplitBy};
 pub use crate::weak_learners::finite_class::FiniteClass;
+pub use crate::weak_learners::linear::{BoundedLinear, LinearOutput, LogisticRegression};
+pub use crate::weak_learners::naive_bayes::NaiveBayes;
 pub use crate::weak_learners::rbf::RbfClassBuilder;
