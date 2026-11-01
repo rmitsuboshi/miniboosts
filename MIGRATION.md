@@ -1,3 +1,40 @@
+# Changes in 0.5.1
+
+Version 0.5.1 adds rustdoc with runnable examples for every public item and
+fixes the following. Code that compiled against 0.5.0 compiles unchanged unless
+it used the removed deformed-entropy items below.
+
+`WeightedMajority::from_slices` now drops only exactly-zero weights and keeps
+negative ones. Previously it also dropped negative weights, so an AdaBoost
+hypothesis with a negative edge was used in the distribution update but omitted
+from the final classifier, and a perfectly wrong hypothesis made training panic.
+With symmetric hypothesis classes (such as decision trees), weak learners return
+nonnegative edges and results are unchanged.
+
+The unused deformed-entropy (Tsallis) ERLPBoost components were removed:
+`DeformedEntropyRegularizedMaxEdge`, `objective_function::DeformedErlpSoftMarginObjective`,
+the `deformed_*` and `gradient_of_conjugate_deformed_entropy` helpers, and
+`checkers::deformation_parameter`. No booster used them, and their
+normalization bisection could fail to terminate.
+
+`WeightedMajority::from_slices` returns the empty ensemble (confidence `0.0`,
+so every prediction is `+1`) when no nonzero weight remains, instead of
+panicking. As a result, `CurrentHypothesis::current_hypothesis` no longer panics
+before the first round (SoftBoost and TotalBoost skip their LP when there are no
+hypotheses), and `AdaBoost`/`AdaBoostV`/`MadaBoost` with `force_quit_at(0)` return
+the empty ensemble.
+
+`SampleReader::default()` no longer requires the path and column-name types to
+implement `Default`, so borrowed paths such as `.file(&path_buf)` compile.
+
+`CorrectiveErlpBoost` and `MlpBoost` no longer require `PartialEq` (and
+`CorrectiveErlpBoost` no longer requires `Debug`) on the hypothesis type; the
+bounds were unused. `ErlpBoost::max_loop` is now public. `SoftBoost::max_loop`
+and `CorrectiveErlpBoost::max_loop` take `&self`, and
+`CorrectiveErlpBoost::max_loop` returns the actual budget before training
+instead of `1`. `DEFAULT_MAX_DEPTH` and `DEFAULT_NBIN` are exported from
+`miniboosts::weak_learners::decision_tree`.
+
 # Migrating to 0.5.0
 
 Version 0.5.0 ships as a single `miniboosts` crate. Set your dependency to
@@ -25,19 +62,6 @@ and the numerical changes developed in the former workspace layout.
 | `Research` for snapshots | `CurrentHypothesis` |
 | `miniboosts::booster` / `weak_learner` / `hypothesis` modules | Root re-exports or the member crates |
 | `gurobi` feature | Removed; current solvers use Clarabel |
-
-`WeightedMajority::from_slices` now drops only exactly-zero weights and keeps
-negative ones. Previously it also dropped negative weights, so an AdaBoost
-hypothesis with a negative edge was used in the distribution update but omitted
-from the final classifier, and a perfectly wrong hypothesis made training panic.
-With symmetric hypothesis classes (such as decision trees), weak learners return
-nonnegative edges and results are unchanged.
-
-The unused deformed-entropy (Tsallis) ERLPBoost components were removed:
-`DeformedEntropyRegularizedMaxEdge`, `objective_function::DeformedErlpSoftMarginObjective`,
-the `deformed_*` and `gradient_of_conjugate_deformed_entropy` helpers, and
-`checkers::deformation_parameter`. No booster used them, and their
-normalization bisection could fail to terminate.
 
 The prelude exports common boosters and traits, `SampleReader`,
 `DecisionTreeBuilder`, and `SplitBy`. Import `Sample`, logger types, and objective

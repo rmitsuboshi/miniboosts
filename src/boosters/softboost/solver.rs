@@ -102,13 +102,17 @@ fn build_rhs(nu: f64, gamma: f64, delta: f64, n_examples: usize, n_hypotheses: u
 /// This solver solves optimization problems of the form:
 /// ```txt
 /// min Σ_i d_i ln(d_i)
-/// γ,d
+///  d
 /// s.t. Σ_i d_i y_i h_j (x_i) ≤ γ_t - δ,   ∀j = 1, 2, ..., t
 ///      Σ_i d_i = 1,
 ///      d_1, d_2, ..., d_m ≤ 1/ν
 ///      d_1, d_2, ..., d_m ≥ 0.
 /// ```
-/// where `γ_t` is the current estimation of weak learnability.
+/// where `γ_t` is the smallest edge observed so far and `δ` is the tolerance.
+/// (The objective omits the constant `ln(m)` of the relative entropy to the
+/// uniform distribution.) The problem is solved with exponential cones over
+/// variables `(d, t)` with `t_i ≥ d_i ln(d_i)`; the matrix below shows only the
+/// linear constraints on `d`.
 ///
 /// To solve the problem we build the constraint matrix
 /// ```txt

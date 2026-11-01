@@ -1,5 +1,8 @@
-//! Provides [`GraphSeparationBoosting`](Graph Separation Boosting)
-//! by Noga Alon, Alon Gonen, Elad Hazan, and Shay Moran, 2023.
+//! Implementation of [`GraphSeparationBoosting`] (Alon, Gonen, Hazan, and
+//! Moran, "Boosting Simple Learners", TheoretiCS, 2023).
+//!
+//! See [`GraphSeparationBoosting`] for the algorithm, guarantees, and
+//! limitations.
 use crate::core::CurrentHypothesis;
 use crate::core::{Booster, Classifier, Sample, WeakLearner};
 use crate::hypotheses::NaiveAggregation;
@@ -7,6 +10,125 @@ use crate::hypotheses::NaiveAggregation;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 
+/// A booster that separates every oppositely labeled pair of training
+/// examples and aggregates the weak hypotheses into a consistent classifier.
+///
+/// # Algorithm
+///
+/// This follows Algorithm 1 (Graph Separation Boosting) of Alon, Gonen,
+/// Hazan, and Moran. Consider the graph whose vertices are the `m` training
+/// examples and whose edges join examples with opposite labels. Round `t`:
+///
+/// 1. Gives the weak learner the distribution proportional to vertex degree,
+///    ```txt
+///    d_i = deg_t(i) / Σ_j deg_t(j),
+///    ```
+///    and receives `h_t`.
+/// 2. Removes every edge `{i, j}` with `h_t(x_i) ≠ h_t(x_j)`, where
+///    predictions are signs of the confidence (`0` counts as `+1`).
+/// 3. Stops when no edges remain.
+///
+/// The output is a [`NaiveAggregation`] of `h_1, ..., h_T`: it predicts `+1`
+/// on `x` exactly when the prediction vector `(h_1(x), ..., h_T(x))` equals
+/// that of some positive training example, and `-1` otherwise. This is the
+/// aggregation rule in the proof of Lemma 4.2 of the paper; once all edges are
+/// removed, it is consistent with the training sample.
+///
+/// Implementation choices:
+///
+/// - The graph is not stored explicitly. Examples with identical prediction
+///   history form a group; a remaining edge joins exactly the oppositely
+///   labeled pairs within a group. Each round refines the groups, using
+///   expected `O(m)` time and memory in addition to evaluating `h_t`.
+/// - The paper draws an i.i.d. subsample from the degree distribution and
+///   runs the weak learner on it; here the distribution itself is passed to
+///   the weak learner, as with the other boosters.
+/// - If a round removes no edges, boosting stops with a warning on standard
+///   error. This safeguard is not part of the paper; the output then need not
+///   be consistent with the training sample.
+///
+/// # Theoretical guarantee
+///
+/// Assume the sample is `γ`-realizable with respect to the base class and the
+/// weak learner's expected correlation is at least `γ/2` on every such
+/// distribution (Eq. (3) of the paper). Then the number of rounds `T`
+/// satisfies `Pr[T ≥ t] ≤ exp(2 ln(m) - tγ/2)`, so `E[T] = O(ln(m) / γ)`
+/// (Theorem 2.3, restated as Theorem 4.3). The paper also gives
+/// sample-complexity bounds, which depend on how the aggregation rule is
+/// chosen.
+///
+/// # Limitations
+///
+/// - The weak-learning assumption is not checked at runtime. A weak learner
+///   that separates no new pair triggers the stall stop above.
+/// - Without a stall, boosting continues until the training sample is
+///   separated, so there is no iteration budget, and the output can overfit
+///   noisy labels (it is consistent with the training sample).
+/// - The output depends on the stored positive prediction vectors, so it
+///   keeps one bit set of length `T` per positive training example.
+/// - Labels must be exactly `-1` and `+1`; [`Booster::preprocess`] panics
+///   otherwise.
+///
+/// # Parameters
+///
+/// None besides the training sample.
+///
+/// # Reference
+///
+/// Noga Alon, Alon Gonen, Elad Hazan, and Shay Moran.
+/// [Boosting Simple Learners](https://theoretics.episciences.org/10757).
+/// TheoretiCS, Volume 2 (2023), Article 7.
+///
+/// # Examples
+/// Train on a held-out split with decision stumps and evaluate on the test
+/// part.
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::{Sample, prelude::*};
+///
+/// // Labels follow the sign of `x + y`, so no single stump separates them.
+/// let csv = b"x,y,class\n\
+///     -2,1,-1\n-1,-2,-1\n1,-3,-1\n-3,2,-1\n0,-1,-1\n-2,-1,-1\n\
+///     2,1,1\n1,2,1\n-1,3,1\n3,-1,1\n0,2,1\n2,2,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+///
+/// // A fixed permutation keeps the split reproducible:
+/// // rows ix[0..4] form the test set, the other 8 rows the training set.
+/// let ix = [0, 6, 4, 10, 1, 2, 3, 5, 7, 8, 9, 11];
+/// let (train, test) = sample.split(&ix, 0, 4);
+///
+/// // The weak learner sees only the training split.
+/// let learner = DecisionTreeBuilder::new(&train).max_depth(1).build();
+///
+/// // No parameters: boosting runs until every oppositely labeled pair of
+/// // training examples is separated by some hypothesis (or a round stalls).
+/// let mut booster = GraphSeparationBoosting::init(&train);
+/// let f = booster.run(&learner);
+///
+/// let predictions = f.predict_all(&test);
+/// assert!(predictions.iter().all(|&p| p == -1 || p == 1));
+/// let correct = predictions
+///     .iter()
+///     .zip(test.target())
+///     .filter(|&(&p, &y)| p as f64 == y)
+///     .count();
+/// let accuracy = correct as f64 / test.shape().0 as f64;
+/// println!("GraphSeparationBoosting test accuracy: {accuracy}");
+///
+/// // Unless a stall warning was printed to standard error, `f` is
+/// // consistent with the training sample, i.e. its training accuracy is 1.
+/// // On unseen data it predicts +1 only for prediction vectors seen on a
+/// // positive training example.
+/// let train_predictions = f.predict_all(&train);
+/// let train_correct = train_predictions
+///     .iter()
+///     .zip(train.target())
+///     .filter(|&(&p, &y)| p as f64 == y)
+///     .count();
+/// println!("training accuracy: {}", train_correct as f64 / train.shape().0 as f64);
+/// ```
 pub struct GraphSeparationBoosting<'a, H> {
     // Training sample
     sample: &'a Sample,
@@ -24,9 +146,25 @@ pub struct GraphSeparationBoosting<'a, H> {
 }
 
 impl<'a, H> GraphSeparationBoosting<'a, H> {
-    /// Constructs a new instance of `GraphSeparationBoosting`.
+    /// Constructs a new `GraphSeparationBoosting` for `sample`.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = GraphSeparationBoosting::init(&sample);
+    /// // The output is a `NaiveAggregation`, not a weighted majority vote.
+    /// let f = booster.run(&learner);
+    /// let predictions = f.predict_all(&sample);
+    /// assert!(predictions.iter().all(|&p| p == -1 || p == 1));
+    /// ```
     #[inline]
     pub fn init(sample: &'a Sample) -> Self {
         Self {

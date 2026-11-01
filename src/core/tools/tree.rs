@@ -1,13 +1,20 @@
-//! This file defines some tools for tree algorithms
+//! Small types used to build and evaluate decision trees.
+//!
+//! Most are thin `f64`/`usize` newtypes ([`Prediction`], [`Confidence`],
+//! [`LossValue`], [`Depth`], [`FeatureValue`], [`Mass`], [`Target`]) that
+//! make tree code self-describing. [`Splitter`] is the threshold rule stored
+//! in each branch of a [`crate::DecisionTreeClassifier`].
 use crate::core::Sample;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{cmp, fmt, ops};
 
-/// This is an alias from label of type `i32`
-/// to non-negative weight of type `f64`.
+/// A map from a label (converted to `i32`) to the total nonnegative weight
+/// of the examples with that label.
 pub type LabelToWeight = HashMap<i32, f64>;
 
+/// A predicted value (label or regression output) of type `T`.
+/// Supports `+` when `T` does.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct Prediction<T>(pub T);
@@ -30,6 +37,8 @@ where
     }
 }
 
+/// A confidence value of type `T`; for classifiers in this crate, an `f64`
+/// in `[-1, 1]`. Supports `+` when `T` does.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct Confidence<T>(pub T);
@@ -52,6 +61,7 @@ where
     }
 }
 
+/// A loss value. Supports `+`, comparison, and equality with `f64`.
 #[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
 pub struct LossValue(pub f64);
@@ -85,8 +95,22 @@ impl cmp::PartialOrd<Self> for LossValue {
     }
 }
 
-/// Struct `Depth` defines the maximal depth of a tree.
-/// This is just a wrapper for `usize`.
+/// The remaining depth budget of a tree node, a wrapper for `usize`.
+///
+/// The root of a tree with maximal depth `d` is grown with `Depth::from(d)`;
+/// each child receives one less, and a node with remaining depth `0`
+/// becomes a leaf.
+///
+/// # Examples
+/// ```
+/// use miniboosts::core::tree::Depth;
+///
+/// let depth = Depth::from(2);
+/// assert!(depth - 1 == 1);
+/// assert!(depth - 2 < 1); // a leaf
+/// assert_eq!(Depth::from(0) - 1, Depth::from(0)); // saturates at zero
+/// assert_eq!(depth.to_string(), "2");
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(transparent)]
 pub struct Depth(usize);
@@ -106,8 +130,10 @@ impl From<usize> for Depth {
 
 impl ops::Sub<usize> for Depth {
     type Output = Self;
-    /// Define the subtraction of the `Depth` struct.
-    /// The subtraction does not return a value less than or equals to 1.
+    /// Subtracts `other` from the depth.
+    /// A depth of `0` stays `0`. For a positive depth, plain `usize`
+    /// subtraction is used, so subtracting more than the current depth
+    /// overflows (panics in debug builds).
     #[inline]
     fn sub(self, other: usize) -> Self::Output {
         if self.0 < 1 {
@@ -132,6 +158,7 @@ impl cmp::PartialOrd<usize> for Depth {
     }
 }
 
+/// A feature value. Supports `+`, comparison, and equality with `f64`.
 #[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
 pub struct FeatureValue(pub f64);
@@ -162,7 +189,8 @@ impl cmp::PartialOrd<Self> for FeatureValue {
     }
 }
 
-/// Probability mass
+/// A probability mass (sum of example weights).
+/// Supports `+` and equality with `f64`.
 #[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
 pub struct Mass(pub f64);
@@ -186,7 +214,8 @@ impl cmp::PartialEq<f64> for Mass {
     }
 }
 
-/// Target
+/// A target (label) value. Supports `+`, comparison, and equality with
+/// `f64`.
 #[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
 pub struct Target(pub f64);
@@ -220,27 +249,53 @@ impl cmp::PartialOrd<Self> for Target {
     }
 }
 
-/// The output of the function `split` of `SplitRule`.
+/// The branch chosen by [`Splitter::split`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeftRight {
+    /// The feature value is below the threshold.
     Left,
+    /// The feature value is at least the threshold (or is NaN).
     Right,
 }
 
+/// A threshold rule on a single feature: an example goes left iff
+/// `x[feature] < threshold`.
+///
+/// # Examples
+/// ```
+/// use miniboosts::Sample;
+/// use miniboosts::core::tree::{LeftRight, Splitter};
+///
+/// let rows = vec![vec![0.0], vec![0.5], vec![f64::MAX]];
+/// let sample = Sample::from_dense(&rows, None).unwrap();
+/// let rule = Splitter::new("feature_0", 0.5);
+/// assert_eq!(rule.split(&sample, 0), LeftRight::Left);
+/// assert_eq!(rule.split(&sample, 1), LeftRight::Right); // ties go right
+/// assert_eq!(rule.split(&sample, 2), LeftRight::Right);
+/// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Splitter {
+    /// The name of the feature column tested.
     pub feature: String,
+    /// The threshold; values strictly below it go left.
     pub threshold: f64,
 }
 
 impl Splitter {
+    /// Creates the rule `x[name] < threshold`.
     #[inline]
     pub fn new(name: &str, threshold: f64) -> Self {
         let feature = name.to_string();
         Self { feature, threshold }
     }
 
-    /// Defines the splitting.
+    /// Returns [`LeftRight::Left`] if the value of feature `self.feature` at
+    /// `row` of `sample` is `< self.threshold`, and [`LeftRight::Right`]
+    /// otherwise (including NaN).
+    ///
+    /// # Panics
+    /// Panics if `sample` has no feature named `self.feature`, or if `row` is
+    /// out of bounds for a dense feature.
     #[inline]
     pub fn split(&self, sample: &Sample, row: usize) -> LeftRight {
         let name = &self.feature;

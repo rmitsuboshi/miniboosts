@@ -1,3 +1,4 @@
+//! [`SplitBy`]: splitting criteria for growing a [`crate::DecisionTree`].
 use rayon::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -52,17 +53,87 @@ impl Add for Score {
     }
 }
 
-/// Splitting criteria for growing decision tree.
+/// Splitting criteria for growing a [`crate::DecisionTree`].
+///
+/// At a node `S`, every feature `f` and every candidate threshold `t`
+/// (a bin boundary; see [`crate::DecisionTree`]) define the split
+/// ```txt
+/// L = {i ∈ S : x_{i,f} < t},    R = {i ∈ S : x_{i,f} >= t}.
+/// ```
+/// With the booster's weights `d_i` (not renormalized per node),
+/// ```txt
+/// W_A = Σ_{i ∈ A} d_i,   W_{A,y} = Σ_{i ∈ A, y_i = y} d_i,   p_{y|A} = W_{A,y} / W_A,
+/// ```
+/// and `W = W_S`, each criterion assigns the split a score as given on its
+/// variant (`ln` is the natural logarithm; a side with zero weight has
+/// impurity `0`). The pair `(f, t)` with the best score over all features
+/// and thresholds is chosen. Within a feature, a later threshold replaces
+/// the current best only if it is strictly better.
+///
+/// For [`SplitBy::Entropy`], [`SplitBy::Gini`], and [`SplitBy::Edge`], the
+/// unsplit node (every example on the right) is the initial candidate, so a
+/// threshold is selected only if it strictly improves on not splitting;
+/// otherwise the node becomes a leaf. [`SplitBy::Twoing`] scores the
+/// unsplit node as `0` and starts from the first candidate threshold.
+///
+/// Entropy, Gini, and twoing follow Breiman et al. (1984); the edge
+/// criterion is specific to boosting and not part of CART.
+///
+/// # Examples
+/// On data separable by one threshold, the separating split is the unique
+/// optimum of every criterion, so every variant yields a perfect stump.
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::{Classifier, DecisionTreeBuilder, Sample, SplitBy, WeakLearner};
+///
+/// // `x` separates the classes; `y` carries no information about them.
+/// let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+/// let uniform = vec![1.0 / 6.0; 6];
+///
+/// for split_by in [SplitBy::Entropy, SplitBy::Edge, SplitBy::Gini, SplitBy::Twoing] {
+///     let tree = DecisionTreeBuilder::new(&sample)
+///         .max_depth(1)
+///         .split_by(split_by)
+///         .build();
+///     let h = tree.produce(&sample, &uniform);
+///     assert_eq!(h.predict_all(&sample), vec![-1, -1, -1, 1, 1, 1], "{split_by}");
+///     // Both leaves are pure, so their confidences are exactly ±1.
+///     assert!(h.confidence_all(&sample).iter().all(|c| c.abs() == 1.0));
+/// }
+///
+/// // `Display` gives a human-readable name, used in logs.
+/// assert_eq!(SplitBy::Gini.to_string(), "Gini index");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SplitBy {
-    /// Binary entropy function.
+    /// Minimizes the weighted entropic impurity
+    /// ```txt
+    /// (W_L / W) H(L) + (W_R / W) H(R),   H(A) = - Σ_y p_{y|A} ln p_{y|A},
+    /// ```
+    /// i.e., maximizes the information gain. This is the default.
     Entropy,
-    /// Weighted accuracy.
-    /// This criterion is designed for binary classification problems.
+    /// Maximizes the absolute edge of the split
+    /// ```txt
+    /// | Σ_{i ∈ R} d_i y_i  -  Σ_{i ∈ L} d_i y_i |,
+    /// ```
+    /// the weighted correlation between the labels and the stump that
+    /// predicts `-1` on `L` and `+1` on `R` (or its negation).
+    /// Not normalized by `W`. Designed for labels `-1` and `+1`. The leaf
+    /// confidences are computed afterwards, independently of this score.
     Edge,
-    /// Gini index.
+    /// Minimizes the weighted Gini impurity
+    /// ```txt
+    /// (W_L / W) G(L) + (W_R / W) G(R),   G(A) = 1 - Σ_y p_{y|A}^2.
+    /// ```
     Gini,
-    /// Twoing rule.
+    /// Maximizes the twoing criterion
+    /// ```txt
+    /// (W_L W_R / (4 W^2)) (Σ_y | p_{y|L} - p_{y|R} |)^2,
+    /// ```
+    /// which is `0` if either side is empty.
     Twoing,
 }
 

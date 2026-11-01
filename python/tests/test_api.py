@@ -225,12 +225,20 @@ def test_iteration_count_excludes_terminal_noop():
 
 
 def test_rust_failure_is_an_error_and_invalidates_model():
-    clf = AdaBoostClassifier(estimator=ConfidenceLearner(value=0), max_iterations=1)
-    # Zero-edge learners cannot yield a normalized, positive-weight Rust ensemble.
+    # ERLPBoost requires tolerance < 2; Python does not check this, so the
+    # Rust assertion fires and must surface as an error.
+    clf = ERLPBoostClassifier(estimator=ConfidenceLearner(), tolerance=4.0, max_iterations=1)
     with pytest.raises(RuntimeError, match='MiniBoosts failed'):
         clf.fit(X, Y)
     with pytest.raises(NotFittedError):
         clf.predict(X)
+
+
+def test_zero_edge_learner_gives_the_empty_ensemble():
+    # alpha = atanh(0) = 0, so the ensemble is empty and its confidence is 0.
+    clf = AdaBoostClassifier(estimator=ConfidenceLearner(value=0), max_iterations=1)
+    clf.fit(X, Y)
+    assert np.all(clf.decision_function(X) == 0)
 
 
 @pytest.mark.parametrize('labels', [[float('nan'), 'cat', 'cat', 'cat'], [1, 'cat', 1, 'cat']])

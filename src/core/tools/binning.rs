@@ -1,3 +1,10 @@
+//! Equal-width binning of feature values.
+//!
+//! The decision tree ([`crate::DecisionTree`]) does not consider every
+//! distinct feature value as a split threshold. Instead, each feature is cut
+//! once into equal-width bins ([`Bins::cut`]), and only bin boundaries are
+//! candidate thresholds. At each node, [`Bins::pack`] accumulates the
+//! booster's example weights per bin and label.
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -8,41 +15,65 @@ use crate::core::{
     constants::{PERTURBATION, PRINT_WIDTH_BINNING},
 };
 
-/// Binning: A feature processing.
+/// A half-open interval `[start, end)` of feature values.
+///
+/// By convention `f64::MIN` and `f64::MAX` stand for `-∞` and `+∞`
+/// (see the `Display` implementation); a bin ending at `f64::MAX` also
+/// contains `f64::MAX`.
+///
+/// # Examples
+/// ```
+/// use miniboosts::core::binning::Bin;
+///
+/// let mut bin = Bin::new(0.0..1.0);
+/// assert!(bin.contains(&0.0));
+/// assert!(!bin.contains(&1.0)); // half-open
+/// bin.set_end(f64::MAX);
+/// assert!(bin.contains(&f64::MAX)); // the last bin is closed
+/// bin.set_start(f64::MIN);
+/// assert_eq!((bin.start(), bin.end()), (f64::MIN, f64::MAX));
+/// assert_eq!(bin.to_string(), "[-Inf, +Inf)");
+/// ```
 #[derive(Debug, Clone)]
 pub struct Bin(pub Range<f64>);
 
 impl Bin {
-    /// Create a new instance of `Bin`.
+    /// Creates the bin `[range.start, range.end)`.
     #[inline(always)]
     pub fn new(range: Range<f64>) -> Self {
         Self(range)
     }
 
-    /// Test membership. A bin ending at `f64::MAX` also includes that value.
+    /// Returns `true` if `start <= item < end`.
+    /// A bin ending at `f64::MAX` also includes that value.
     #[inline(always)]
     pub fn contains(&self, item: &f64) -> bool {
         self.0.contains(item) || (*item == f64::MAX && self.0.end == f64::MAX)
     }
 
+    /// Returns the inclusive lower bound.
     pub fn start(&self) -> f64 {
         self.0.start
     }
 
+    /// Sets the inclusive lower bound to `s`.
     pub fn set_start(&mut self, s: f64) {
         self.0.start = s;
     }
 
+    /// Returns the exclusive upper bound.
     pub fn end(&self) -> f64 {
         self.0.end
     }
 
+    /// Sets the exclusive upper bound to `e`.
     pub fn set_end(&mut self, e: f64) {
         self.0.end = e;
     }
 }
 
-/// A wrapper of `Vec<Bin>`.
+/// An ordered list of contiguous [`Bin`]s covering all finite values,
+/// created by [`Bins::cut`].
 #[derive(Debug)]
 pub struct Bins(Vec<Bin>);
 
@@ -52,15 +83,39 @@ impl Bins {
         self.0.len()
     }
 
+    /// Returns `true` if there are no bins.
+    /// [`Bins::cut`] always produces at least one bin.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Cut a nonempty, finite feature into exactly `n_bin` equal-width bins.
-    /// Sparse implicit zeros participate in the range. Constant values are
-    /// perturbed where representable; rounding may leave empty bins.
-    /// The outer bins cover all finite values, including `f64::MAX`.
+    /// Cuts a nonempty, finite feature into exactly `n_bin` equal-width bins.
+    ///
+    /// With `lo` and `hi` the minimum and maximum feature values, the
+    /// interior boundaries are `lo + (hi - lo) * k / n_bin` for
+    /// `k = 1, ..., n_bin - 1`; the first bin starts at `f64::MIN` and the
+    /// last ends at `f64::MAX`, so the outer bins cover all finite values,
+    /// including `f64::MAX`. Sparse implicit zeros participate in the range.
+    /// Constant values are perturbed by
+    /// [`PERTURBATION`] where
+    /// representable; rounding may leave empty bins.
+    ///
+    /// # Panics
     /// Panics for zero bins, empty features, or non-finite values.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::core::{Feature, binning::Bins};
+    ///
+    /// let mut x = Feature::dense("x");
+    /// for v in [0.0, 1.0, 3.0, 4.0] {
+    ///     x.append((0, v));
+    /// }
+    /// // Range [0, 4] in 4 bins: interior boundaries 1, 2, 3 (exact).
+    /// let bins = Bins::cut(&x, 4);
+    /// assert_eq!(bins.len(), 4);
+    /// assert_eq!(bins.to_string(), "[-Inf, +1.00), [+1.00, +2.00), ..., [+3.00, +Inf)");
+    /// ```
     pub fn cut(feature: &Feature, n_bin: usize) -> Self {
         assert!(n_bin > 0, "bin count must be positive");
         let (mut min, mut max) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -108,6 +163,45 @@ impl Bins {
         Self(bins)
     }
 
+    /// Accumulates, for each bin, the total weight `dist[i]` of the examples
+    /// `i ∈ indices` per label, where example `i` falls in the bin containing
+    /// `feature[i]`. Labels are converted with `labels[i] as i32`.
+    ///
+    /// Bins containing none of `indices` are dropped, and the bounds of the
+    /// remaining bins are adjusted so that they stay contiguous: each
+    /// boundary next to a dropped run becomes the midpoint of that run, the
+    /// first bin starts at `f64::MIN`, and the last ends at `f64::MAX`.
+    /// Weights are **not** normalized. Bins are returned in increasing order;
+    /// their `end` values are the candidate split thresholds.
+    ///
+    /// # Panics
+    /// Panics if `indices` is empty, if an index is out of bounds for
+    /// `labels` or `dist`, or if `feature[i]` is NaN.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::core::{Feature, binning::Bins};
+    ///
+    /// let mut x = Feature::dense("x");
+    /// for v in [0.0, 1.0, 3.0, 4.0] {
+    ///     x.append((0, v));
+    /// }
+    /// let labels = [-1.0, -1.0, 1.0, 1.0];
+    /// let dist = [0.125, 0.125, 0.25, 0.5];
+    /// let bins = Bins::cut(&x, 4); // boundaries 1, 2, 3
+    ///
+    /// // Only examples 0, 1, and 3 are at this node.
+    /// let packed = bins.pack(&[0, 1, 3], &x, &labels, &dist);
+    /// // They fall in bins (-∞, 1), [1, 2), and [3, ∞). Bin [2, 3) is empty
+    /// // and dropped; its neighbors now meet at the midpoint 2.5.
+    /// assert_eq!(packed.len(), 3);
+    /// let thresholds: Vec<f64> = packed.iter().map(|(bin, _)| bin.end()).collect();
+    /// assert_eq!(thresholds, vec![1.0, 2.5, f64::MAX]);
+    /// // Per-bin, per-label weights (not normalized).
+    /// assert_eq!(packed[0].1[&-1], 0.125);
+    /// assert_eq!(packed[2].1[&1], 0.5);
+    /// assert!(!packed[2].1.contains_key(&-1));
+    /// ```
     pub fn pack(
         &self,
         indices: &[usize],
@@ -138,24 +232,27 @@ impl Bins {
         self.remove_zero_weight_pack_and_normalize(packed)
     }
 
-    /// This method removes bins with zero weights.
-    /// # Example
-    /// Assume that we have bins and its weight.
+    /// This method removes bins that received no example.
+    /// # Examples
+    /// Assume that we have bins and their weights.
     /// ```text
     /// Bins       | [-3.0, 2.5), [2.5, 7.0), [7.0, 8.1), [8.1, 9.0)
     /// Weights(+) |     0.5,        0.0,        0.0,        0.2
     /// Weights(-) |     0.0,        0.0,        0.0,        0.1
     /// ```
-    /// This method remove zero-weight bins and normalize the weights
-    /// like this:
+    /// This method removes the empty bins (those whose label-to-weight map is
+    /// empty) like this:
     /// ```text
     /// Bins       | [-3.0, 5.3), [5.3, 9.0)
-    /// Weights(+) |     0.625,      0.25
-    /// Weights(-) |     0.0,        0.125
+    /// Weights(+) |     0.5,        0.2
+    /// Weights(-) |     0.0,        0.1
     /// ```
     /// That is, this method
-    /// - Change the bin bounds,
-    /// -
+    /// - changes the bin bounds so that adjacent nonempty bins meet at the
+    ///   midpoint of the removed gap,
+    /// - sets the outermost bounds to `f64::MIN` and `f64::MAX`.
+    ///
+    /// Weights are not normalized, despite the method's name.
     fn remove_zero_weight_pack_and_normalize(
         &self,
         pack: Vec<HashMap<i32, f64>>,

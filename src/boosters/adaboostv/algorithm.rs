@@ -1,7 +1,8 @@
-//! Provides `AdaBoost*` by Rätsch & Warmuth, 2005.
-//! Since one cannot use `*` as a struct name,
-//! We call `AdaBoost*` as `AdaBoostV`.
-//! (I found this name in the paper of `SparsiBoost`)
+//! Implementation of `AdaBoost*_ν` (Rätsch and Warmuth, 2005) as [`AdaBoostV`].
+//!
+//! `*` cannot appear in a Rust identifier, so the algorithm is named
+//! `AdaBoostV`, a name also used in the SparsiBoost paper.
+//! See the [`AdaBoostV`] struct for details and an example.
 use rayon::prelude::*;
 
 use crate::core::CurrentHypothesis;
@@ -10,45 +11,190 @@ use crate::hypotheses::WeightedMajority;
 
 use std::ops::ControlFlow;
 
+/// `AdaBoost*_ν` by Rätsch and Warmuth: AdaBoost with an adaptive margin
+/// estimate that approximately maximizes the hard margin.
+///
+/// # Algorithm
+/// Let `m` be the number of training examples, `y_i ∈ {-1, +1}` the labels,
+/// `h_t(x_i) ∈ [-1, 1]` the weak hypotheses' confidences, and
+/// `ν = tolerance`. Starting from `d_{1,i} = 1/m`, round `t` follows
+/// Algorithm 2 of the paper.
+///
+/// 1. Call the weak learner on `d_t` to obtain `h_t`.
+/// 2. Compute the edge `γ_t = Σ_i d_{t,i} y_i h_t(x_i)`. If `|γ_t| = 1`,
+///    stop and return `h_t` alone with weight `sign(γ_t)`, discarding
+///    earlier hypotheses.
+/// 3. Update the margin estimate and the hypothesis weight
+///    ```txt
+///    γ_t^min = min_{r ≤ t} γ_r,
+///    ρ_t     = γ_t^min - ν,
+///    α_t     = atanh(γ_t) - atanh(ρ_t)
+///            = (1/2) ln((1 + γ_t) / (1 - γ_t)) - (1/2) ln((1 + ρ_t) / (1 - ρ_t)).
+///    ```
+///    Because `ρ_t < γ_t`, every `α_t` is positive.
+/// 4. Update the distribution
+///    ```txt
+///    d_{t+1,i} ∝ d_{t,i} exp(-α_t y_i h_t(x_i)).
+///    ```
+///
+/// The output is the [`WeightedMajority`] `sign(Σ_t α_t h_t(x))` with
+/// normalized weights. Training stops after `floor(2 ln m / ν²)` rounds
+/// (see [`AdaBoostV::max_loop`]) or after the count set by
+/// [`AdaBoostV::force_quit_at`].
+///
+/// Implementation choices (numerical, not part of the original method):
+/// - The distribution is kept in log space and normalized with a shifted
+///   log-sum-exp, so an example whose probability underflows to `0.0` keeps
+///   a finite log weight and can regain mass later.
+/// - `atanh(γ_t)` is computed from the log weights, and the minimum edge is
+///   tracked as `min_r atanh(γ_r)` (equivalent because `atanh` is
+///   increasing). The term `atanh(ρ_t)` is evaluated with `ln_1p` and
+///   log-space identities so it stays accurate when `γ_t^min` is close to
+///   `±1`. The test `|γ_t| = 1` is exact on the log-space support, so
+///   underflowed probabilities do not create a spurious perfect edge.
+///
+/// # Theoretical guarantee
+/// Let `ρ*` be the maximum hard margin achievable by a convex combination of
+/// hypotheses in the class. Theorem 6 of the paper states: if the weak
+/// learner always returns a hypothesis with edge `γ_t ≥ ρ*`, then after
+/// `2 ln m / ν²` iterations `AdaBoost*_ν` produces a combined hypothesis with
+/// margin at least `ρ* - ν`. By the min-max theorem, an edge of `ρ*` is
+/// always attainable by a weak learner that returns a hypothesis of maximum
+/// edge over the class.
+///
+/// # Limitations
+/// - The edge assumption `γ_t ≥ ρ*` is not checked at runtime. Separability
+///   of the data or the choice of a decision tree does not establish it;
+///   with a non-optimal weak learner the margin guarantee does not apply.
+/// - `tolerance` is the margin accuracy `ν`, not a training-error threshold.
+///   The default `ν = 1/m` gives a budget of about `2 m² ln m` rounds.
+/// - The budget truncates `2 ln m / ν²` toward zero, so it can be one round
+///   short of the paper's count when this value is not an integer. It is `0`
+///   for `m = 1`.
+/// - [`AdaBoostV::force_quit_at`] with a smaller count voids the guarantee.
+/// - Training panics if `ρ_t ≤ -1` (that is, `ν ≥ 1 + γ_t^min`, which can
+///   happen with large `ν` or negative edges), if a hypothesis weight is not
+///   a finite `f64`, or if a margin lies outside `[-1, 1]`.
+/// - Labels must be `-1` or `+1` and both classes must be present.
+/// - Each round costs `O(m)` time beyond the weak learner, and every
+///   hypothesis is stored.
+///
+/// # Parameters
+/// | Builder method | Default | Meaning |
+/// | --- | --- | --- |
+/// | [`tolerance`](AdaBoostV::tolerance) | `1/m` | Margin accuracy `ν`; also sets the budget `floor(2 ln m / ν²)`. |
+/// | [`force_quit_at`](AdaBoostV::force_quit_at) | none | Replaces the budget with an exact round limit. |
+///
+/// # Reference
+/// Gunnar Rätsch and Manfred K. Warmuth.
+/// *Efficient Margin Maximizing with Boosting.*
+/// Journal of Machine Learning Research, 6:2131–2152, 2005.
+/// <http://jmlr.org/papers/v6/ratsch05a.html>
+///
+/// # Examples
+/// Train on a held-out split with decision stumps and evaluate on the test
+/// part.
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::{Sample, prelude::*};
+///
+/// // Labels follow the sign of `x + y`, so no single stump separates them.
+/// let csv = b"x,y,class\n\
+///     -2,1,-1\n-1,-2,-1\n1,-3,-1\n-3,2,-1\n0,-1,-1\n-2,-1,-1\n\
+///     2,1,1\n1,2,1\n-1,3,1\n3,-1,1\n0,2,1\n2,2,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+///
+/// // A fixed permutation keeps the split reproducible:
+/// // rows ix[0..4] form the test set, the other 8 rows the training set.
+/// let ix = [0, 6, 4, 10, 1, 2, 3, 5, 7, 8, 9, 11];
+/// let (train, test) = sample.split(&ix, 0, 4);
+///
+/// // The weak learner sees only the training split.
+/// let learner = DecisionTreeBuilder::new(&train).max_depth(1).build();
+///
+/// // `tolerance` is the margin accuracy ν. The budget floor(2 ln 8 / 0.1²)
+/// // = 415 rounds is replaced by exactly 20 rounds with `force_quit_at`.
+/// let mut booster = AdaBoostV::init(&train).tolerance(0.1).force_quit_at(20);
+/// assert_eq!(booster.max_loop(), 415);
+/// let f = booster.run(&learner);
+///
+/// let predictions = f.predict_all(&test);
+/// assert!(predictions.iter().all(|&p| p == -1 || p == 1));
+/// let correct = predictions
+///     .iter()
+///     .zip(test.target())
+///     .filter(|&(&p, &y)| p as f64 == y)
+///     .count();
+/// let accuracy = correct as f64 / test.shape().0 as f64;
+/// println!("AdaBoostV test accuracy: {accuracy}");
+///
+/// // At most 20 hypotheses with finite weights; confidences lie in [-1, 1].
+/// assert!(!f.hypotheses.is_empty() && f.hypotheses.len() <= 20);
+/// assert!(f.weights.iter().all(|w| w.is_finite()));
+/// assert!(f.confidence_all(&test).iter().all(|c| (-1.0..=1.0).contains(c)));
+/// ```
 pub struct AdaBoostV<'a, F> {
-    /// Training sample
+    // Training sample
     sample: &'a Sample,
 
-    /// Tolerance parameter
+    // Margin accuracy `ν`.
     tolerance: f64,
 
+    // Current margin estimate `ρ_t = γ_t^min - ν`.
     rho: f64,
 
+    // Minimum edge observed so far, `γ_t^min`.
     gamma: f64,
 
     // atanh is monotone and preserves the distance from rounded +/-1 edges.
     min_edge_coefficient: f64,
 
-    /// Distribution on sample.
+    // Distribution on sample.
     dist: Vec<f64>,
 
     // Keep finite log mass even when exp(log_mass) underflows to zero.
     log_dist: Vec<f64>,
 
-    /// Weights on hypotheses in `hypotheses`
+    // Weights on hypotheses in `hypotheses`
     weights: Vec<f64>,
 
-    /// Hypohteses obtained by the weak-learner.
+    // Hypotheses obtained by the weak learner.
     hypotheses: Vec<F>,
 
+    // Iteration budget.
     max_iter: usize,
 
-    /// Optional. If this value is `Some(iteration)`,
-    /// the algorithm terminates after `iteration` iterations.
+    // Optional. If this value is `Some(iteration)`,
+    // the algorithm terminates after `iteration` iterations.
     force_quit_at: Option<usize>,
 
     terminated: usize,
 }
 
 impl<'a, F> AdaBoostV<'a, F> {
-    /// Constructs a new instance of `AdaBoostV`.
+    /// Constructs a new instance of `AdaBoostV` for `sample`.
+    ///
+    /// The tolerance `ν` defaults to `1/m` for `m` examples, and no forced
+    /// round limit is set. The sample is validated when training starts.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // The default ν = 1/m gives about 2 m² ln m rounds; cap them.
+    /// let mut booster = AdaBoostV::init(&sample).force_quit_at(5);
+    /// let f = booster.run(&learner);
+    /// assert_eq!(f.predict_all(&sample).len(), 6);
+    /// ```
     #[inline]
     pub fn init(sample: &'a Sample) -> Self {
         let n_examples = sample.shape().0;
@@ -72,11 +218,31 @@ impl<'a, F> AdaBoostV<'a, F> {
         }
     }
 
-    /// Set the margin-accuracy parameter used in updates and the iteration budget.
-    /// Must be finite and positive. This is not a threshold on observed
-    /// classification error.
+    /// Sets the margin accuracy `ν` used in the margin estimate
+    /// `ρ_t = γ_t^min - ν` and in the budget `floor(2 ln m / ν²)`.
+    /// This is not a threshold on observed classification error.
+    /// Training panics later if `ν ≥ 1 + γ_t^min` in some round.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if `tolerance` is not finite and strictly positive.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // ν = 0.5 gives a budget of floor(2 ln 6 / 0.25) = 14 rounds.
+    /// let mut booster = AdaBoostV::init(&sample).tolerance(0.5);
+    /// assert_eq!(booster.max_loop(), 14);
+    /// let f = booster.run(&learner);
+    /// assert!(f.hypotheses.len() <= 14);
+    /// ```
     #[inline]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
@@ -88,11 +254,28 @@ impl<'a, F> AdaBoostV<'a, F> {
         self
     }
 
-    /// Returns the configured iteration budget, `floor(2 ln(m) / tolerance²)`.
+    /// Returns the configured iteration budget, `floor(2 ln(m) / tolerance²)`
+    /// for `m` training examples. Values exceeding `usize::MAX` saturate.
     /// Margin guarantees require the weak-learning assumptions of AdaBoostV;
     /// separability alone does not certify this particular weak learner.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// use miniboosts::DecisionTreeClassifier;
+    ///
+    /// // The hypothesis type must be known before training.
+    /// let booster = AdaBoostV::<DecisionTreeClassifier>::init(&sample).tolerance(0.5);
+    /// // m = 6: floor(2 ln 6 / 0.5²) = floor(14.33) = 14.
+    /// assert_eq!(booster.max_loop(), 14);
+    /// ```
     #[inline]
     pub fn max_loop(&self) -> usize {
         let n_examples = self.sample.shape().0 as f64;
@@ -107,22 +290,38 @@ impl<'a, F> AdaBoostV<'a, F> {
         self.max_iter = max_loop;
     }
 
-    /// Force quits after `iteration` iterations.
-    /// Note that if `iteration` is smaller than the iteration bound
-    /// for AdaBoostV,
+    /// Runs exactly `iteration` rounds unless a perfect hypothesis stops
+    /// training earlier. This replaces the budget of
+    /// [`AdaBoostV::max_loop`], so `iteration` may be smaller or larger.
+    /// If it is smaller than the iteration bound for AdaBoostV,
     /// the returned hypothesis has no guarantee about the margin.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // At most 3 rounds, fewer if a perfect hypothesis appears.
+    /// let mut booster = AdaBoostV::init(&sample).tolerance(0.1).force_quit_at(3);
+    /// let f = booster.run(&learner);
+    /// assert!(f.hypotheses.len() <= 3);
+    /// ```
     pub fn force_quit_at(mut self, iteration: usize) -> Self {
         self.force_quit_at = Some(iteration);
         self
     }
 
-    /// Returns a weight on the new hypothesis.
-    /// `update_params` also updates `self.dist`.
+    /// Updates `γ_t^min` and `ρ_t`, computes
+    /// `α_t = atanh(γ_t) - atanh(ρ_t)` from `edge_coefficient = atanh(γ_t)`,
+    /// applies the exponential update in log space, and returns `α_t`.
     ///
-    /// `AdaBoostV` uses exponential update,
-    /// which is numerically unstable so that I adopt a logarithmic computation.
+    /// Panics if `ρ_t ≤ -1` or `α_t` is not finite.
     ///
     /// Time complexity: `O(m)` for `m` training examples.
     #[inline]

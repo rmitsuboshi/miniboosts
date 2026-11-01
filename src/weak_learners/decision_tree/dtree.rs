@@ -9,46 +9,100 @@ use crate::weak_learners::decision_tree::{
 use std::collections::HashMap;
 use std::fmt;
 
-/// The Decision Tree algorithm.  
-/// Given a set of training examples for classification
-/// and a distribution over the set,
-/// [`DecisionTree`] outputs a decision tree classifier
-/// named [`DecisionTreeClassifier`]
-/// under the specified parameters.
+/// A weighted binary decision-tree weak learner (CART-style) for labels
+/// `-1` and `+1`.
 ///
-/// The code is based on the book:  
-/// [Classification and Regression Trees](https://www.amazon.com/Classification-Regression-Wadsworth-Statistics-Probability/dp/0412048418)
-/// by Leo Breiman, Jerome H. Friedman, Richard A. Olshen, and Charles J. Stone.
+/// Given a sample and a distribution `d` over its examples (chosen by a
+/// booster), [`WeakLearner::produce`] grows a [`DecisionTreeClassifier`]
+/// whose leaves output confidence values in `[-1, 1]`. Construct it with
+/// [`DecisionTreeBuilder`](crate::DecisionTreeBuilder).
 ///
-/// [`DecisionTree`] is constructed
-/// by [`DecisionTreeBuilder`](crate::weak_learners::decision_tree::builder::DecisionTreeBuilder).
+/// # Algorithm
+/// **Weighted training.** Only examples with `d_i > 0` are used. Every
+/// quantity below is a sum of the booster's weights `d_i`, not of example
+/// counts: for a node `S` and label `y`,
+/// ```txt
+/// W_S   = Σ_{i ∈ S} d_i,       W_{S,y} = Σ_{i ∈ S, y_i = y} d_i,
+/// p_{y|S} = W_{S,y} / W_S.
+/// ```
+/// Weights are not renormalized per node.
 ///
-/// # Example
-/// ```no_run
-/// use miniboosts::{
-///     Classifier,
-///     Sample,
-///     SampleReader,
-///     WeakLearner,
-/// };
-/// use miniboosts::{
-///     DecisionTreeBuilder,
-///     SplitBy,
-/// };
+/// **Leaf confidence.** Every node `S` stores the confidence
+/// ```txt
+/// c_S = y* (2 p_{y*|S} - 1) = (W_{S,+1} - W_{S,-1}) / (W_{S,+1} + W_{S,-1}),
+/// ```
+/// where `y*` is the label with the largest weight in `S` (the second form
+/// holds for labels `±1`). Hence `c_S ∈ [-1, 1]`; its sign is the weighted
+/// majority label and its magnitude the weighted purity. A tie gives `0`,
+/// which [`crate::Classifier::predict`] maps to `+1`. Only leaf
+/// confidences are used for prediction.
 ///
-/// // Read the training data from the CSV file.
-/// let file = "/path/to/data/file.csv";
-/// let sample = SampleReader::default()
-///     .file(file)
-///     .has_header(true)
-///     .target_feature("class")
-///     .read()
-///     .unwrap();
+/// **Growth.** Starting from the root with the depth budget `max_depth`, a
+/// node becomes a leaf if
+/// 1. its depth budget is `0`,
+/// 2. it is pure, i.e., its weighted misclassification mass
+///    `W_S - W_{S,y*}` is exactly `0`, or
+/// 3. the best split found by [`SplitBy`] sends all of its examples to one
+///    side.
 ///
-/// // Get an instance of decision tree weak learner.
-/// // In this example, the output tree is at most depth 2.
+/// Otherwise the node is split by the rule `x[f] < t` (left) / `x[f] >= t`
+/// (right) and both children are grown with the budget reduced by one.
+/// Thus `max_depth = k` yields at most `k` levels of splits and at most
+/// `2^k` leaves; `max_depth = 1` gives a decision stump.
+///
+/// **Candidate thresholds.** Each feature is cut once, when the builder is
+/// built, into equal-width bins (see [`crate::core::binning::Bins::cut`];
+/// by default `min(number of distinct values, 255)` bins). At each node the
+/// candidate thresholds for a feature are the boundaries between the bins
+/// that contain at least one of the node's examples. The criterion is
+/// evaluated for every candidate of every feature; see [`SplitBy`] for the
+/// formulas.
+///
+/// # Theoretical guarantee
+/// None. In particular, a depth-limited tree is not guaranteed to satisfy a
+/// booster's weak-learning assumption (edge `>= γ > 0` on every
+/// distribution).
+///
+/// # Limitations
+/// - Labels must be `-1` and `+1`. They are converted with `as i64` /
+///   `as i32` and not validated here; other values (e.g., `0`/`1`) yield
+///   meaningless confidences.
+/// - Thresholds are restricted to bin boundaries, so the tree may miss the
+///   best split on the raw values. Bins are fixed by the sample given to the
+///   builder; `produce` must be called on a sample with the same feature
+///   names. Values outside the builder's range fall into the outer bins.
+/// - No pruning, minimum leaf size, or impurity-decrease threshold, unlike
+///   the cost-complexity pruning of the original CART method.
+/// - Per-bin label weights are accumulated in hash maps whose iteration
+///   order varies between processes; the resulting floating-point rounding
+///   differences can change the chosen split when candidates nearly tie.
+///
+/// # Panics
+/// [`WeakLearner::produce`] panics if no entry of `dist` is positive, if
+/// `dist` is shorter than the sample, if the sample has a feature unknown
+/// to the builder, or if feature values or criterion scores are NaN.
+///
+/// # Reference
+/// Leo Breiman, Jerome H. Friedman, Richard A. Olshen, and Charles J. Stone.
+/// [Classification and Regression Trees](https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418).
+/// Wadsworth, 1984.
+///
+/// # Examples
+/// Train a decision stump directly with a distribution via
+/// [`WeakLearner::produce`].
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::{Classifier, Sample, WeakLearner};
+/// use miniboosts::{DecisionTreeBuilder, SplitBy};
+///
+/// let csv = b"x,class\n-2,-1\n-1,-1\n1,1\n2,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+///
+/// // A decision stump that splits by the entropic impurity.
 /// let tree = DecisionTreeBuilder::new(&sample)
-///     .max_depth(2)
+///     .max_depth(1)
 ///     .split_by(SplitBy::Entropy)
 ///     .build();
 ///
@@ -56,15 +110,32 @@ use std::fmt;
 /// let dist = vec![1f64 / n_sample as f64; n_sample];
 /// let f = tree.produce(&sample, &dist);
 ///
-/// let predictions = f.predict_all(&sample);
+/// // Both leaves are pure, so the confidences are exactly -1 and +1.
+/// assert_eq!(f.confidence_all(&sample), vec![-1.0, -1.0, 1.0, 1.0]);
+/// assert_eq!(f.predict_all(&sample), vec![-1, -1, 1, 1]);
+/// ```
 ///
-/// let loss = sample.target()
-///     .into_iter()
-///     .zip(predictions)
-///     .map(|(ty, py)| if *ty == py as f64 { 0f64 } else { 1f64 })
-///     .sum::<f64>()
-///     / n_sample as f64;
-/// println!("loss (train) is: {loss}");
+/// Leaf confidences are weighted purities `(W₊ - W₋) / (W₊ + W₋)`. Here the
+/// only feature is constant, so no split is possible and the tree is a
+/// single leaf whose confidence depends on the distribution alone.
+/// ```
+/// use miniboosts::{Classifier, DecisionTreeBuilder, Sample, WeakLearner};
+///
+/// let rows = vec![vec![0.0]; 3];
+/// let sample = Sample::from_dense(&rows, Some(&[1.0, 1.0, -1.0])).unwrap();
+/// let tree = DecisionTreeBuilder::new(&sample).max_depth(2).build();
+///
+/// // (0.75 - 0.25) / 1 = 0.5, exact with dyadic weights.
+/// let h = tree.produce(&sample, &[0.5, 0.25, 0.25]);
+/// assert_eq!(h.confidence_all(&sample), vec![0.5; 3]);
+///
+/// // Examples with zero weight are ignored: only the negative one remains.
+/// let h = tree.produce(&sample, &[0.0, 0.0, 1.0]);
+/// assert_eq!(h.predict_all(&sample), vec![-1; 3]);
+///
+/// // For any distribution, confidences lie in [-1, 1].
+/// let h = tree.produce(&sample, &[0.2, 0.3, 0.5]);
+/// assert!(h.confidence_all(&sample).iter().all(|c| (-1.0..=1.0).contains(c)));
 /// ```
 pub struct DecisionTree<'a> {
     bins: HashMap<&'a str, Bins>,
@@ -84,7 +155,9 @@ impl<'a> DecisionTree<'a> {
         }
     }
 
-    /// Construct a full binary tree of depth `depth`.
+    /// Recursively grows the subtree for the examples `indices` with the
+    /// remaining depth budget `depth`. The tree need not be full: pure
+    /// nodes and nodes without a useful split become leaves early.
     #[inline]
     fn grow(
         &self,
@@ -97,7 +170,8 @@ impl<'a> DecisionTree<'a> {
         // on this node.
         let (conf, loss) = confidence_and_loss(sample, dist, &indices[..]);
 
-        // If sum of `dist` over `train` is zero, construct a leaf node.
+        // If the node is pure (zero weighted misclassification)
+        // or the depth budget is exhausted, construct a leaf node.
         if loss == 0f64 || depth < 1 {
             return Box::new(Node::leaf(conf));
         }
@@ -163,10 +237,8 @@ impl WeakLearner for DecisionTree<'_> {
         Some(info)
     }
 
-    /// This method computes as follows;
-    /// 1. construct a `Node` which contains some information
-    ///    to grow a tree (e.g., impurity, total distribution mass, etc.)
-    /// 2. Convert `Node` to `Node` that pares redundant information
+    /// Grows a tree on the examples with `dist[i] > 0`, weighting each by
+    /// `dist[i]`; see [`DecisionTree`] for the algorithm and panics.
     #[inline]
     fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis {
         let n_sample = sample.shape().0;
@@ -188,9 +260,10 @@ impl WeakLearner for DecisionTree<'_> {
 }
 
 /// This function returns a tuple `(c, l)` where
-/// `c` is the **confidence** for some label `y`
-/// that minimizes the training loss.
-/// - `l` is the training loss when the confidence is `y`.
+/// - `c = y* (2 p - 1)` is the **confidence** of the node, `y*` being the
+///   label with the largest total weight `w*` and `p = w* / total`;
+/// - `l = total - w*` is the weighted misclassification mass of predicting
+///   `y*` on this node.
 ///
 /// **Note that** this function assumes that the label is `+1` or `-1`.
 #[inline]

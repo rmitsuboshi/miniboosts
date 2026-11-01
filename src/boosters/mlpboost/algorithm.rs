@@ -1,7 +1,8 @@
-//! This file defines `MlpBoost` based on the paper
-//! [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831).
-//! by Mitsuboshi et al.
+//! Implementation of [`MlpBoost`] from
+//! [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831)
+//! by Mitsuboshi, Hatano, and Takimoto.
 //!
+//! See the [`MlpBoost`] struct for the algorithm, guarantees, and an example.
 use crate::boosters::corrective_erlpboost::CorrErlpFwObjective;
 use crate::core::CurrentHypothesis;
 use crate::core::{
@@ -18,6 +19,154 @@ use crate::optimization::{
 
 use std::ops::ControlFlow;
 
+/// MLPBoost: Frank-Wolfe soft-margin boosting with an LPBoost secondary
+/// update.
+///
+/// # Algorithm
+///
+/// This is Algorithm 1 of "Boosting as Frank-Wolfe" with the LPBoost rule
+/// (Algorithm 2) as the secondary update. Let `A = (y_i h_j(x_i))_{i,j}`,
+/// `ε = tolerance`, and `Δ_{m,ν} = { d : Σ_i d_i = 1, 0 ≤ d_i ≤ 1/ν }`. The
+/// booster maximizes the entropy-regularized soft-margin objective
+/// ```txt
+/// -f̃*(-Aw) = min_{d ∈ Δ_{m,ν}} [ d·Aw + (1/η) Δ(d) ],   η = (2/ε) ln(m/ν),
+/// ```
+/// over weights `w` in the simplex, where `Δ(d) = Σ_i d_i ln(m d_i)` is the
+/// relative entropy to the uniform distribution. Starting from the uniform
+/// `d_1` and `γ̂ = 1`, round `t`:
+///
+/// 1. obtains `h_t` from the weak learner on `d_t` and its margins
+///    `a_i = y_i h_t(x_i)`, which must be finite and in `[-1, 1]`;
+/// 2. updates `γ̂ ← min(γ̂, d_t·a)`, the smallest edge returned so far;
+/// 3. stops if `γ̂ - (-f̃*(-Aw_t)) ≤ ε/2`; `h_t` is then discarded (before
+///    the first hypothesis, the objective is taken to be `-1`);
+/// 4. otherwise adds `h_t` and computes two candidates:
+///    - Frank-Wolfe: `w_t + λ_t (e_{h_t} - w_t)` with the step rule set by
+///      [`update_rule`](Self::update_rule) (`LineSearch` by default,
+///      `ShortStep`, or `Classic` with `λ_t = 2/(t + 2)`); the first round
+///      sets `w = e_{h_1}`;
+///    - LPBoost: the optimal weights of the soft-margin LP over all
+///      hypotheses collected so far;
+/// 5. keeps the candidate with the larger `-f̃*(-Aw)` (ties go to
+///    Frank-Wolfe) and sets `d_{t+1}` to the minimizer above, i.e.
+///    `d_{t+1,i} ∝ exp(-η (Aw_{t+1})_i)` capped at `1/ν`.
+///
+/// After stopping, [`Booster::postprocess`] solves the soft-margin LP over
+/// all collected hypotheses and returns the resulting [`WeightedMajority`].
+///
+/// Implementation choices: the paper's output is `Σ_j w_{T,j} h_j`; this
+/// implementation instead re-fits the LP, which cannot decrease the
+/// soft-margin objective over the same hypotheses (up to solver accuracy).
+/// The run is capped at `max(1, ceil(32 ln(m/ν)/ε²))` rounds (see
+/// [`max_loop`](Self::max_loop)). The LP subproblems are solved with the
+/// Clarabel interior-point solver through [`ColumnGeneration`]. One margin
+/// column per accepted hypothesis is cached (`O(mT)` memory) so earlier
+/// hypotheses are never evaluated again. Line search uses bisection to an
+/// interval width of `1e-10`. If `ν = m`, the only feasible distribution is
+/// uniform; the first hypothesis is kept after one round, even if its edge is
+/// nonpositive.
+///
+/// # Theoretical guarantee
+///
+/// Theorem 3 of "Boosting as Frank-Wolfe" (arXiv numbering): if the weak
+/// learner returns, on every distribution `d_t`, a hypothesis with edge at
+/// least some unknown `g`, and the Frank-Wolfe step is Classic or ShortStep,
+/// then Algorithm 1 reaches an `ε`-accurate solution of the soft-margin
+/// problem (soft-margin objective at least `g - ε`) within
+/// `O(ln(m/ν)/ε²)` rounds, for any secondary update. The paper notes that
+/// line search makes at least as much progress per round as the short step,
+/// so the same bound holds for `LineSearch`. The stopping test
+/// `γ̂ + f̃*(-Aw_t) ≤ ε/2` certifies this accuracy under the same assumption.
+/// This matches the bounds of ERLPBoost and Corrective ERLPBoost, whereas
+/// LPBoost can need `Ω(m)` rounds.
+///
+/// # Limitations
+///
+/// - The weak-learning assumption is not checked at runtime; a decision tree
+///   does not by itself ensure it.
+/// - `tolerance` is an optimization accuracy on the soft-margin objective,
+///   not a classification-error threshold.
+/// - `nu` caps every example weight at `1 / nu`; it does not guarantee a
+///   particular number of margin errors.
+/// - Labels must be `-1` or `+1` with both classes present; preprocessing
+///   panics otherwise. Weak hypotheses whose margins are non-finite or
+///   outside `[-1, 1]` cause a panic.
+/// - Custom hypotheses must predict consistently on a fixed sample, because
+///   training margins are cached.
+/// - LP solver failures **panic**. Each round solves an LP whose size grows
+///   with the number of hypotheses, and the margin cache uses `O(mT)`
+///   memory for `T` accepted hypotheses.
+/// - `FwUpdateRule::BlendedPairwise` is not supported.
+/// - [`CurrentHypothesis::current_hypothesis`] (used by loggers) uses the
+///   chosen Frank-Wolfe or LPBoost weights, which can differ from the final
+///   LP weights returned by [`Booster::run`].
+///
+/// # Parameters
+///
+/// | Builder method | Meaning | Default |
+/// | --- | --- | --- |
+/// | [`nu`](MlpBoost::nu) | capping parameter `ν ∈ [1, m]` | `1` ([`DEFAULT_CAPPING`]) |
+/// | [`tolerance`](MlpBoost::tolerance) | accuracy `ε`; sets `η`, the stopping gap `ε/2`, and the budget | `1e-3` ([`DEFAULT_TOLERANCE`]) |
+/// | [`update_rule`](MlpBoost::update_rule) | Frank-Wolfe step rule | [`FwUpdateRule::LineSearch`] |
+///
+/// # Reference
+///
+/// Ryotaro Mitsuboshi, Kohei Hatano, and Eiji Takimoto.
+/// [Boosting as Frank-Wolfe](https://arxiv.org/abs/2209.10831).
+/// arXiv:2209.10831.
+///
+/// # Examples
+/// Train on a held-out split with decision stumps and evaluate on the test
+/// part.
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::{FwUpdateRule, Sample, prelude::*};
+///
+/// // Labels follow the sign of `x + y`, so no single stump separates them.
+/// let csv = b"x,y,class\n\
+///     -2,1,-1\n-1,-2,-1\n1,-3,-1\n-3,2,-1\n0,-1,-1\n-2,-1,-1\n\
+///     2,1,1\n1,2,1\n-1,3,1\n3,-1,1\n0,2,1\n2,2,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+///
+/// // A fixed permutation keeps the split reproducible:
+/// // rows ix[0..4] form the test set, the other 8 rows the training set.
+/// let ix = [0, 6, 4, 10, 1, 2, 3, 5, 7, 8, 9, 11];
+/// let (train, test) = sample.split(&ix, 0, 4);
+///
+/// // The weak learner sees only the training split.
+/// let learner = DecisionTreeBuilder::new(&train).max_depth(1).build();
+///
+/// // `nu = 2` caps every example weight at 1/2; `tolerance = 0.1` sets the
+/// // regularization, the stopping gap 0.05, and the budget.
+/// let mut booster = MlpBoost::init(&train)
+///     .nu(2.0)
+///     .tolerance(0.1)
+///     .update_rule(FwUpdateRule::LineSearch);
+/// let f = booster.run(&learner);
+///
+/// let predictions = f.predict_all(&test);
+/// assert!(predictions.iter().all(|&p| p == -1 || p == 1));
+/// let correct = predictions
+///     .iter()
+///     .zip(test.target())
+///     .filter(|&(&p, &y)| p as f64 == y)
+///     .count();
+/// let accuracy = correct as f64 / test.shape().0 as f64;
+/// println!("MlpBoost test accuracy: {accuracy}");
+///
+/// // Budget ceil(32 ln(m/ν) / ε²) = ceil(32 ln 4 / 0.01) = 4437 rounds;
+/// // `terminated` is the round at which training stopped.
+/// assert_eq!(booster.max_loop(), 4437);
+/// let rounds = booster.terminated();
+/// assert!(rounds >= 1 && rounds <= booster.max_loop());
+/// assert!(f.hypotheses.len() <= rounds);
+/// println!("stopped at round {rounds}");
+/// // The final LP weights are nonnegative and normalized.
+/// assert!(f.weights.iter().all(|&w| w > 0.0));
+/// assert!((f.weights.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+/// ```
 pub struct MlpBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -59,14 +208,35 @@ pub struct MlpBoost<'a, F> {
 }
 
 impl<'a, F> MlpBoost<'a, F> {
-    /// Construct a new instance of `MlpBoost` using line-search FW updates.
+    /// Constructs a new instance of `MlpBoost` for `sample` with the default
+    /// capping parameter `nu = 1`, `tolerance = 1e-3`, and line-search
+    /// Frank-Wolfe updates.
+    ///
     /// See the discussion after Theorem 3 in
     /// <https://arxiv.org/abs/2209.10831>: exact line search is at least as
-    /// good as the short-step candidate on the same segment. This implementation
-    /// uses the shared numerical line-search tolerance. Classic and ShortStep
-    /// remain available through [`Self::update_rule`].
+    /// good as the short-step candidate on the same segment. This
+    /// implementation uses the shared numerical line-search tolerance
+    /// (`1e-10`). Classic and ShortStep remain available through
+    /// [`Self::update_rule`].
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if `sample` has no examples.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = MlpBoost::init(&sample).tolerance(0.1);
+    /// let f = booster.run(&learner);
+    /// assert_eq!(f.predict_all(&sample).len(), 6);
+    /// ```
     pub fn init(sample: &'a Sample) -> Self {
         let n_examples = sample.shape().0;
         assert!(n_examples != 0);
@@ -108,10 +278,30 @@ impl<'a, F> MlpBoost<'a, F> {
         }
     }
 
-    /// This method updates the capping parameter.
-    /// This parameter must be in `[1, # of training examples]`.
+    /// Sets the capping parameter `nu`.
+    ///
+    /// Every example weight is capped at `1 / nu`; `nu` must lie in `[1, m]`,
+    /// where `m` is the number of training examples. Default: `1`.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if `nu` is not in `[1, m]`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // m = 6: every example weight is at most 1/3.
+    /// let mut booster = MlpBoost::init(&sample).nu(3.0).tolerance(0.1);
+    /// let f = booster.run(&learner);
+    /// assert!(!f.hypotheses.is_empty());
+    /// ```
     pub fn nu(mut self, nu: f64) -> Self {
         checkers::capping_parameter(nu, self.n_examples);
         self.nu = nu;
@@ -119,14 +309,36 @@ impl<'a, F> MlpBoost<'a, F> {
         self
     }
 
-    /// Set the Frank-Wolfe rule.
-    /// Supports classic, short-step, and line-search updates.
+    /// Sets the Frank-Wolfe step-size rule of the primary update.
+    ///
+    /// Supports [`FwUpdateRule::Classic`], [`FwUpdateRule::ShortStep`], and
+    /// [`FwUpdateRule::LineSearch`] (default).
     ///
     /// Time complexity: `O(1)`.
     ///
     /// # Panics
-    /// Blended-pairwise updates require coefficient-space atoms and are not
-    /// supported by this booster's margin-space implementation.
+    /// Panics on [`FwUpdateRule::BlendedPairwise`]: blended-pairwise updates
+    /// require coefficient-space atoms and are not supported by this
+    /// booster's margin-space implementation.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// use miniboosts::FwUpdateRule;
+    ///
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // The classic step size 2 / (t + 2) instead of line search.
+    /// let mut booster = MlpBoost::init(&sample)
+    ///     .tolerance(0.1)
+    ///     .update_rule(FwUpdateRule::Classic);
+    /// let f = booster.run(&learner);
+    /// assert!(!f.hypotheses.is_empty());
+    /// ```
     pub fn update_rule(mut self, update_rule: FwUpdateRule) -> Self {
         assert!(
             !matches!(update_rule, FwUpdateRule::BlendedPairwise),
@@ -136,12 +348,35 @@ impl<'a, F> MlpBoost<'a, F> {
         self
     }
 
-    /// Set the soft-margin objective tolerance. The stopping gap uses half
-    /// this value; it is not a classification-error threshold.
-    /// Panics unless the value is finite, positive, and its half is nonzero.
-    /// Preprocessing also rejects an unrepresentable regularization parameter.
+    /// Sets the soft-margin objective tolerance `ε`.
+    ///
+    /// Half of `ε` is spent on the entropy regularization
+    /// (`η = (2/ε) ln(m/ν)`) and half on the stopping gap; `ε` also
+    /// determines the iteration budget. It is not a classification-error
+    /// threshold. Default: `1e-3`.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics unless `tolerance` is finite and positive and `tolerance / 2`
+    /// is nonzero. Training later panics if the resulting `η` is not finite
+    /// and positive.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = MlpBoost::init(&sample).tolerance(0.2);
+    /// // Budget ceil(32 ln(6) / 0.2²) = 1434 rounds.
+    /// assert_eq!(booster.max_loop(), 1434);
+    /// let f = booster.run(&learner);
+    /// assert!(f.hypotheses.len() <= 1434);
+    /// ```
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
@@ -156,7 +391,7 @@ impl<'a, F> MlpBoost<'a, F> {
         self
     }
 
-    /// Set the regularization parameter.
+    /// Sets `self.eta = ln(m/ν) / (ε/2)`, or `1` when `ν = m`.
     ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
@@ -179,7 +414,7 @@ impl<'a, F> MlpBoost<'a, F> {
         self.objective = ErlpSoftMarginObjective::new(self.nu, self.eta);
     }
 
-    /// Initialize the LP solver.
+    /// Initializes the Frank-Wolfe objective and the LP solver.
     ///
     /// Time complexity: `O( # of training examples )`.
     fn initialize_solver(&mut self) {
@@ -191,19 +426,59 @@ impl<'a, F> MlpBoost<'a, F> {
         self.lpboost.initialize(self.n_examples, self.nu);
     }
 
-    /// Returns the iteration budget for the configured soft-margin objective
-    /// tolerance under the weak-learning assumption.
+    /// Returns the iteration budget `max(1, ceil(32 ln(m/ν) / ε²))` for the
+    /// configured `nu` and tolerance `ε`.
+    ///
+    /// The budget corresponds to the `O(ln(m/ν)/ε²)` bound under the
+    /// weak-learning assumption; it is not a training-error guarantee.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// use miniboosts::DecisionTreeClassifier;
+    ///
+    /// // The hypothesis type must be known before training.
+    /// let booster = MlpBoost::<DecisionTreeClassifier>::init(&sample)
+    ///     .nu(2.0)
+    ///     .tolerance(0.2);
+    /// // m = 6: ceil(32 ln(6/2) / 0.2²) = ceil(878.9) = 879.
+    /// assert_eq!(booster.max_loop(), 879);
+    /// ```
     pub fn max_loop(&self) -> usize {
         let ln_m = (self.n_examples as f64 / self.nu).ln();
         ((8f64 * ln_m / self.half_tolerance.powi(2)).ceil() as usize).max(1)
     }
 
-    /// Returns the terminated iteration.
-    /// Returns `usize::MAX` before preprocessing.
+    /// Returns the round at which training stopped.
+    ///
+    /// Returns `usize::MAX` before training. During training it holds the
+    /// iteration budget until the stopping rule fires; if the budget is
+    /// reached, it remains equal to the budget.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = MlpBoost::init(&sample).tolerance(0.1);
+    /// assert_eq!(booster.terminated(), usize::MAX); // not trained yet
+    /// let _f = booster.run(&learner);
+    /// // Below the budget iff the gap criterion stopped training.
+    /// assert!(booster.terminated() >= 1 && booster.terminated() <= booster.max_loop());
+    /// ```
     pub fn terminated(&self) -> usize {
         self.terminated
     }
@@ -229,17 +504,12 @@ where
             .collect()
     }
 
-    /// Returns the smoothed objective value
-    /// `-f*` at the current weighting `self.weights`.
+    /// Returns the regularized soft-margin objective `-f̃*(-Aw)` at
+    /// `weights`, or `-1` if there are no hypotheses yet.
     ///
     /// ```text
-    /// - max [ - d^T Aw - sum_i [ di ln( di ) ] ]
-    /// s.t. sum_i di = 1, 0 <= di <= 1 / self.nu, for all i <= m.
-    ///  ^
-    ///  |
-    ///  v
-    /// min [ d^T Aw + sum_i [ di ln( di ) ] ]
-    /// s.t. sum_i di = 1, 0 <= di <= 1 / self.nu, for all i <= m.
+    /// -f̃*(-Aw) = min_d [ d^T Aw + (1/eta) sum_i d_i ln(m d_i) ]
+    /// s.t. sum_i d_i = 1, 0 <= d_i <= 1 / nu, for all i <= m.
     /// ```
     ///
     /// Time complexity: `O(examples * hypotheses)` with no hypothesis inference.
@@ -252,7 +522,7 @@ where
         self.objective.objective_value(&neg_margins[..])
     }
 
-    /// Updates weight on hypotheses and `self.dist` in this order.
+    /// Sets `self.dist` to the regularized minimizer at the current weights.
     fn update_distribution_mut(&mut self) {
         let neg_margins = self.negative_margins(&self.weights);
         self.dist = self.objective.gradient(&neg_margins[..]);
@@ -309,7 +579,7 @@ where
 
 impl<F> Booster<F> for MlpBoost<'_, F>
 where
-    F: Classifier + Clone + PartialEq,
+    F: Classifier + Clone,
 {
     type Output = WeightedMajority<F>;
 

@@ -1,3 +1,4 @@
+//! The [`Sample`] struct: a column-oriented set of examples with labels.
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -9,6 +10,90 @@ use std::path::Path;
 use super::feature::*;
 use rayon::prelude::*;
 
+/// A column-oriented set of `m` examples with `n` features and a label vector.
+///
+/// Each column is a [`Feature`] (dense or sparse) addressed by name, e.g.,
+/// `sample["x"][i]`. The label vector is [`Sample::target`]. Boosters in this
+/// crate solve binary classification and require labels `-1` and `+1`
+/// stored as `f64`, with both classes present in the training sample.
+///
+/// # Construction
+/// - [`Sample::from_reader`]: CSV text from any reader.
+/// - [`Sample::from_dense`]: a dense row-major matrix.
+/// - [`crate::SampleReader`]: CSV or SVMlight files.
+///
+/// # File formats
+/// **CSV.** Comma-separated values, one example per line. With a header, the
+/// first line gives column names (used verbatim, without trimming). Without a
+/// header, columns are named `Feat. [1]`, ..., `Feat. [n]` (1-based). Values
+/// are trimmed and parsed as `f64`. The label column must then be selected
+/// with [`Sample::set_target`].
+///
+/// **SVMlight.** Each line is
+/// ```txt
+/// y index:value index:value ...
+/// ```
+/// where `y` is the label (parsed as `f64`), `index` is a nonnegative integer
+/// feature index, and `value` is an `f64`. Omitted entries are zero and
+/// features are stored sparsely. Index `k` is named `Feat. [k+1]`, and
+/// features with no nonzero entry (e.g., index `0` of a 1-indexed file) are
+/// removed, so column positions may differ from the file's indices.
+/// The SVMlight format is conventionally 1-indexed, whereas
+/// `sklearn.datasets.dump_svmlight_file` writes 0-indexed files by default.
+/// Comments (`#`), `qid:` fields, and blank lines are not supported.
+///
+/// # Examples
+/// Read CSV text, select the label column, and access features by name.
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::Sample;
+///
+/// let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+///
+/// // 6 examples, 2 features; the label column is not a feature.
+/// assert_eq!(sample.shape(), (6, 2));
+/// assert_eq!(sample.target(), &[-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]);
+///
+/// // `sample[name]` is a `Feature` column; `sample[name][i]` is a value.
+/// assert_eq!(sample["x"][4], 2.0);
+/// assert_eq!(sample["y"].name(), "y");
+/// let names: Vec<&str> = sample.features().iter().map(|f| f.name()).collect();
+/// assert_eq!(names, ["x", "y"]);
+///
+/// // `at(i)` returns one example as `(features in column order, label)`.
+/// assert_eq!(sample.at(1), (vec![-1.0, 1.0], -1.0));
+/// ```
+///
+/// Hold out a test set with [`Sample::split`], train on the rest, and
+/// evaluate the accuracy on the held-out examples.
+/// ```
+/// # use std::io::BufReader;
+/// use miniboosts::prelude::*;
+/// use miniboosts::Sample;
+///
+/// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+/// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+/// #     .unwrap()
+/// #     .set_target("class");
+/// // Rows 2 and 5 (one per class) form the test set.
+/// let (train, test) = sample.split([2, 5, 0, 1, 3, 4], 0, 2);
+/// assert_eq!((train.shape().0, test.shape().0), (4, 2));
+///
+/// let tree = DecisionTreeBuilder::new(&train).max_depth(1).build();
+/// let f = AdaBoost::init(&train).run(&tree);
+///
+/// // The data are separable by a threshold on `x`, which the stump finds.
+/// let predictions = f.predict_all(&test);
+/// let n_correct = predictions
+///     .iter()
+///     .zip(test.target())
+///     .filter(|&(&p, &y)| p as f64 == y)
+///     .count();
+/// assert_eq!(n_correct, test.shape().0);
+/// ```
 #[derive(Debug, Clone)]
 pub struct Sample {
     pub(super) name_to_index: HashMap<String, usize>,
@@ -19,13 +104,36 @@ pub struct Sample {
 }
 
 impl Sample {
-    /// Construct owned, column-oriented data from a dense row-major matrix.
-    /// Feature names are `feature_0`, `feature_1`, and so on. Pass `None` for
-    /// prediction data without labels. This does not validate a task-specific
-    /// label encoding; boosters still enforce their training requirements.
+    /// Constructs owned, column-oriented data from a dense row-major matrix
+    /// `rows` (`rows[i][j]` is feature `j` of example `i`).
+    /// Feature names are `feature_0`, `feature_1`, and so on (0-based).
+    /// Pass `None` as `target` for prediction data without labels. This does
+    /// not validate a task-specific label encoding; boosters still enforce
+    /// their training requirements.
     ///
+    /// # Errors
     /// Returns an error for empty or ragged matrices, non-finite entries, or
-    /// a target whose length differs from the number of rows.
+    /// a target that is non-finite or whose length differs from the number of
+    /// rows.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![-1.0, 0.5], vec![2.0, 0.0], vec![3.0, -0.5]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// assert_eq!(sample.shape(), (3, 2));
+    /// assert_eq!(sample["feature_1"][2], -0.5);
+    /// assert_eq!(sample.target(), &[-1.0, 1.0, 1.0]);
+    ///
+    /// // Without labels, e.g. for data to predict on.
+    /// let unlabeled = Sample::from_dense(&rows, None).unwrap();
+    /// assert!(unlabeled.target().is_empty());
+    ///
+    /// // Ragged rows and non-finite values are rejected.
+    /// assert!(Sample::from_dense(&[vec![1.0], vec![1.0, 2.0]], None).is_err());
+    /// assert!(Sample::from_dense(&[vec![f64::NAN]], None).is_err());
+    /// ```
     pub fn from_dense(rows: &[Vec<f64>], target: Option<&[f64]>) -> Result<Self, String> {
         let n_sample = rows.len();
         let n_feature = rows.first().map_or(0, Vec::len);
@@ -65,8 +173,21 @@ impl Sample {
         })
     }
 
-    /// Construct a new dummy instance of `Self.`
-    /// This method is effective when you use a `BadBaseLearner.`
+    /// Constructs a placeholder sample with `n_sample` examples and a single
+    /// all-zero feature named `dummy`, intended for tests of boosters and
+    /// solvers whose hypotheses ignore the features.
+    /// The first `n_sample / 2` (rounded down) labels are `+1` and the rest
+    /// are `-1`, so `dummy(1)` has the single label `-1`.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let sample = Sample::dummy(5);
+    /// assert_eq!(sample.shape(), (5, 1));
+    /// assert_eq!(sample.target(), &[1.0, 1.0, -1.0, -1.0, -1.0]);
+    /// assert_eq!(sample["dummy"][3], 0.0);
+    /// ```
     pub fn dummy(n_sample: usize) -> Self {
         let half = n_sample / 2;
         let mut target = vec![1f64; n_sample];
@@ -83,12 +204,12 @@ impl Sample {
         }
     }
 
-    /// Read a CSV format file to [`Sample`] type.
-    /// This method returns `Err` if the file does not exist.
+    /// Reads a CSV file into a [`Sample`]; see [`Sample::from_reader`].
+    /// Returns `Err` if the file cannot be opened or read.
     ///
-    /// If the CSV file does not header row,
-    /// this method assigns a default name for each column:
-    /// `Feat. [0]`, `Feat. [1]`, ..., `Feat. [n]`.
+    /// If the CSV file has no header row,
+    /// this method assigns a default name to each column:
+    /// `Feat. [1]`, `Feat. [2]`, ..., `Feat. [n]`.
     ///
     /// **Do not forget** to call [`Sample::set_target`] to
     /// assign the class label.
@@ -102,7 +223,57 @@ impl Sample {
         Self::from_reader(reader, has_header)
     }
 
-    /// read a csv from [`BufReader`].
+    /// Reads CSV text from `reader`. The result has no labels yet: call
+    /// [`Sample::set_target`] to turn one column into the label vector.
+    ///
+    /// If `has_header` is `true`, the first line gives the column names
+    /// (split on `,` and used verbatim, so spaces after commas become part
+    /// of the names). Otherwise columns are named
+    /// `Feat. [1]`, ..., `Feat. [n]`. Each value is trimmed and parsed as
+    /// `f64`; all columns are stored densely.
+    ///
+    /// # Errors
+    /// Returns `Err` if reading a line fails (I/O error or invalid UTF-8).
+    ///
+    /// # Panics
+    /// - if `has_header` is `true` and the input is empty;
+    /// - if a value cannot be parsed as `f64` (including empty fields and
+    ///   blank lines);
+    /// - if a row has more columns than the header (or the first row).
+    ///
+    /// Rows with fewer columns are not rejected and leave columns with
+    /// different lengths; callers must supply rectangular data.
+    ///
+    /// # Examples
+    /// With a header row, the column names come from the first line.
+    /// `&[u8]` implements [`Read`], so in-memory text works as well as a
+    /// [`File`].
+    /// ```
+    /// use std::io::BufReader;
+    /// use miniboosts::Sample;
+    ///
+    /// let csv = b"x,y,class\n-2,0,-1\n1,0.5,1\n";
+    /// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    ///     .unwrap()
+    ///     .set_target("class");
+    /// assert_eq!(sample.shape(), (2, 2));
+    /// assert_eq!(sample["y"][1], 0.5);
+    /// ```
+    ///
+    /// Without a header, columns are named `Feat. [1]`, `Feat. [2]`, ...
+    /// (1-based), so the label column is selected by such a name.
+    /// ```
+    /// use std::io::BufReader;
+    /// use miniboosts::Sample;
+    ///
+    /// let csv = b"-2,0,-1\n1,0.5,1\n";
+    /// let sample = Sample::from_reader(BufReader::new(&csv[..]), false)
+    ///     .unwrap()
+    ///     .set_target("Feat. [3]");
+    /// assert_eq!(sample.shape(), (2, 2));
+    /// assert_eq!(sample.target(), &[-1.0, 1.0]);
+    /// assert_eq!(sample["Feat. [1]"][0], -2.0);
+    /// ```
     pub fn from_reader<R>(reader: BufReader<R>, mut has_header: bool) -> io::Result<Self>
     where
         R: Read,
@@ -183,12 +354,26 @@ impl Sample {
         Ok(sample)
     }
 
-    /// Returns the slice of target values.
+    /// Returns the label vector (one value per example).
+    /// It is empty until [`Sample::set_target`] is called on data read
+    /// from CSV.
     pub fn target(&self) -> &[f64] {
         &self.target[..]
     }
 
-    /// Returns the unique target values.
+    /// Returns the distinct label values in ascending order.
+    ///
+    /// # Panics
+    /// Panics if a label is NaN.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0]; 4];
+    /// let sample = Sample::from_dense(&rows, Some(&[1.0, -1.0, 1.0, -1.0])).unwrap();
+    /// assert_eq!(sample.unique_target(), vec![-1.0, 1.0]);
+    /// ```
     pub fn unique_target(&self) -> Vec<f64> {
         let mut target = self.target().to_vec();
         target.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -197,13 +382,36 @@ impl Sample {
         target
     }
 
-    /// Returns a slice of the features.
+    /// Returns the feature columns, in column order (the label column is not
+    /// included).
     pub fn features(&self) -> &[Feature] {
         &self.features[..]
     }
 
-    /// Set the feature of name `target` to `self.target`.
-    /// The old value assigned to `self.target` will be dropped.
+    /// Moves the column named `target` out of the features and into the label
+    /// vector, replacing any previous labels. The number of features
+    /// decreases by one.
+    ///
+    /// # Panics
+    /// Panics if no column is named `target`.
+    ///
+    /// # Examples
+    /// ```
+    /// use std::io::BufReader;
+    /// use miniboosts::Sample;
+    ///
+    /// let csv = b"class,x,y\n-1,-2,0\n1,1,0.5\n";
+    /// let sample = Sample::from_reader(BufReader::new(&csv[..]), true).unwrap();
+    /// // Before `set_target`, every column is a feature and there are no labels.
+    /// assert_eq!(sample.shape(), (2, 3));
+    /// assert!(sample.target().is_empty());
+    ///
+    /// // The label column may be anywhere; it is removed from the features.
+    /// let sample = sample.set_target("class");
+    /// assert_eq!(sample.shape(), (2, 2));
+    /// assert_eq!(sample.target(), &[-1.0, 1.0]);
+    /// assert_eq!(sample.at(0), (vec![-2.0, 0.0], -1.0));
+    /// ```
     pub fn set_target<S: AsRef<str>>(mut self, target: S) -> Self {
         let target = target.as_ref();
         let pos = self
@@ -226,15 +434,16 @@ impl Sample {
         self
     }
 
-    /// Read a SVMLight format file to `Sample`.
+    /// Reads an SVMlight file into a [`Sample`] with sparse features.
     ///
-    /// Each line of SVMLight format file has the following form:
+    /// Each line of an SVMlight file has the following form:
     /// ```txt
-    /// y index:value index: value
+    /// y index:value index:value
     /// ```
     /// where `y` is the target label of type `f64`,
     /// `index` is the feature index, and `value` is the value
-    /// at the feature.
+    /// at the feature. Index `k` becomes a feature named `Feat. [k+1]`;
+    /// all-zero features are removed afterwards.
     ///
     /// **Note**
     /// The SVMLight format file is basically 1-indexed,
@@ -324,15 +533,43 @@ impl Sample {
         self.n_feature = self.features.len();
     }
 
-    /// Returns the pair of the number of examples and
-    /// the number of features
+    /// Returns `(number of examples, number of features)`.
+    /// The label column is not counted as a feature.
+    ///
+    /// # Examples
+    /// ```
+    /// use std::io::BufReader;
+    /// use miniboosts::Sample;
+    ///
+    /// let csv = b"x,y,class\n-2,0,-1\n1,0.5,1\n3,1,1\n";
+    /// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    ///     .unwrap()
+    ///     .set_target("class");
+    /// let (n_sample, n_feature) = sample.shape();
+    /// assert_eq!((n_sample, n_feature), (3, 2));
+    /// // A probability vector over the examples, as passed to weak learners.
+    /// let uniform = vec![1.0 / n_sample as f64; n_sample];
+    /// assert_eq!(uniform.len(), sample.target().len());
+    /// ```
     pub fn shape(&self) -> (usize, usize) {
         (self.n_sample, self.n_feature)
     }
 
-    /// Set the feature (column) names.
-    /// This method panics when the length of given feature names is
-    /// not equals to the one of `self.features`.
+    /// Renames all feature columns, in column order, and returns the old names.
+    ///
+    /// # Panics
+    /// Panics if `names.len()` differs from the number of features.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+    /// let mut sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0])).unwrap();
+    /// let old = sample.replace_names(["height", "weight"]);
+    /// assert_eq!(old, ["feature_0", "feature_1"]);
+    /// assert_eq!(sample["weight"][1], 4.0);
+    /// ```
     pub fn replace_names<S, T>(&mut self, names: T) -> Vec<String>
     where
         S: ToString + std::fmt::Display,
@@ -364,7 +601,11 @@ impl Sample {
         old_names
     }
 
-    /// Returns the `idx`-th instance `(x, y)`.
+    /// Returns the `idx`-th example as `(x, y)`, where `x` holds its feature
+    /// values in column order and `y` is its label.
+    ///
+    /// # Panics
+    /// Panics if `idx` is out of bounds or the labels are not set.
     pub fn at(&self, idx: usize) -> (Vec<f64>, f64) {
         let x = self
             .features
@@ -387,12 +628,32 @@ impl Sample {
         }
     }
 
-    /// Check whether `self` is
-    /// a training set for binary classification or not.
+    /// Checks that `self` is a valid training set for binary classification.
+    /// Boosters call this in [`crate::Booster::preprocess`].
     ///
     /// # Panics
-    /// Panics instead of returning `false` if the target is unset,
-    /// non-integer, or does not take exactly two label values.
+    /// Panics (instead of returning `false`) if the labels are unset,
+    /// some label is not an integer, or the labels do not take exactly two
+    /// distinct values.
+    ///
+    /// Two distinct integer labels other than `{-1, +1}` (e.g., `{0, 1}`)
+    /// only print a warning to standard output; they are **not** rejected,
+    /// even though the boosters and the decision tree assume `-1` and `+1`.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0]; 3];
+    /// // Valid: labels -1 and +1, both present. Returns normally.
+    /// Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0]))
+    ///     .unwrap()
+    ///     .is_valid_binary_instance();
+    ///
+    /// // Invalid: only one class. The check panics instead of returning.
+    /// let one_class = Sample::from_dense(&rows, Some(&[1.0, 1.0, 1.0])).unwrap();
+    /// assert!(std::panic::catch_unwind(|| one_class.is_valid_binary_instance()).is_err());
+    /// ```
     pub fn is_valid_binary_instance(&self) {
         // Check whether the target column is specified.
         self.target_is_specified();
@@ -458,11 +719,24 @@ impl Sample {
         // so that the sample is valid one for binary classification.
     }
 
-    /// Computes the weighted mean and variance
-    /// for each feature.
+    /// Returns `(Σ_i w_i x_ij, Σ_i w_i (x_ij - mean_j)^2)` for each feature
+    /// `j`; see [`Feature::weighted_mean_and_variance`].
     ///
-    /// The weight vector must be a probability vector
-    /// (A vector consists of non-negative entries whose sum is `1`).
+    /// These are the weighted mean and variance only if `weight` is a
+    /// probability vector (nonnegative entries summing to one) with one
+    /// entry per example; this is not checked.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0], vec![2.0], vec![4.0]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// let stats = sample.weighted_mean_and_variance([0.5, 0.0, 0.5]);
+    /// // Mean 0.5 * 0 + 0.5 * 4 = 2; variance 0.5 * 4 + 0.5 * 4 = 4.
+    /// // Both are exact in binary floating point.
+    /// assert_eq!(stats, vec![(2.0, 4.0)]);
+    /// ```
     pub fn weighted_mean_and_variance<T>(&self, weight: T) -> Vec<(f64, f64)>
     where
         T: AsRef<[f64]>,
@@ -474,10 +748,22 @@ impl Sample {
             .collect()
     }
 
-    /// Compute the weighted mean of each feature.
+    /// Returns `Σ_i w_i x_ij` for each feature `j`;
+    /// see [`Feature::weighted_mean`].
     ///
-    /// The weight vector must be a probability vector
-    /// (A vector consists of non-negative entries whose sum is `1`).
+    /// This is the weighted mean only if `weight` is a probability vector
+    /// (nonnegative entries summing to one) with one entry per example;
+    /// this is not checked.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0, 1.0], vec![2.0, 1.0], vec![4.0, 1.0]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// // Exact: every product and partial sum is a dyadic rational.
+    /// assert_eq!(sample.weighted_mean([0.25, 0.25, 0.5]), vec![2.5, 1.0]);
+    /// ```
     pub fn weighted_mean<T>(&self, weight: T) -> Vec<f64>
     where
         T: AsRef<[f64]>,
@@ -489,10 +775,25 @@ impl Sample {
             .collect()
     }
 
-    /// Compute the weighted mean of each feature
-    /// whose label (target) is `y.`
+    /// Returns, for each feature, the weighted mean over the examples whose
+    /// label equals `y`, normalized by those examples' total weight;
+    /// see [`Feature::weighted_mean_for_label`].
     ///
-    /// The weight vector must be a non-negative vector.
+    /// # Panics
+    /// Panics if `weight` has the wrong length, contains a negative or
+    /// non-finite entry, or the examples labeled `y` have zero total weight.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0], vec![2.0], vec![4.0]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// // Positive examples have weights 1 and 3: (1 * 2 + 3 * 4) / 4 = 3.5.
+    /// // The weights need not sum to one.
+    /// assert_eq!(sample.weighted_mean_for_label(1.0, [5.0, 1.0, 3.0]), vec![3.5]);
+    /// assert_eq!(sample.weighted_mean_for_label(-1.0, [5.0, 1.0, 3.0]), vec![0.0]);
+    /// ```
     pub fn weighted_mean_for_label<T>(&self, y: f64, weight: T) -> Vec<f64>
     where
         T: AsRef<[f64]>,
@@ -505,10 +806,24 @@ impl Sample {
             .collect()
     }
 
-    /// Compute the weighted mean and variance of each feature
-    /// whose label (target) is `y.`
+    /// Returns, for each feature, the weighted mean and population variance
+    /// over the examples whose label equals `y`, normalized by those
+    /// examples' total weight;
+    /// see [`Feature::weighted_mean_and_variance_for_label`].
     ///
-    /// The weight vector must be a non-negative vector.
+    /// # Panics
+    /// Same conditions as [`Sample::weighted_mean_for_label`].
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0], vec![2.0], vec![4.0]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// // Positive examples 2 and 4 with equal weight: mean 3, variance 1.
+    /// let stats = sample.weighted_mean_and_variance_for_label(1.0, [1.0, 1.0, 1.0]);
+    /// assert_eq!(stats, vec![(3.0, 1.0)]);
+    /// ```
     pub fn weighted_mean_and_variance_for_label<T>(&self, y: f64, weight: T) -> Vec<(f64, f64)>
     where
         T: AsRef<[f64]>,
@@ -528,10 +843,46 @@ impl Sample {
         self.target.push(y);
     }
 
-    /// Return (training, test), preserving the order in `ix`.
+    /// Splits `self` into `(training, test)`, preserving the order in `ix`.
     /// `ix` must be a permutation of all row indices. The half-open interval
     /// `ix[start..end]` selects test rows; the remainder selects training rows.
-    /// Panics for an invalid permutation or interval. Empty partitions are valid.
+    /// Empty partitions are valid. Feature names and storage (dense/sparse)
+    /// are kept. Useful for cross-validation folds.
+    ///
+    /// # Panics
+    /// Panics for an invalid permutation or interval, or if labels are unset.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = (0..6).map(|i| vec![i as f64]).collect::<Vec<_>>();
+    /// let y = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
+    /// let sample = Sample::from_dense(&rows, Some(&y)).unwrap();
+    ///
+    /// // `ix` must contain every row index exactly once (a permutation).
+    /// // Here the test set is the half-open interval `ix[2..4]`, i.e. rows
+    /// // 1 and 4; the training set is rows 5, 0, 2, 3 in this order.
+    /// let ix = [5, 0, 1, 4, 2, 3];
+    /// let (train, test) = sample.split(ix, 2, 4);
+    /// assert_eq!(test.shape(), (2, 1));
+    /// assert_eq!(test.at(0), (vec![1.0], -1.0));
+    /// assert_eq!(test.at(1), (vec![4.0], 1.0));
+    /// assert_eq!(train.shape(), (4, 1));
+    /// assert_eq!(train["feature_0"][0], 5.0);
+    /// assert_eq!(train.target(), &[1.0, -1.0, -1.0, 1.0]);
+    ///
+    /// // k-fold cross-validation: fold `k` tests on `ix[k * size..(k + 1) * size]`.
+    /// let (n_fold, size) = (3, 2);
+    /// for k in 0..n_fold {
+    ///     let (train, test) = sample.split(ix, k * size, (k + 1) * size);
+    ///     assert_eq!((train.shape().0, test.shape().0), (4, 2));
+    /// }
+    ///
+    /// // `start == end` gives an empty test set.
+    /// let (train, test) = sample.split(ix, 0, 0);
+    /// assert_eq!((train.shape().0, test.shape().0), (6, 0));
+    /// ```
     pub fn split<T>(&self, ix: T, start: usize, end: usize) -> (Sample, Sample)
     where
         T: AsRef<[usize]>,
@@ -620,6 +971,20 @@ fn index_and_feature(word: &str) -> (usize, f64) {
     (i, x)
 }
 
+/// `sample[name]` returns the feature column named `name`.
+///
+/// # Panics
+/// Panics if no feature column is named `name`.
+///
+/// # Examples
+/// ```
+/// use miniboosts::Sample;
+///
+/// let sample = Sample::from_dense(&[vec![1.0, 2.0]], Some(&[1.0])).unwrap();
+/// let column = &sample["feature_1"];
+/// assert!(column.is_dense());
+/// assert_eq!(column[0], 2.0);
+/// ```
 impl<S> Index<S> for Sample
 where
     S: AsRef<str>,

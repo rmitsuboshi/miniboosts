@@ -1,4 +1,6 @@
-//! Provides [`MadaBoost`] by Domingo and Watanabe, 2000.
+//! Implementation of [`MadaBoost`] (Domingo and Watanabe, 2000).
+//!
+//! See the [`MadaBoost`] struct for the update rule, guarantees, and an example.
 use rayon::prelude::*;
 
 use crate::core::CurrentHypothesis;
@@ -10,6 +12,140 @@ use crate::hypotheses::WeightedMajority;
 
 use std::ops::ControlFlow;
 
+/// MadaBoost: AdaBoost with example weights capped at their initial value.
+///
+/// # Algorithm
+/// Let `m` be the number of training examples, `y_i ∈ {-1, +1}` the labels,
+/// and `h_t(x_i) ∈ [-1, 1]` the weak hypotheses' confidences. Round `t`
+/// follows the capped weighting scheme of Section 3 of the paper.
+///
+/// 1. Form the distribution from the capped products of the earlier rounds
+///    ```txt
+///    ln B_{t-1}(i) = Σ_{k<t} y_i h_k(x_i) ln β_k,
+///    d_{t,i} ∝ min(1, B_{t-1}(i)).
+///    ```
+///    Initially `B_0 = 1`, so `d_1` is uniform. An example's weight never
+///    exceeds its initial weight `1/m` before normalization, whereas
+///    AdaBoost's weights can grow exponentially.
+/// 2. Call the weak learner on `d_t` to obtain `h_t`, and compute the edge
+///    `γ_t = Σ_i d_{t,i} y_i h_t(x_i)` (the paper's advantage is `γ_t / 2`).
+/// 3. Set
+///    ```txt
+///    ln β_t = -α_t,   α_t = atanh(γ_t) = (1/2) ln((1 + γ_t) / (1 - γ_t)).
+///    ```
+///    For binary hypotheses with error `ε_t`, this is the paper's
+///    `β_t = sqrt(ε_t / (1 - ε_t))`; `α_t = ln(1 / β_t)` is the weight of
+///    `h_t` in the final vote.
+///
+/// The output is the [`WeightedMajority`] `sign(Σ_t α_t h_t(x))` with
+/// normalized weights. Training stops after `ceil((m - 1) / tolerance²)`
+/// rounds (see [`MadaBoost::max_loop`]) or after the count set by
+/// [`MadaBoost::force_quit_at`]. The training error is never measured.
+///
+/// Implementation choices (not part of the original method):
+/// - The uncapped products are stored as `ln B_t(i)` without normalization
+///   (their absolute scale decides which weights are capped), and the
+///   distribution is formed by a shifted softmax of `min(0, ln B_t(i))`.
+///   Products that underflow in linear scale can therefore recover later.
+/// - `α_t` is computed from the log weights, so rounding of small
+///   probabilities does not produce a spurious edge of `±1`. If every example
+///   with nonzero mass has margin exactly `+1` (or `-1`), training stops and
+///   returns `h_t` alone with weight `+1` (or `-1`).
+/// - A hypothesis with a negative edge is kept with the negative weight
+///   `α_t`. The paper's remark about replacing an increasing advantage by the
+///   previous one is not applied.
+/// - The paper is set in the filtering and subsampling frameworks; this
+///   implementation reweights a fixed training sample.
+///
+/// # Theoretical guarantee
+/// Domingo and Watanabe prove the boosting property (their Theorem 2) not for
+/// the scheme above but for a more conservative variant, `MB:1/2`, which
+/// computes `β_t` from an inflated error. For that variant, if the
+/// advantages are non-increasing, `g_1 ≥ g_2 ≥ ... ≥ g_T > 0`, then for any
+/// `ε` either some earlier combined hypothesis has training error below `ε`
+/// or
+/// ```txt
+/// error(f_T) ≤ 1 - Σ_t 2 ε g_t².
+/// ```
+/// With advantages at least `g`, this reaches training error below `1/m`
+/// within `(m - 1) / (2 g²)` rounds, that is, `O(m / g²)` rounds, compared
+/// with AdaBoost's `O(ln m / g²)`. The budget `ceil((m - 1) / tolerance²)`
+/// coincides with this count when `tolerance = √2 · g` (edge `γ = 2g`, so
+/// `tolerance = γ / √2`, the same relation as for [`AdaBoost`](crate::AdaBoost)).
+/// The paper reports that the unmodified scheme behaves similarly in
+/// experiments, but no convergence theorem covers the implemented scheme.
+///
+/// # Limitations
+/// - The implemented scheme is not the one analyzed in the convergence
+///   proof; the budget therefore does not guarantee zero training error.
+/// - The edge assumption and the non-increasing advantage condition are not
+///   checked at runtime.
+/// - `tolerance` only sets the number of rounds. The default
+///   `tolerance = 1e-3` gives a budget of about `10⁶ (m - 1)` rounds, so set
+///   `tolerance` or `force_quit_at` explicitly in practice.
+/// - Labels must be `-1` or `+1` and both classes must be present.
+///   Margins `y_i h_t(x_i)` outside `[-1, 1]`, or non-finite log weights,
+///   cause a panic.
+/// - Each round costs `O(m)` time beyond the weak learner, and every
+///   hypothesis is stored.
+///
+/// # Parameters
+/// | Builder method | Default | Meaning |
+/// | --- | --- | --- |
+/// | [`tolerance`](MadaBoost::tolerance) | `1e-3` ([`DEFAULT_TOLERANCE`]) | Sets the budget `ceil((m - 1) / tolerance²)`. |
+/// | [`force_quit_at`](MadaBoost::force_quit_at) | none | Replaces the budget with an exact round limit. |
+///
+/// # Reference
+/// Carlos Domingo and Osamu Watanabe.
+/// *MadaBoost: A Modification of AdaBoost.*
+/// In Proceedings of the 13th Annual Conference on Computational Learning
+/// Theory (COLT), 2000.
+/// <https://www.learningtheory.org/colt2000/papers/DomingoWatanabe.pdf>
+///
+/// # Examples
+/// Train on a held-out split with decision stumps and evaluate on the test
+/// part.
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::{Sample, prelude::*};
+///
+/// // Labels follow the sign of `x + y`, so no single stump separates them.
+/// let csv = b"x,y,class\n\
+///     -2,1,-1\n-1,-2,-1\n1,-3,-1\n-3,2,-1\n0,-1,-1\n-2,-1,-1\n\
+///     2,1,1\n1,2,1\n-1,3,1\n3,-1,1\n0,2,1\n2,2,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+///
+/// // A fixed permutation keeps the split reproducible:
+/// // rows ix[0..4] form the test set, the other 8 rows the training set.
+/// let ix = [0, 6, 4, 10, 1, 2, 3, 5, 7, 8, 9, 11];
+/// let (train, test) = sample.split(&ix, 0, 4);
+///
+/// // The weak learner sees only the training split.
+/// let learner = DecisionTreeBuilder::new(&train).max_depth(1).build();
+///
+/// // The budget ceil((8 - 1) / 0.1²) = 700 rounds is replaced by exactly
+/// // 20 rounds with `force_quit_at`.
+/// let mut booster = MadaBoost::init(&train).tolerance(0.1).force_quit_at(20);
+/// assert_eq!(booster.max_loop(), 700);
+/// let f = booster.run(&learner);
+///
+/// let predictions = f.predict_all(&test);
+/// assert!(predictions.iter().all(|&p| p == -1 || p == 1));
+/// let correct = predictions
+///     .iter()
+///     .zip(test.target())
+///     .filter(|&(&p, &y)| p as f64 == y)
+///     .count();
+/// let accuracy = correct as f64 / test.shape().0 as f64;
+/// println!("MadaBoost test accuracy: {accuracy}");
+///
+/// // At most 20 hypotheses with finite weights; confidences lie in [-1, 1].
+/// assert!(!f.hypotheses.is_empty() && f.hypotheses.len() <= 20);
+/// assert!(f.weights.iter().all(|w| w.is_finite()));
+/// assert!(f.confidence_all(&test).iter().all(|c| (-1.0..=1.0).contains(c)));
+/// ```
 pub struct MadaBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -17,7 +153,7 @@ pub struct MadaBoost<'a, F> {
     // Weights for each instances in `sample.`
     // At the end of round `t,`
     // the `i`th element of `betas` holds
-    // `ln Bt[i] = sum_{k=1}^{T} ( y[i] hk(x[i]) ln beta[k] ).`
+    // `ln Bt[i] = sum_{k=1}^{t} ( y[i] hk(x[i]) ln beta[k] ).`
     betas: Vec<f64>,
 
     // Tolerance parameter
@@ -26,7 +162,7 @@ pub struct MadaBoost<'a, F> {
     // Weights on hypotheses in `hypotheses`
     alphas: Vec<f64>,
 
-    // Hypohteses obtained by the weak-learner.
+    // Hypotheses obtained by the weak-learner.
     hypotheses: Vec<F>,
 
     // Iteration budget.
@@ -37,15 +173,32 @@ pub struct MadaBoost<'a, F> {
     force_quit_at: Option<usize>,
 
     // Terminated iteration.
-    // MadaBoost terminates in eary step
-    // if the training set is linearly separable.
+    // MadaBoost terminates early if a hypothesis has edge exactly +1 or -1.
     terminated: usize,
 }
 
 impl<'a, F> MadaBoost<'a, F> {
-    /// Constructs a new instance of `MadaBoost`.
+    /// Constructs a new instance of `MadaBoost` for `sample`.
+    ///
+    /// The tolerance defaults to [`DEFAULT_TOLERANCE`] and no forced round
+    /// limit is set. The sample is validated when training starts.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // The default tolerance allows about 10⁶ (m - 1) rounds; cap them.
+    /// let mut booster = MadaBoost::init(&sample).force_quit_at(5);
+    /// let f = booster.run(&learner);
+    /// assert_eq!(f.predict_all(&sample).len(), 6);
+    /// ```
     #[inline]
     pub fn init(sample: &'a Sample) -> Self {
         Self {
@@ -63,34 +216,84 @@ impl<'a, F> MadaBoost<'a, F> {
         }
     }
 
-    /// Returns the iteration budget `(m - 1) / tolerance^2`, rounded up.
+    /// Returns the iteration budget `(m - 1) / tolerance^2`, rounded up, for
+    /// `m` training examples. Values exceeding `usize::MAX` saturate.
     /// This implementation uses MadaBoost's capped-product weights (Section 3),
     /// not the modified variant analyzed in the paper's convergence proof.
     /// The budget does not guarantee zero training error.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// use miniboosts::DecisionTreeClassifier;
+    ///
+    /// // The hypothesis type must be known before training.
+    /// let booster = MadaBoost::<DecisionTreeClassifier>::init(&sample).tolerance(0.5);
+    /// // m = 6: ceil((6 - 1) / 0.5²) = 20.
+    /// assert_eq!(booster.max_loop(), 20);
+    /// ```
     pub fn max_loop(&self) -> usize {
         let n_examples = self.sample.shape().0 as f64;
 
         ((n_examples - 1f64) / self.tolerance.powi(2)).ceil() as usize
     }
 
-    /// Force quits after at most `it` iterations.
-    /// Overrides the default iteration budget.
+    /// Runs exactly `it` rounds unless a perfect hypothesis stops training
+    /// earlier. This replaces the budget of [`MadaBoost::max_loop`], so `it`
+    /// may be smaller or larger than it.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // At most 3 rounds, fewer if a perfect hypothesis appears.
+    /// let mut booster = MadaBoost::init(&sample).force_quit_at(3);
+    /// let f = booster.run(&learner);
+    /// assert!(f.hypotheses.len() <= 3);
+    /// ```
     pub fn force_quit_at(mut self, it: usize) -> Self {
         self.force_quit_at = Some(it);
         self
     }
 
-    /// Set the tolerance used to compute the iteration budget.
+    /// Sets the tolerance used to compute the iteration budget
+    /// `ceil((m - 1) / tolerance²)`; see [`MadaBoost::max_loop`].
     /// This does not test the training error after each round.
     ///
     /// Time complexity: `O(1)`.
     ///
     /// # Panics
     /// Panics if `tolerance` is not finite and strictly positive.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // Budget ceil((6 - 1) / 0.5²) = 20 rounds.
+    /// let mut booster = MadaBoost::init(&sample).tolerance(0.5);
+    /// assert_eq!(booster.max_loop(), 20);
+    /// let f = booster.run(&learner);
+    /// assert!(f.hypotheses.len() <= 20);
+    /// ```
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -100,11 +303,9 @@ impl<'a, F> MadaBoost<'a, F> {
         self
     }
 
-    /// Returns a alpha on the new hypothesis.
-    /// `update_params` also updates `self.betas`.
-    ///
-    /// `MadaBoost` uses exponential update,
-    /// which is numerically unstable so that I adopt a logarithmic computation.
+    /// Records the hypothesis `h` with weight `alpha = -ln β_t` and adds
+    /// `-alpha · y_i h(x_i)` to the uncapped log products `self.betas`.
+    /// The products are kept in log space for numerical stability.
     ///
     /// Time complexity: `O(m)` for `m` training examples.
     #[inline]

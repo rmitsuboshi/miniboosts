@@ -1,15 +1,10 @@
-//! This file defines `CorrectiveErlpBoost` based on the paper
-//! "On the Equivalence of Weak Learnability and Linear Separability:
-//!     New Relaxations and Efficient Boosting Algorithms"
-//! by Shai Shalev-Shwartz and Yoram Singer, [Figure 1](https://home.ttic.edu/~shai/papers/ShalevSi08.pdf).
-//! The default ShortStep rule follows that update from zero coefficients.
-//! Classic and LineSearch are alternative Frank-Wolfe step strategies.
-//! Output coefficients retain their l1-ball scale (their sum can be below one),
-//! so confidence values and the logged objective match the trained model.
-//! I named this algorithm `CorrectiveErlpBoost`
-//! since it is referred as `the Corrective version of CorrectiveErlpBoost`
-//! in "Entropy Regularized LPBoost" by Warmuth et al.
+//! Implementation of [`CorrectiveErlpBoost`] (Shalev-Shwartz and Singer,
+//! 2010) and its Frank-Wolfe objective [`CorrErlpFwObjective`].
 //!
+//! The name follows Warmuth, Glocer, and Vishwanathan (2008), who call this
+//! algorithm the corrective version of ERLPBoost. See the
+//! [`CorrectiveErlpBoost`] struct for the algorithm, guarantees, and an
+//! example.
 use crate::core::CurrentHypothesis;
 use crate::core::{
     Booster, Classifier, Sample, WeakLearner,
@@ -24,6 +19,148 @@ use crate::optimization::{
 
 use std::ops::ControlFlow;
 
+/// Corrective ERLPBoost: soft-margin boosting by Frank-Wolfe steps on the
+/// entropy-regularized objective.
+///
+/// # Algorithm
+///
+/// Let `A = (y_i h_j(x_i))_{i,j}` be the margin matrix, `ε = tolerance`, and
+/// `Δ_{m,ν} = { d : Σ_i d_i = 1, 0 ≤ d_i ≤ 1/ν }`. The booster maximizes the
+/// entropy-regularized soft-margin objective
+/// ```txt
+/// -f̃*(-Aw) = min_{d ∈ Δ_{m,ν}} [ d·Aw + (1/η) Δ(d) ],   η = (2/ε) ln(m/ν),
+/// ```
+/// over nonnegative weights `w` with `Σ_j w_j ≤ 1`, where
+/// `Δ(d) = Σ_i d_i ln(m d_i)` is the relative entropy to the uniform
+/// distribution. Starting from `w_1 = 0` (so `d_1` is uniform), round `t`:
+///
+/// 1. obtains `h_t` from the weak learner on `d_t` and its margins
+///    `a_i = y_i h_t(x_i)`, which must be finite and in `[-1, 1]`;
+/// 2. stops if the Frank-Wolfe gap `d_t·a - d_t·Aw_t ≤ ε/2`; `h_t` is then
+///    discarded;
+/// 3. otherwise chooses a step `λ_t ∈ [0, 1]` and updates
+///    ```txt
+///    w_{t+1} = (1 - λ_t) w_t + λ_t e_{h_t},
+///    ```
+///    where the step rule is set by [`update_rule`](Self::update_rule):
+///    - `ShortStep` (default, Figure 1 of the paper):
+///      `λ_t = clip_[0,1]( d_t·(a - Aw_t) / (η ‖a - Aw_t‖_∞²) )`;
+///    - `Classic`: `λ_t = 2/(k + 2)` after `k` previous steps (so the first
+///      step is `1`);
+///    - `LineSearch`: bisection for the maximizer of the objective on the
+///      segment, to an interval width of `1e-10`;
+/// 4. sets `d_{t+1}` to the minimizer above at `w_{t+1}`, i.e.
+///    `d_{t+1,i} ∝ exp(-η (Aw_{t+1})_i)` capped at `1/ν`.
+///
+/// The output is `Σ_j w_j h_j` with these weights; they are not re-fitted or
+/// normalized, so their sum can be below one and confidence values keep that
+/// scale. A hypothesis returned in several rounds appears several times.
+///
+/// Implementation choices: the paper runs Figure 1 for a fixed number of
+/// rounds; this implementation additionally stops on the Frank-Wolfe gap
+/// above and caps the run at `ceil(32 ln(m/ν)/ε²)` rounds (see
+/// [`max_loop`](Self::max_loop)). Training margins `Aw` are cached and
+/// updated as `(1 - λ) Aw + λ a`, so earlier hypotheses are never evaluated
+/// again. If `ν = m`, the only feasible distribution is uniform; the first
+/// hypothesis is returned with weight `1` after one round, even if its edge is
+/// nonpositive.
+///
+/// # Theoretical guarantee
+///
+/// Shalev-Shwartz and Singer show that, when the weak learner returns a
+/// hypothesis of maximum edge on every distribution, the algorithm of their
+/// Figure 1 reaches an `ε`-accurate solution of the relaxed-margin problem in
+/// `O(ln(m)/ε²)` rounds; for the soft margin with capping `ν` the entropy
+/// term is bounded by `ln(m/ν)`, giving the `O(ln(m/ν)/ε²)` bound stated in
+/// Mitsuboshi, Hatano, and Takimoto, "Boosting as Frank-Wolfe", which also
+/// covers the Classic step and notes that line search makes at least as much
+/// progress per round as the short step. Under the same assumption, a
+/// Frank-Wolfe gap of at most `ε/2` bounds the suboptimality of the
+/// regularized objective, and the regularization costs at most another
+/// `ε/2`.
+///
+/// # Limitations
+///
+/// - The maximum-edge (or weak-learning) assumption is not checked at
+///   runtime; a decision tree does not by itself ensure it, and the gap
+///   test is then only a heuristic stopping rule.
+/// - `tolerance` is an optimization accuracy on the soft-margin objective,
+///   not a classification-error threshold.
+/// - `nu` caps every example weight at `1 / nu`; it does not guarantee a
+///   particular number of margin errors.
+/// - Labels must be `-1` or `+1` with both classes present; preprocessing
+///   panics otherwise. Weak hypotheses whose margins are non-finite or
+///   outside `[-1, 1]` cause a panic.
+/// - Custom hypotheses must predict consistently on a fixed sample, because
+///   training margins are cached.
+/// - `FwUpdateRule::BlendedPairwise` is not supported.
+/// - Many more rounds than LPBoost or ERLPBoost are typically needed, though
+///   each round costs only `O(m ln m)` plus one weak-learner call.
+///
+/// # Parameters
+///
+/// | Builder method | Meaning | Default |
+/// | --- | --- | --- |
+/// | [`nu`](CorrectiveErlpBoost::nu) | capping parameter `ν ∈ [1, m]` | `1` ([`DEFAULT_CAPPING`]) |
+/// | [`tolerance`](CorrectiveErlpBoost::tolerance) | accuracy `ε`; sets `η`, the stopping gap `ε/2`, and the budget | `1e-3` ([`DEFAULT_TOLERANCE`]) |
+/// | [`update_rule`](CorrectiveErlpBoost::update_rule) | Frank-Wolfe step rule | [`FwUpdateRule::ShortStep`] |
+///
+/// # Reference
+///
+/// Shai Shalev-Shwartz and Yoram Singer.
+/// [On the equivalence of weak learnability and linear separability: new relaxations and efficient boosting algorithms](https://link.springer.com/article/10.1007/s10994-010-5173-z).
+/// Machine Learning 80, 2010.
+///
+/// # Examples
+/// Train on a held-out split with decision stumps and evaluate on the test
+/// part.
+/// ```
+/// use std::io::BufReader;
+/// use miniboosts::{FwUpdateRule, Sample, prelude::*};
+///
+/// // Labels follow the sign of `x + y`, so no single stump separates them.
+/// let csv = b"x,y,class\n\
+///     -2,1,-1\n-1,-2,-1\n1,-3,-1\n-3,2,-1\n0,-1,-1\n-2,-1,-1\n\
+///     2,1,1\n1,2,1\n-1,3,1\n3,-1,1\n0,2,1\n2,2,1\n";
+/// let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+///     .unwrap()
+///     .set_target("class");
+///
+/// // A fixed permutation keeps the split reproducible:
+/// // rows ix[0..4] form the test set, the other 8 rows the training set.
+/// let ix = [0, 6, 4, 10, 1, 2, 3, 5, 7, 8, 9, 11];
+/// let (train, test) = sample.split(&ix, 0, 4);
+///
+/// // The weak learner sees only the training split.
+/// let learner = DecisionTreeBuilder::new(&train).max_depth(1).build();
+///
+/// // `nu = 2` caps every example weight at 1/2; `tolerance = 0.1` sets the
+/// // regularization, the Frank-Wolfe gap threshold 0.05, and the budget.
+/// let mut booster = CorrectiveErlpBoost::init(&train)
+///     .nu(2.0)
+///     .tolerance(0.1)
+///     .update_rule(FwUpdateRule::ShortStep);
+/// let f = booster.run(&learner);
+///
+/// let predictions = f.predict_all(&test);
+/// assert!(predictions.iter().all(|&p| p == -1 || p == 1));
+/// let correct = predictions
+///     .iter()
+///     .zip(test.target())
+///     .filter(|&(&p, &y)| p as f64 == y)
+///     .count();
+/// let accuracy = correct as f64 / test.shape().0 as f64;
+/// println!("CorrectiveErlpBoost test accuracy: {accuracy}");
+///
+/// // Budget ceil(32 ln(m/ν) / ε²) = ceil(32 ln 4 / 0.01) = 4437 rounds,
+/// // available once training has set up the sample size.
+/// assert_eq!(booster.max_loop(), 4437);
+/// assert!(f.hypotheses.len() <= 4437);
+/// // Frank-Wolfe weights are nonnegative; they are not renormalized, so
+/// // their sum can be below one.
+/// assert!(f.weights.iter().all(|&w| w >= 0.0));
+/// assert!(f.weights.iter().sum::<f64>() <= 1.0 + 1e-9);
+/// ```
 pub struct CorrectiveErlpBoost<'a, H> {
     // Training sample
     sample: &'a Sample,
@@ -48,9 +185,30 @@ pub struct CorrectiveErlpBoost<'a, H> {
 }
 
 impl<'a, H> CorrectiveErlpBoost<'a, H> {
-    /// Construct a new instance of `CorrectiveErlpBoost`.
+    /// Constructs a new instance of `CorrectiveErlpBoost` for `sample` with
+    /// the default capping parameter `nu = 1`, `tolerance = 1e-3`, and the
+    /// ShortStep update rule.
+    ///
+    /// The regularization parameter and iteration budget are computed when
+    /// training starts.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // A coarse tolerance keeps the budget small; the default `1e-3` allows
+    /// // about 3.2 · 10⁷ · ln(m/ν) rounds.
+    /// let mut booster = CorrectiveErlpBoost::init(&sample).tolerance(0.2);
+    /// let f = booster.run(&learner);
+    /// assert_eq!(f.predict_all(&sample).len(), 6);
+    /// ```
     pub fn init(sample: &'a Sample) -> Self {
         let n_examples = sample.shape().0;
 
@@ -86,9 +244,30 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
         }
     }
 
-    /// This method updates the capping parameter.
+    /// Sets the capping parameter `nu`.
+    ///
+    /// Every example weight is capped at `1 / nu`; `nu` must lie in `[1, m]`,
+    /// where `m` is the number of training examples. Default: `1`.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if `nu` is not in `[1, m]`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // m = 6: every example weight is at most 1/3.
+    /// let mut booster = CorrectiveErlpBoost::init(&sample).nu(3.0).tolerance(0.2);
+    /// let f = booster.run(&learner);
+    /// assert!(!f.hypotheses.is_empty());
+    /// ```
     pub fn nu(mut self, nu: f64) -> Self {
         let n_examples = self.sample.shape().0;
         checkers::capping_parameter(nu, n_examples);
@@ -96,12 +275,35 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
         self
     }
 
-    /// Set the soft-margin objective tolerance. The stopping gap uses half
-    /// this value; it is not a classification-error threshold.
-    /// Panics unless the value is finite, positive, and its half is nonzero.
-    /// Preprocessing also rejects an unrepresentable regularization parameter.
+    /// Sets the soft-margin objective tolerance `ε`.
+    ///
+    /// Half of `ε` is spent on the entropy regularization
+    /// (`η = (2/ε) ln(m/ν)`) and half on the Frank-Wolfe gap stopping test;
+    /// `ε` also determines the iteration budget. It is not a
+    /// classification-error threshold. Default: `1e-3`.
     ///
     /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics unless `tolerance` is finite and positive and `tolerance / 2`
+    /// is nonzero. Training later panics if the resulting `η` is not finite
+    /// and positive.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = CorrectiveErlpBoost::init(&sample).tolerance(0.2);
+    /// let f = booster.run(&learner);
+    /// // Budget ceil(32 ln(6) / 0.2²) = 1434 rounds.
+    /// assert_eq!(booster.max_loop(), 1434);
+    /// assert!(f.hypotheses.len() <= 1434);
+    /// ```
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
@@ -116,12 +318,38 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
         self
     }
 
-    /// Set an update strategy for the Frank-Wolfe algorithm.
-    #[inline(always)]
+    /// Sets the Frank-Wolfe step-size rule.
+    ///
+    /// Supports [`FwUpdateRule::Classic`], [`FwUpdateRule::ShortStep`]
+    /// (default; the step of Shalev-Shwartz and Singer), and
+    /// [`FwUpdateRule::LineSearch`].
+    ///
+    /// Time complexity: `O(1)`.
     ///
     /// # Panics
-    /// Blended-pairwise updates require coefficient-space atoms and are not
-    /// supported by this booster's margin-space implementation.
+    /// Panics on [`FwUpdateRule::BlendedPairwise`]: blended-pairwise updates
+    /// require coefficient-space atoms and are not supported by this
+    /// booster's margin-space implementation.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// use miniboosts::FwUpdateRule;
+    ///
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // Exact line search instead of the default short step.
+    /// let mut booster = CorrectiveErlpBoost::init(&sample)
+    ///     .tolerance(0.2)
+    ///     .update_rule(FwUpdateRule::LineSearch);
+    /// let f = booster.run(&learner);
+    /// assert!(!f.hypotheses.is_empty());
+    /// ```
+    #[inline(always)]
     pub fn update_rule(mut self, update_rule: FwUpdateRule) -> Self {
         assert!(
             !matches!(update_rule, FwUpdateRule::BlendedPairwise),
@@ -131,8 +359,7 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
         self
     }
 
-    /// Update regularization parameter.
-    /// (the regularization parameter on `self.tolerance` and `self.nu`.)
+    /// Sets `self.eta = ln(m/ν) / (ε/2)`, or `1` when `ν = m`.
     ///
     /// Time complexity: `O(1)`.
     #[inline(always)]
@@ -152,12 +379,32 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
         );
     }
 
-    /// Returns the iteration budget for the configured soft-margin objective
-    /// tolerance after preprocessing. This is not a training-error guarantee.
+    /// Returns the iteration budget `max(1, ceil(32 ln(m/ν) / ε²))` for the
+    /// configured tolerance `ε`.
+    ///
+    /// The budget corresponds to the `O(ln(m/ν)/ε²)` bound under the
+    /// weak-learning assumption; it is not a training-error guarantee.
     ///
     /// Time complexity: `O(1)`.
-    pub fn max_loop(&mut self) -> usize {
-        let m = self.dist.len() as f64;
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = CorrectiveErlpBoost::init(&sample).nu(2.0).tolerance(0.2);
+    /// // m = 6: ceil(32 ln(6/2) / 0.2²) = ceil(878.9) = 879, before and
+    /// // after training.
+    /// assert_eq!(booster.max_loop(), 879);
+    /// let _f = booster.run(&learner);
+    /// assert_eq!(booster.max_loop(), 879);
+    /// ```
+    pub fn max_loop(&self) -> usize {
+        let m = self.sample.shape().0 as f64;
 
         let ln_m = (m / self.nu).ln();
         let max_iter = 8.0 * ln_m / self.half_tolerance.powi(2);
@@ -179,9 +426,9 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
 
 impl<H> CorrectiveErlpBoost<'_, H>
 where
-    H: Classifier + PartialEq,
+    H: Classifier,
 {
-    /// Updates weight on hypotheses and `self.dist` in this order.
+    /// Sets `self.dist` to the regularized minimizer at the cached margins.
     fn update_distribution_mut(&mut self) {
         let neg_margins: Vec<_> = self.margins.iter().map(|m| -m).collect();
         self.dist = self.objective.gradient(&neg_margins[..]);
@@ -224,7 +471,7 @@ where
 
 impl<H> Booster<H> for CorrectiveErlpBoost<'_, H>
 where
-    H: Classifier + Clone + PartialEq + std::fmt::Debug,
+    H: Classifier + Clone,
 {
     type Output = WeightedMajority<H>;
 
@@ -334,9 +581,58 @@ where
     }
 }
 
+/// The entropy-regularized soft-margin objective in the minimization form
+/// expected by [`FrankWolfe`].
+///
+/// Wraps an [`ErlpSoftMarginObjective`] with capping `ν` and regularization
+/// `η`. At a point `θ = -Aw` (negated training margins) it evaluates the
+/// Fenchel conjugate
+/// ```txt
+/// f̃*(θ) = max_{d ∈ Δ_{m,ν}} [ d·θ - (1/η) Δ(d) ],
+/// ```
+/// where `Δ(d)` is the relative entropy to the uniform distribution. Its
+/// gradient is the maximizing distribution `d`, which is the booster's
+/// distribution over examples. `f̃*` is `η`-smooth with respect to the
+/// `ℓ∞` norm, so [`ObjectiveFunction::smooth`] returns `(η, f64::MAX)`;
+/// the short-step rule uses this constant.
+///
+/// Minimizing `f̃*(-Aw)` is equivalent to maximizing the regularized soft
+/// margin `-f̃*(-Aw)`. Used by [`CorrectiveErlpBoost`] and
+/// [`MlpBoost`](crate::MlpBoost).
 pub struct CorrErlpFwObjective(ErlpSoftMarginObjective);
 
 impl CorrErlpFwObjective {
+    /// Wraps `objective` (which fixes `ν` and `η`) for use with
+    /// [`FrankWolfe`].
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::boosters::corrective_erlpboost::CorrErlpFwObjective;
+    /// use miniboosts::{ErlpSoftMarginObjective, ObjectiveFunction};
+    ///
+    /// // m = 4 examples, capping ν = 2 (weights ≤ 1/2), regularization η = 10.
+    /// let (nu, eta) = (2.0, 10.0);
+    /// let objective = CorrErlpFwObjective::new(ErlpSoftMarginObjective::new(nu, eta));
+    ///
+    /// // `η`-smooth with respect to the ℓ∞ norm.
+    /// assert_eq!(objective.smooth(), (eta, f64::MAX));
+    ///
+    /// // At θ = -Aw = 0 (all margins zero) the maximizer is uniform and
+    /// // f̃*(0) = 0, since the relative entropy of the uniform distribution is 0.
+    /// let d = objective.gradient(&[0.0; 4]);
+    /// assert!(d.iter().all(|&di| (di - 0.25).abs() < 1e-9));
+    /// assert!(objective.objective_value(&[0.0; 4]).abs() < 1e-9);
+    ///
+    /// // Margins y_i f(x_i) = [1, 0.5, -0.5, -1], i.e. θ = [-1, -0.5, 0.5, 1]:
+    /// // the gradient is a distribution in the capped simplex that puts more
+    /// // weight on examples with smaller margins.
+    /// let d = objective.gradient(&[-1.0, -0.5, 0.5, 1.0]);
+    /// assert!((d.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+    /// assert!(d.iter().all(|&di| (0.0..=0.5 + 1e-9).contains(&di)));
+    /// assert!(d.windows(2).all(|w| w[0] <= w[1] + 1e-12));
+    /// ```
     pub fn new(objective: ErlpSoftMarginObjective) -> Self {
         Self(objective)
     }
@@ -351,12 +647,13 @@ impl ObjectiveFunction for CorrErlpFwObjective {
         self.0.smooth()
     }
 
-    /// returns the objective value `f^*(θ)` at given point `θ = -Aw.`
+    /// Returns the objective value `f̃*(θ)` at the point `θ = -Aw`.
     fn objective_value(&self, point: &[f64]) -> f64 {
         -self.0.objective_value(point)
     }
 
-    /// returns the gradient `∇f^*(θ)` at given point `θ = -Aw.`
+    /// Returns the gradient `∇f̃*(θ)`, the maximizing distribution over
+    /// examples, at the point `θ = -Aw`.
     fn gradient(&self, point: &[f64]) -> Vec<f64> {
         self.0.gradient(point).into_iter().collect()
     }

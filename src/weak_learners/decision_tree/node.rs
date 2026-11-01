@@ -1,22 +1,62 @@
-//! A node struct used in the decision tree algorithm.
+//! [`Node`]: the recursive tree structure inside a
+//! [`crate::DecisionTreeClassifier`].
 use crate::core::{Classifier, Regressor, Sample, tree::*};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// A node of a binary decision tree.
+///
+/// Evaluation ([`Classifier::confidence`], or equivalently
+/// [`Regressor::predict`]) follows `splitter` from this node down to a leaf
+/// and returns that leaf's confidence.
+///
+/// # Examples
+/// Build the stump `x < 0.5 ? -1 : +0.8` by hand.
+/// ```
+/// use miniboosts::{Classifier, DecisionTreeClassifier, Sample};
+/// use miniboosts::core::tree::Splitter;
+/// use miniboosts::node::Node;
+///
+/// let root = Node::branch(
+///     Splitter::new("feature_0", 0.5),
+///     Box::new(Node::leaf(-1.0)),
+///     Box::new(Node::leaf(0.8)),
+///     0.0, // stored for inspection only; not used for prediction
+/// );
+/// let rows = vec![vec![0.0], vec![0.5], vec![3.0]];
+/// let sample = Sample::from_dense(&rows, None).unwrap();
+/// // Values strictly below the threshold go left.
+/// assert_eq!(root.confidence_all(&sample), vec![-1.0, 0.8, 0.8]);
+///
+/// // Wrap it into the classifier type returned by `DecisionTree`.
+/// let h = DecisionTreeClassifier::from(Box::new(root));
+/// assert_eq!(h.predict_all(&sample), vec![-1, 1, 1]);
+/// ```
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum Node {
+    /// An internal node that routes examples by a threshold rule.
     Branch {
+        /// The rule: examples with `x[feature] < threshold` go `left`.
         splitter: Splitter,
+        /// The subtree for examples with `x[feature] < threshold`.
         left: Box<Node>,
+        /// The subtree for the other examples.
         right: Box<Node>,
+        /// The weighted-majority confidence of the training examples that
+        /// reached this node (see [`crate::DecisionTree`]). Not used for
+        /// prediction.
         confidence: f64,
     },
+    /// A terminal node.
     Leaf {
+        /// The confidence output for examples reaching this leaf, in
+        /// `[-1, 1]` for trees grown by [`crate::DecisionTree`].
         confidence: f64,
     },
 }
 
 impl Node {
+    /// Creates a [`Node::Branch`].
     pub fn branch(splitter: Splitter, left: Box<Node>, right: Box<Node>, confidence: f64) -> Self {
         Self::Branch {
             splitter,
@@ -26,6 +66,7 @@ impl Node {
         }
     }
 
+    /// Creates a [`Node::Leaf`] that outputs `confidence`.
     pub fn leaf(confidence: f64) -> Self {
         Self::Leaf { confidence }
     }
