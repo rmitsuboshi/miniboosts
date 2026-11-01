@@ -12,6 +12,7 @@ pub struct Fit {
     rounds: usize,
     stop_reason: String,
     train_error: f64,
+    note: String,
 }
 
 #[wasm_bindgen]
@@ -40,6 +41,11 @@ impl Fit {
     pub fn train_error(&self) -> f64 {
         self.train_error
     }
+    /// Algorithm-specific summary (empty for most algorithms).
+    #[wasm_bindgen(getter)]
+    pub fn note(&self) -> String {
+        self.note.clone()
+    }
 }
 
 /// Installs a panic hook so that Rust panics show their message in the
@@ -55,7 +61,9 @@ pub fn start() {
 /// `resolution × resolution` grid.
 ///
 /// `nu` is the capping parameter of the soft-margin boosters
-/// (`1 ≤ nu ≤ n`), `gamma` and `kappa` are SmoothBoost's parameters.
+/// (`1 ≤ nu ≤ n`), `gamma` and `kappa` are SmoothBoost's parameters, and
+/// `n_hypotheses` (`T`, `0` for none) and `gap` (`v`, NaN for none) are
+/// SparsiBoost's targets, at least one of which must be set.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn train(
@@ -69,6 +77,8 @@ pub fn train(
     nu: f64,
     gamma: f64,
     kappa: f64,
+    n_hypotheses: usize,
+    gap: f64,
     resolution: usize,
 ) -> Result<Fit, JsError> {
     let n = labels.len();
@@ -99,6 +109,14 @@ pub fn train(
             "gamma must lie in (0, 0.5) and kappa in (0, 1)",
         ));
     }
+    if !(gap.is_nan() || (gap.is_finite() && gap > 0.0)) {
+        return Err(JsError::new("the target gap v must be positive"));
+    }
+    if algorithm == "sparsiboost" && n_hypotheses == 0 && gap.is_nan() {
+        return Err(JsError::new(
+            "SparsiBoost needs a target size T, a target gap v, or both",
+        ));
+    }
 
     let rows = xs
         .iter()
@@ -112,55 +130,63 @@ pub fn train(
         .build();
 
     let s = &sample;
-    let (model, rounds, stop_reason): (Box<dyn Classifier>, _, _) = match algorithm {
+    let (model, rounds, stop_reason, note): (Box<dyn Classifier>, _, _, _) = match algorithm {
         "adaboost" => run(
             AdaBoost::init(s).tolerance(tolerance),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
         "adaboostv" => run(
             AdaBoostV::init(s).tolerance(tolerance),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
         "madaboost" => run(
             MadaBoost::init(s).tolerance(tolerance),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
         "smoothboost" => run(
             SmoothBoost::init(s).gamma(gamma).kappa(kappa),
             &tree,
             max_iterations,
             |b: &SmoothBoost<_>| Ok(b.reached_round_budget().then_some("round_budget")),
-        )?,
+        )?
+        .boxed(),
         "lpboost" => run(
             LpBoost::init(s).nu(nu).tolerance(tolerance),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
         "erlpboost" => run(
             ErlpBoost::init(s).nu(nu).tolerance(tolerance),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
         "corrective_erlpboost" => run(
             CorrectiveErlpBoost::init(s).nu(nu).tolerance(tolerance),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
         "mlpboost" => run(
             MlpBoost::init(s).nu(nu).tolerance(tolerance),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
         "softboost" => run(
             SoftBoost::init(s).nu(nu).tolerance(tolerance),
             &tree,
@@ -169,7 +195,8 @@ pub fn train(
                 b.numerical_stop_reason()
                     .map_or(Ok(None), |r| Err(r.to_owned()))
             },
-        )?,
+        )?
+        .boxed(),
         "totalboost" => run(
             TotalBoost::init(s).tolerance(tolerance),
             &tree,
@@ -178,13 +205,44 @@ pub fn train(
                 b.numerical_stop_reason()
                     .map_or(Ok(None), |r| Err(r.to_owned()))
             },
-        )?,
+        )?
+        .boxed(),
         "graph_separation" => run(
             GraphSeparationBoosting::init(s),
             &tree,
             max_iterations,
             no_check,
-        )?,
+        )?
+        .boxed(),
+        "sparsiboost" => {
+            let mut booster = SparsiBoost::init(s);
+            if n_hypotheses > 0 {
+                booster = booster.n_hypotheses(n_hypotheses);
+            }
+            if !gap.is_nan() {
+                booster = booster.tolerance(gap);
+            }
+            let planned = booster.max_loop();
+            let t = run(booster, &tree, max_iterations, no_check)?;
+            let kept = t.model.weights.iter().filter(|w| **w != 0.0).count();
+            let change = t.booster.sparsification_error().unwrap_or(f64::NAN);
+            let within = match t.booster.sparsification_within_tolerance() {
+                Some(true) => " (within v/2)",
+                Some(false) => " (exceeds v/2: the cap T forced extra halving)",
+                None => "",
+            };
+            let note = format!(
+                "AdaBoostV: {} of {planned} planned rounds; sparsified to {kept} \
+                 hypotheses; largest training-margin change {change:.3}{within}",
+                t.rounds
+            );
+            (
+                Box::new(t.model) as Box<dyn Classifier>,
+                t.rounds,
+                t.stop,
+                note,
+            )
+        }
         _ => return Err(JsError::new("unknown boosting algorithm")),
     };
 
@@ -214,6 +272,7 @@ pub fn train(
         rounds,
         stop_reason: stop_reason.into(),
         train_error,
+        note,
     })
 }
 
@@ -236,20 +295,34 @@ impl<W: WeakLearner> WeakLearner for Counting<'_, W> {
     }
 }
 
-/// Runs at most `limit` rounds of `booster`. After training, `check` either
-/// reports a numerical failure detected by the booster, which is returned as
-/// an error instead of a model, or optionally refines the stop reason of an
-/// algorithm stop (e.g. SmoothBoost's `"round_budget"`).
-fn run<'a, B, W, C>(
+/// A finished run: the booster (for algorithm-specific diagnostics), its
+/// output, the number of weak hypotheses produced, and the stop reason.
+struct Trained<B, F> {
+    booster: B,
+    model: F,
+    rounds: usize,
+    stop: &'static str,
+}
+
+impl<B, F: Classifier + 'static> Trained<B, F> {
+    fn boxed(self) -> (Box<dyn Classifier>, usize, &'static str, String) {
+        (Box::new(self.model), self.rounds, self.stop, String::new())
+    }
+}
+
+/// Runs at most `limit` rounds of `booster`. Before postprocessing, `check`
+/// either reports a numerical failure detected by the booster, which is
+/// returned as an error instead of a model, or optionally refines the stop
+/// reason of an algorithm stop (e.g. SmoothBoost's `"round_budget"`).
+fn run<B, W, C>(
     mut booster: B,
     learner: &W,
     limit: usize,
     check: C,
-) -> Result<(Box<dyn Classifier + 'a>, usize, &'static str), JsError>
+) -> Result<Trained<B, B::Output>, JsError>
 where
     W: WeakLearner,
     B: Booster<W::Hypothesis>,
-    B::Output: Classifier + 'a,
     C: Fn(&B) -> Result<Option<&'static str>, String>,
 {
     let learner = Counting {
@@ -270,5 +343,11 @@ where
         Ok(Some(reason)) if stop == "algorithm_stop" => stop = reason,
         Ok(_) => {}
     }
-    Ok((Box::new(booster.postprocess()), rounds, stop))
+    let model = booster.postprocess();
+    Ok(Trained {
+        booster,
+        model,
+        rounds,
+        stop,
+    })
 }
