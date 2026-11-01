@@ -122,8 +122,11 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 | `TotalBoost` | [Warmuth, Liao, and Rätsch][totalboost] |
 | `GraphSeparationBoosting` | [Alon, Gonen, Hazan, and Moran][graphsepboost] |
 
-The built-in weak learner is a [decision tree][decisiontree]. Implement
-`WeakLearner` to use your own learner. The gradient boosting machine (GBM) and
+The built-in weak learners are a [decision tree][decisiontree], `FiniteClass`
+(an exact edge maximizer over a finite hypothesis class, including one given as
+a table of confidences), and `RbfClassBuilder` (Gaussian bumps centered at
+training examples, as a `FiniteClass`). Implement `WeakLearner` to use your own
+learner. The gradient boosting machine (GBM) and
 regression tree are not included; see the migration notes.
 See the [migration notes](MIGRATION.md) for removed APIs.
 

@@ -33,3 +33,5 @@ pub use crate::boosters::totalboost::TotalBoost;
 pub use crate::weak_learners::decision_tree::{
     DecisionTree, DecisionTreeBuilder, DecisionTreeClassifier, SplitBy, node, split_by,
 };
+pub use crate::weak_learners::finite_class::{ClassMember, FiniteClass, TableHypothesis};
+pub use crate::weak_learners::rbf::{RbfClassBuilder, RbfHypothesis};

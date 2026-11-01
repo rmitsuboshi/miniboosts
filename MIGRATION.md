@@ -1,5 +1,10 @@
 # Unreleased
 
+Two weak learners are new: `FiniteClass` (with `ClassMember` and
+`TableHypothesis`) returns an edge-maximizing member of a finite hypothesis
+class, and `RbfClassBuilder` builds a `FiniteClass` of Gaussian radial basis
+functions (`RbfHypothesis`). Both are in the prelude.
+
 `BrownBoost` (Freund, 2001) is new. It adds the dependency
 [`libm`](https://crates.io/crates/libm) (rust-lang's pure-Rust port of musl's
 math library) for `erf` and `erfc`, which the standard library does not
