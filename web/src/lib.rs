@@ -1,7 +1,11 @@
 //! Thin WebAssembly boundary for the interactive demo: JavaScript supplies
-//! labeled 2-D points, Rust trains a booster with decision trees and returns
-//! the ensemble's confidence on a square grid over `[-1, 1]^2`.
-use miniboosts::{Classifier, Sample, prelude::*};
+//! labeled 2-D points, Rust trains a booster with the chosen weak learner and
+//! returns the ensemble's confidence on a square grid over `[-1, 1]^2`.
+use js_sys::Reflect;
+use miniboosts::{
+    ClassMember, Classifier, DecisionTree, DecisionTreeClassifier, FiniteClass, LinearClassifier,
+    LinearOutput, NaiveBayesClassifier, RbfHypothesis, Sample, prelude::*,
+};
 use std::{cell::Cell, ops::ControlFlow};
 use wasm_bindgen::prelude::*;
 
@@ -29,9 +33,11 @@ impl Fit {
     pub fn rounds(&self) -> usize {
         self.rounds
     }
-    /// `"algorithm_stop"`, `"max_iterations"`, or, for SmoothBoost,
+    /// `"algorithm_stop"`, `"max_iterations"`, for SmoothBoost
     /// `"round_budget"` (the paper's round bound was reached without the
-    /// stopping test firing, so its margin guarantee does not apply).
+    /// stopping test firing, so its margin guarantee does not apply), or for
+    /// BrownBoost `"numerical_stop"` (stopped before the remaining time ran
+    /// out; see the note).
     #[wasm_bindgen(getter, js_name = stopReason)]
     pub fn stop_reason(&self) -> String {
         self.stop_reason.clone()
@@ -56,29 +62,28 @@ pub fn start() {
     console_error_panic_hook::set_once();
 }
 
-/// Trains `algorithm` on the points `(xs[i], ys[i])` with labels
-/// `labels[i] ∈ {-1, +1}` and evaluates the result on a
-/// `resolution × resolution` grid.
+/// Trains `algorithm` with the weak learner `learner` on the points
+/// `(xs[i], ys[i])` with labels `labels[i] ∈ {-1, +1}` and evaluates the
+/// result on a `resolution × resolution` grid.
 ///
-/// `nu` is the capping parameter of the soft-margin boosters
-/// (`1 ≤ nu ≤ n`), `gamma` and `kappa` are SmoothBoost's parameters, and
-/// `n_hypotheses` (`T`, `0` for none) and `gap` (`v`, NaN for none) are
-/// SparsiBoost's targets, at least one of which must be set.
+/// `booster` holds the booster parameters: `maxIterations`, `tolerance`,
+/// `nu` (capping, `1 ≤ nu ≤ n`), `gamma` and `kappa` (SmoothBoost),
+/// `nHypotheses` (`T`, `0` for none) and `gap` (`v`, NaN for none) for
+/// SparsiBoost, and `brownTolerance` (`ε`) and `edgeThreshold` (`ν`) for
+/// BrownBoost. `weak` holds the learner parameters: `maxDepth` and `splitBy`
+/// (decision tree), `regularization` and `output` (logistic regression),
+/// `varSmoothing` (naive Bayes), and `bandwidth` (RBF). Only the parameters
+/// of the chosen booster and learner are read.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn train(
     algorithm: &str,
+    learner: &str,
     xs: &[f64],
     ys: &[f64],
     labels: &[f64],
-    max_depth: usize,
-    max_iterations: usize,
-    tolerance: f64,
-    nu: f64,
-    gamma: f64,
-    kappa: f64,
-    n_hypotheses: usize,
-    gap: f64,
+    booster: &JsValue,
+    weak: &JsValue,
     resolution: usize,
 ) -> Result<Fit, JsError> {
     let n = labels.len();
@@ -91,31 +96,8 @@ pub fn train(
     {
         return Err(JsError::new("place at least one point of each class"));
     }
-    if max_depth == 0 || max_iterations == 0 || !(2..=400).contains(&resolution) {
-        return Err(JsError::new(
-            "depth, iterations, and resolution must be positive",
-        ));
-    }
-    if !(tolerance.is_finite() && tolerance > 0.0) {
-        return Err(JsError::new("tolerance must be positive"));
-    }
-    if !(1.0..=n as f64).contains(&nu) {
-        return Err(JsError::new(
-            "nu must lie between 1 and the number of points",
-        ));
-    }
-    if !(0.0 < gamma && gamma < 0.5) || !(0.0 < kappa && kappa < 1.0) {
-        return Err(JsError::new(
-            "gamma must lie in (0, 0.5) and kappa in (0, 1)",
-        ));
-    }
-    if !(gap.is_nan() || (gap.is_finite() && gap > 0.0)) {
-        return Err(JsError::new("the target gap v must be positive"));
-    }
-    if algorithm == "sparsiboost" && n_hypotheses == 0 && gap.is_nan() {
-        return Err(JsError::new(
-            "SparsiBoost needs a target size T, a target gap v, or both",
-        ));
+    if !(2..=400).contains(&resolution) {
+        return Err(JsError::new("resolution must lie in [2, 400]"));
     }
 
     let rows = xs
@@ -124,127 +106,49 @@ pub fn train(
         .map(|(&x, &y)| vec![x, y])
         .collect::<Vec<_>>();
     let sample = Sample::from_dense(&rows, Some(labels)).map_err(|e| JsError::new(&e))?;
-    let tree = DecisionTreeBuilder::new(&sample)
-        .max_depth(max_depth)
-        .split_by(SplitBy::Entropy)
-        .build();
+    let p = Params(booster);
+    let w = Params(weak);
 
-    let s = &sample;
-    let (model, rounds, stop_reason, note): (Box<dyn Classifier>, _, _, _) = match algorithm {
-        "adaboost" => run(
-            AdaBoost::init(s).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "adaboostv" => run(
-            AdaBoostV::init(s).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "madaboost" => run(
-            MadaBoost::init(s).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "smoothboost" => run(
-            SmoothBoost::init(s).gamma(gamma).kappa(kappa),
-            &tree,
-            max_iterations,
-            |b: &SmoothBoost<_>| Ok(b.reached_round_budget().then_some("round_budget")),
-        )?
-        .boxed(),
-        "lpboost" => run(
-            LpBoost::init(s).nu(nu).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "erlpboost" => run(
-            ErlpBoost::init(s).nu(nu).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "corrective_erlpboost" => run(
-            CorrectiveErlpBoost::init(s).nu(nu).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "mlpboost" => run(
-            MlpBoost::init(s).nu(nu).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "softboost" => run(
-            SoftBoost::init(s).nu(nu).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            |b: &SoftBoost<_>| {
-                b.numerical_stop_reason()
-                    .map_or(Ok(None), |r| Err(r.to_owned()))
-            },
-        )?
-        .boxed(),
-        "totalboost" => run(
-            TotalBoost::init(s).tolerance(tolerance),
-            &tree,
-            max_iterations,
-            |b: &TotalBoost<_>| {
-                b.numerical_stop_reason()
-                    .map_or(Ok(None), |r| Err(r.to_owned()))
-            },
-        )?
-        .boxed(),
-        "graph_separation" => run(
-            GraphSeparationBoosting::init(s),
-            &tree,
-            max_iterations,
-            no_check,
-        )?
-        .boxed(),
-        "sparsiboost" => {
-            let mut booster = SparsiBoost::init(s);
-            if n_hypotheses > 0 {
-                booster = booster.n_hypotheses(n_hypotheses);
-            }
-            if !gap.is_nan() {
-                booster = booster.tolerance(gap);
-            }
-            let planned = booster.max_loop();
-            let t = run(booster, &tree, max_iterations, no_check)?;
-            let kept = t.model.weights.iter().filter(|w| **w != 0.0).count();
-            let change = t.booster.sparsification_error().unwrap_or(f64::NAN);
-            let within = match t.booster.sparsification_within_tolerance() {
-                Some(true) => " (within v/2)",
-                Some(false) => " (exceeds v/2: the cap T forced extra halving)",
-                None => "",
+    let learner = match learner {
+        "decision_tree" => {
+            let split = match w.text("splitBy")?.as_str() {
+                "entropy" => SplitBy::Entropy,
+                "edge" => SplitBy::Edge,
+                "gini" => SplitBy::Gini,
+                "twoing" => SplitBy::Twoing,
+                _ => return Err(JsError::new("unknown split criterion")),
             };
-            let note = format!(
-                "AdaBoostV: {} of {planned} planned rounds; sparsified to {kept} \
-                 hypotheses; largest training-margin change {change:.3}{within}",
-                t.rounds
-            );
-            (
-                Box::new(t.model) as Box<dyn Classifier>,
-                t.rounds,
-                t.stop,
-                note,
+            Learner::Tree(
+                DecisionTreeBuilder::new(&sample)
+                    .max_depth(w.count("maxDepth", 1)?)
+                    .split_by(split)
+                    .build(),
             )
         }
-        _ => return Err(JsError::new("unknown boosting algorithm")),
+        "logistic_regression" => {
+            let output = match w.text("output")?.as_str() {
+                "sign" => LinearOutput::Sign,
+                "tanh" => LinearOutput::Tanh,
+                _ => return Err(JsError::new("unknown logistic-regression output")),
+            };
+            Learner::Logistic(
+                LogisticRegression::new()
+                    .regularization(w.positive("regularization")?)
+                    .output(output),
+            )
+        }
+        "bounded_linear" => Learner::Linear(BoundedLinear::new()),
+        "naive_bayes" => {
+            Learner::Bayes(NaiveBayes::new().var_smoothing(w.positive("varSmoothing")?))
+        }
+        "rbf" => Learner::Rbf(
+            RbfClassBuilder::new(&sample)
+                .bandwidth(w.positive("bandwidth")?)
+                .build(),
+        ),
+        _ => return Err(JsError::new("unknown weak learner")),
     };
+    let (model, rounds, stop_reason, note) = fit(algorithm, &sample, &learner, &p)?;
 
     let train_error = model
         .predict_all(&sample)
@@ -273,6 +177,287 @@ pub fn train(
         stop_reason: stop_reason.into(),
         train_error,
         note,
+    })
+}
+
+/// One of the demo's weak learners. Dispatching through an enum compiles
+/// each booster once rather than once per learner, which keeps the wasm
+/// module small.
+enum Learner<'a> {
+    Tree(DecisionTree<'a>),
+    Logistic(LogisticRegression),
+    Linear(BoundedLinear),
+    Bayes(NaiveBayes),
+    Rbf(FiniteClass<RbfHypothesis>),
+}
+
+/// A hypothesis returned by [`Learner`].
+#[derive(Clone)]
+enum Hypothesis {
+    Tree(DecisionTreeClassifier),
+    Linear(LinearClassifier),
+    Bayes(NaiveBayesClassifier),
+    Rbf(ClassMember<RbfHypothesis>),
+}
+
+impl Classifier for Hypothesis {
+    fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+        match self {
+            Self::Tree(h) => h.confidence(sample, row),
+            Self::Linear(h) => h.confidence(sample, row),
+            Self::Bayes(h) => h.confidence(sample, row),
+            Self::Rbf(h) => h.confidence(sample, row),
+        }
+    }
+}
+
+impl WeakLearner for Learner<'_> {
+    type Hypothesis = Hypothesis;
+    fn produce(&self, sample: &Sample, dist: &[f64]) -> Hypothesis {
+        match self {
+            Self::Tree(l) => Hypothesis::Tree(l.produce(sample, dist)),
+            Self::Logistic(l) => Hypothesis::Linear(l.produce(sample, dist)),
+            Self::Linear(l) => Hypothesis::Linear(l.produce(sample, dist)),
+            Self::Bayes(l) => Hypothesis::Bayes(l.produce(sample, dist)),
+            Self::Rbf(l) => Hypothesis::Rbf(l.produce(sample, dist)),
+        }
+    }
+}
+
+/// Named numeric and string parameters read from a JavaScript object.
+struct Params<'a>(&'a JsValue);
+
+impl Params<'_> {
+    /// Returns the number under `key`, or NaN if it is missing.
+    fn num(&self, key: &str) -> f64 {
+        Reflect::get(self.0, &JsValue::from_str(key))
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(f64::NAN)
+    }
+
+    fn text(&self, key: &str) -> Result<String, JsError> {
+        Reflect::get(self.0, &JsValue::from_str(key))
+            .ok()
+            .and_then(|v| v.as_string())
+            .ok_or_else(|| JsError::new(&format!("{key} is missing")))
+    }
+
+    fn positive(&self, key: &str) -> Result<f64, JsError> {
+        let v = self.num(key);
+        if v.is_finite() && v > 0.0 {
+            Ok(v)
+        } else {
+            Err(JsError::new(&format!("{key} must be positive")))
+        }
+    }
+
+    /// Returns the integer under `key`, which must be at least `min`.
+    fn count(&self, key: &str, min: usize) -> Result<usize, JsError> {
+        let v = self.num(key);
+        if v.is_finite() && v.fract() == 0.0 && v >= min as f64 {
+            Ok(v as usize)
+        } else {
+            Err(JsError::new(&format!("{key} must be an integer ≥ {min}")))
+        }
+    }
+}
+
+type Outcome = (Box<dyn Classifier>, usize, &'static str, String);
+
+/// Trains `algorithm` with `learner`, validating the booster parameters it
+/// uses (the library asserts the same conditions; checking here turns them
+/// into errors instead of panics).
+fn fit(algorithm: &str, s: &Sample, learner: &Learner, p: &Params) -> Result<Outcome, JsError> {
+    let limit = p.count("maxIterations", 1)?;
+    let n = s.shape().0;
+    let tolerance = || p.positive("tolerance");
+    let nu = || {
+        let nu = p.num("nu");
+        if (1.0..=n as f64).contains(&nu) {
+            Ok(nu)
+        } else {
+            Err(JsError::new(
+                "nu must lie between 1 and the number of points",
+            ))
+        }
+    };
+    let l = learner;
+    Ok(match algorithm {
+        "adaboost" => run(
+            AdaBoost::init(s).tolerance(tolerance()?),
+            l,
+            limit,
+            no_check,
+        )?
+        .boxed(),
+        "adaboostv" => run(
+            AdaBoostV::init(s).tolerance(tolerance()?),
+            l,
+            limit,
+            no_check,
+        )?
+        .boxed(),
+        "madaboost" => run(
+            MadaBoost::init(s).tolerance(tolerance()?),
+            l,
+            limit,
+            no_check,
+        )?
+        .boxed(),
+        "smoothboost" => {
+            let (gamma, kappa) = (p.num("gamma"), p.num("kappa"));
+            if !(0.0 < gamma && gamma < 0.5) || !(0.0 < kappa && kappa < 1.0) {
+                return Err(JsError::new(
+                    "gamma must lie in (0, 0.5) and kappa in (0, 1)",
+                ));
+            }
+            run(
+                SmoothBoost::init(s).gamma(gamma).kappa(kappa),
+                l,
+                limit,
+                |b: &SmoothBoost<_>| Ok(b.reached_round_budget().then_some("round_budget")),
+            )?
+            .boxed()
+        }
+        "lpboost" => run(
+            LpBoost::init(s).nu(nu()?).tolerance(tolerance()?),
+            l,
+            limit,
+            no_check,
+        )?
+        .boxed(),
+        "erlpboost" => run(
+            ErlpBoost::init(s).nu(nu()?).tolerance(tolerance()?),
+            l,
+            limit,
+            no_check,
+        )?
+        .boxed(),
+        "corrective_erlpboost" => run(
+            CorrectiveErlpBoost::init(s)
+                .nu(nu()?)
+                .tolerance(tolerance()?),
+            l,
+            limit,
+            no_check,
+        )?
+        .boxed(),
+        "mlpboost" => run(
+            MlpBoost::init(s).nu(nu()?).tolerance(tolerance()?),
+            l,
+            limit,
+            no_check,
+        )?
+        .boxed(),
+        "softboost" => run(
+            SoftBoost::init(s).nu(nu()?).tolerance(tolerance()?),
+            l,
+            limit,
+            |b: &SoftBoost<_>| {
+                b.numerical_stop_reason()
+                    .map_or(Ok(None), |r| Err(r.to_owned()))
+            },
+        )?
+        .boxed(),
+        "totalboost" => run(
+            TotalBoost::init(s).tolerance(tolerance()?),
+            l,
+            limit,
+            |b: &TotalBoost<_>| {
+                b.numerical_stop_reason()
+                    .map_or(Ok(None), |r| Err(r.to_owned()))
+            },
+        )?
+        .boxed(),
+        "graph_separation" => run(GraphSeparationBoosting::init(s), l, limit, no_check)?.boxed(),
+        "sparsiboost" => {
+            let t = p.num("nHypotheses");
+            let gap = p.num("gap");
+            if !(gap.is_nan() || (gap.is_finite() && gap > 0.0)) {
+                return Err(JsError::new("the target gap v must be positive"));
+            }
+            // `T` counts as set only if it is at least 1 (NaN and 0 mean unset).
+            let has_t = t >= 1.0;
+            if !has_t && gap.is_nan() {
+                return Err(JsError::new(
+                    "SparsiBoost needs a target size T, a target gap v, or both",
+                ));
+            }
+            let mut booster = SparsiBoost::init(s);
+            if has_t {
+                booster = booster.n_hypotheses(t as usize);
+            }
+            if !gap.is_nan() {
+                booster = booster.tolerance(gap);
+            }
+            let planned = booster.max_loop();
+            let t = run(booster, l, limit, no_check)?;
+            let kept = t.model.weights.iter().filter(|w| **w != 0.0).count();
+            let change = t.booster.sparsification_error().unwrap_or(f64::NAN);
+            let within = match t.booster.sparsification_within_tolerance() {
+                Some(true) => " (within v/2)",
+                Some(false) => " (exceeds v/2: the cap T forced extra halving)",
+                None => "",
+            };
+            let note = format!(
+                "AdaBoostV: {} of {planned} planned rounds; sparsified to {kept} \
+                 hypotheses; largest training-margin change {change:.3}{within}",
+                t.rounds
+            );
+            (
+                Box::new(t.model) as Box<dyn Classifier>,
+                t.rounds,
+                t.stop,
+                note,
+            )
+        }
+        "brownboost" => {
+            let epsilon = p.num("brownTolerance");
+            let threshold = p.num("edgeThreshold");
+            if !(0.0 < epsilon && epsilon < 1.0) || !(0.0..1.0).contains(&threshold) {
+                return Err(JsError::new("BrownBoost needs 0 < ε < 1 and 0 ≤ ν < 1"));
+            }
+            let booster = BrownBoost::init(s)
+                .tolerance(epsilon)
+                .edge_threshold(threshold);
+            let total = booster.total_time();
+            let t = run(booster, l, limit, no_check)?;
+            let remaining = t.booster.remaining_time().unwrap_or(total);
+            // Freund (2001), Theorem 2 applies only once the remaining time
+            // runs out; a numerical stop or the round limit voids it.
+            let (stop, note) = match t.booster.numerical_stop_reason() {
+                Some(reason) => (
+                    "numerical_stop",
+                    format!(
+                        "Stopped early with remaining time s = {remaining:.3} of \
+                         c = {total:.3}: {reason}. The training-error guarantee does \
+                         not apply."
+                    ),
+                ),
+                None if remaining <= 0.0 => (
+                    t.stop,
+                    format!(
+                        "Remaining time used up (c = {total:.3}), so the training \
+                         error is at most ε = {epsilon} (Theorem 2)."
+                    ),
+                ),
+                None => (
+                    t.stop,
+                    format!(
+                        "Remaining time s = {remaining:.3} of c = {total:.3}; the \
+                         training-error guarantee needs s ≤ 0."
+                    ),
+                ),
+            };
+            (
+                Box::new(t.model) as Box<dyn Classifier>,
+                t.rounds,
+                stop,
+                note,
+            )
+        }
+        _ => return Err(JsError::new("unknown boosting algorithm")),
     })
 }
 
@@ -305,7 +490,7 @@ struct Trained<B, F> {
 }
 
 impl<B, F: Classifier + 'static> Trained<B, F> {
-    fn boxed(self) -> (Box<dyn Classifier>, usize, &'static str, String) {
+    fn boxed(self) -> Outcome {
         (Box::new(self.model), self.rounds, self.stop, String::new())
     }
 }
