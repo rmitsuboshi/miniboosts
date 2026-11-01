@@ -11,6 +11,7 @@ __pycache__/
 /python/miniboosts/*.pyd
 
 .DS_Store
+/.claude/
 local_test.rs
 .ipynb_checkpoints
 img/csv
