@@ -224,6 +224,19 @@ def test_iteration_count_excludes_terminal_noop():
     assert clf.stop_reason_ == 'algorithm_stop'
 
 
+def test_smoothboost_reports_round_budget_separately():
+    # Servedio (2003): budget ceil(2 / (kappa gamma^2 sqrt(1 - gamma))) = 74
+    # for kappa = 0.5, gamma = 0.25. A zero-confidence learner has edge 0, so
+    # the stopping test sum_j M(j) < kappa m never fires.
+    clf = SmoothBoostClassifier(estimator=ConfidenceLearner(value=0.0), kappa=.5, gamma=.25,
+                                max_iterations=200).fit(X, Y)
+    assert (clf.n_iter_, clf.stop_reason_) == (74, 'round_budget')
+    # A separating learner (margin 0.8 > theta) makes every M shrink, so the test fires.
+    clf = SmoothBoostClassifier(estimator=ConfidenceLearner(), kappa=.5, gamma=.25,
+                                max_iterations=200).fit(X, Y)
+    assert clf.stop_reason_ == 'algorithm_stop' and clf.n_iter_ < 74
+
+
 def test_rust_failure_is_an_error_and_invalidates_model():
     # ERLPBoost requires tolerance < 2; Python does not check this, so the
     # Rust assertion fires and must surface as an error.

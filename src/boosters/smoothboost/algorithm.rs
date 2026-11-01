@@ -38,7 +38,8 @@ use std::ops::ControlFlow;
 /// Implementation choice: besides the stopping test in step 1, training
 /// stops after `ceil(2 / (κ γ² sqrt(1 - γ)))` rounds, the paper's bound on
 /// `T`. Under the weak-learning assumption the stopping test fires first, so
-/// reaching this budget indicates that the assumption failed.
+/// reaching this budget indicates that the assumption failed;
+/// [`reached_round_budget`](SmoothBoost::reached_round_budget) reports it.
 ///
 /// # Theoretical guarantee
 /// From Servedio (2003), assuming only what each statement lists:
@@ -58,12 +59,12 @@ use std::ops::ControlFlow;
 /// # Limitations
 /// - The advantage assumption is not checked at runtime. Choosing a tree
 ///   depth does not establish it. If training ends at the round budget
-///   instead of the stopping test, the margin guarantee does not apply, and
-///   nothing signals this.
+///   instead of the stopping test, the margin guarantee does not apply;
+///   check [`reached_round_budget`](SmoothBoost::reached_round_budget).
 /// - Smoothness bounds each example's weight but the guarantee concerns the
 ///   training sample only; `κ` is not a test-error bound.
-/// - Confidences outside `[-1, 1]` are not rejected, but the analysis
-///   assumes them.
+/// - Non-finite confidences panic. Finite confidences outside `[-1, 1]`
+///   are not rejected, but the analysis assumes them.
 /// - Invalid `kappa` is only detected when training starts (panic);
 ///   `gamma` is validated immediately.
 /// - Labels must be `-1` or `+1` and both classes must be present.
@@ -161,6 +162,9 @@ pub struct SmoothBoost<'a, F> {
     // Iteration budget.
     max_iter: usize,
 
+    // Whether the last run stopped at `max_iter` instead of the stopping test.
+    budget_exhausted: bool,
+
     hypotheses: Vec<F>,
 
     // Measures `M_t(j)` and cumulative margin excesses `N_t(j)`.
@@ -208,6 +212,7 @@ impl<'a, F> SmoothBoost<'a, F> {
 
             terminated: usize::MAX,
             max_iter: usize::MAX,
+            budget_exhausted: false,
 
             hypotheses: Vec::new(),
 
@@ -286,6 +291,32 @@ impl<'a, F> SmoothBoost<'a, F> {
         self
     }
 
+    /// Returns `true` if the last run ended at the round budget
+    /// `ceil(2 / (κ γ² sqrt(1 - γ)))` without the stopping test
+    /// `Σ_j M_t(j) < κ m` firing. Then the margin guarantee of Theorem 2 does
+    /// not apply, which indicates that the weak-learning assumption failed.
+    /// Returns `false` before training and when the stopping test fired.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// // A separating stump has edge 1, so the stopping test fires.
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = SmoothBoost::init(&sample);
+    /// let _ = booster.run(&learner);
+    /// assert!(!booster.reached_round_budget());
+    /// ```
+    pub fn reached_round_budget(&self) -> bool {
+        self.budget_exhausted
+    }
+
     /// Sets `theta = gamma / (2 + gamma)`, as in Theorem 3 of the paper.
     fn theta(&mut self) {
         self.theta = self.gamma / (2.0 + self.gamma);
@@ -354,6 +385,7 @@ where
         self.current = 0_usize;
         self.max_iter = self.max_loop();
         self.terminated = self.max_iter;
+        self.budget_exhausted = false;
 
         self.hypotheses = Vec::new();
 
@@ -367,18 +399,20 @@ where
     where
         W: WeakLearner<Hypothesis = F>,
     {
-        if self.max_iter < iteration {
-            return ControlFlow::Break(self.max_iter);
-        }
-
-        self.current = iteration;
-
         let sum = self.m.iter().sum::<f64>();
-        // Check the stopping criterion (Figure 1, line 4).
+        // Check the stopping criterion (Figure 1, line 4). It is tested
+        // before the budget so that a run satisfying it after exactly
+        // `max_iter` rounds is not reported as exhausting the budget.
         if sum < self.n_examples as f64 * self.kappa {
             self.terminated = iteration - 1;
             return ControlFlow::Break(iteration);
         }
+        if self.max_iter < iteration {
+            self.budget_exhausted = true;
+            return ControlFlow::Break(self.max_iter);
+        }
+
+        self.current = iteration;
 
         // Compute the distribution.
         let dist = self.m.iter().map(|mj| *mj / sum).collect::<Vec<_>>();
@@ -394,8 +428,13 @@ where
             .enumerate()
             .map(|(i, y)| y * h.confidence(self.sample, i));
 
-        // Update `n`
+        // Update `n`. A non-finite confidence would make `N`, `M`, and the
+        // next distribution NaN while the stopping test silently stays false.
         self.n.iter_mut().zip(margins).for_each(|(nj, yh)| {
+            assert!(
+                yh.is_finite(),
+                "SmoothBoost: weak hypothesis confidence is not finite"
+            );
             *nj = *nj + yh - self.theta;
         });
 
@@ -468,6 +507,45 @@ mod regression_tests {
             );
         }
         assert!((booster.n[0] - 3.0 * (1.0 - booster.theta)).abs() < 1e-14);
+    }
+
+    fn run_to_end(booster: &mut SmoothBoost<'_, Constant>, learner: &Constant) -> usize {
+        booster.preprocess();
+        let mut iteration = 1;
+        while booster.boost(learner, iteration).is_continue() {
+            iteration += 1;
+        }
+        iteration
+    }
+
+    #[test]
+    fn round_budget_is_reported_only_when_the_test_never_fires() {
+        let sample = Sample::dummy(4);
+        // Labels are [+1, +1, -1, -1], so a constant has edge 0 under the
+        // uniform distribution: `N` only decreases, `M` stays 1, and the
+        // test `Σ M < κ m` never holds. Budget ceil(2 / (0.5 · 0.25² · √0.75)) = 74.
+        let mut booster = SmoothBoost::init(&sample).kappa(0.5).gamma(0.25);
+        assert!(!booster.reached_round_budget());
+        let last = run_to_end(&mut booster, &Constant(0.0));
+        assert_eq!((last, booster.hypotheses.len()), (75, 74));
+        assert!(booster.reached_round_budget());
+
+        // Rerunning resets the flag. With confidence 1, the two `+1` rows get
+        // `N_1 = 1 - θ` and the two `-1` rows `N_1 = -1 - θ`, so
+        // `Σ M_2 = 2 (1-γ)^{(1-θ)/2} + 2 ≈ 3.76 < κ m = 3.96` for κ = 0.99:
+        // the test fires in round 2.
+        let mut booster = booster.kappa(0.99);
+        let last = run_to_end(&mut booster, &Constant(1.0));
+        assert_eq!((last, booster.hypotheses.len()), (2, 1));
+        assert!(!booster.reached_round_budget());
+    }
+
+    #[test]
+    #[should_panic(expected = "not finite")]
+    fn non_finite_confidence_is_rejected() {
+        let sample = Sample::dummy(4);
+        let mut booster = SmoothBoost::init(&sample);
+        let _ = run_to_end(&mut booster, &Constant(f64::NAN));
     }
 
     #[test]

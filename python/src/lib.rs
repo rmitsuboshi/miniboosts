@@ -222,7 +222,29 @@ fn train(
                     n,
                 )
             }
-            "smoothboost" => run(SmoothBoost::init(s).gamma(gamma).kappa(kappa), l, n),
+            "smoothboost" => {
+                let mut b = SmoothBoost::init(s).gamma(gamma).kappa(kappa);
+                b.preprocess();
+                let mut stop = "max_iterations".to_string();
+                for round in 1..=n {
+                    l.round.set(round);
+                    if b.boost(l, round).is_break() {
+                        // The paper's round bound without the stopping test
+                        // firing is not an algorithm stop with a guarantee.
+                        stop = if b.reached_round_budget() {
+                            "round_budget"
+                        } else {
+                            "algorithm_stop"
+                        }
+                        .into();
+                        break;
+                    }
+                }
+                (
+                    Box::new(b.postprocess()) as Box<dyn Classifier + Send + Sync>,
+                    stop,
+                )
+            }
             "softboost" => {
                 let mut b = SoftBoost::init(s).nu(nu).tolerance(tolerance);
                 b.preprocess();

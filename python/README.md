@@ -131,9 +131,11 @@ and caps example weights at `1/nu`. SmoothBoost requires `0 < gamma < 0.5` and
 See the repository README and Rust documentation for references and guarantees.
 
 After fitting, `n_iter_` records the number of successfully produced weak
-learners, excluding terminal calls that do not train a learner. `stop_reason_` is `"max_iterations"` or
-`"algorithm_stop"`; the latter is an algorithm stop, not a generic convergence
-certificate. `estimators_` and `estimator_rounds_` expose all successfully
+learners, excluding terminal calls that do not train a learner. `stop_reason_` is `"max_iterations"`,
+`"algorithm_stop"`, or, for SmoothBoost only, `"round_budget"`. `"algorithm_stop"`
+is an algorithm stop, not a generic convergence certificate. `"round_budget"`
+means SmoothBoost reached its theoretical round bound without its stopping test
+firing, so its margin guarantee does not apply. `estimators_` and `estimator_rounds_` expose all successfully
 produced candidates, including candidates discarded by the Rust algorithm.
 Do not mutate these fitted learners or lists.
 
