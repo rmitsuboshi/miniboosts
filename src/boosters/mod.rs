@@ -22,6 +22,7 @@
 //! | [`CorrectiveErlpBoost`](crate::boosters::corrective_erlpboost::CorrectiveErlpBoost) | soft-margin, corrective (Frank–Wolfe) | `nu`, `tolerance`, `update_rule` | duality gap `≤ ε/2`, `ν = m` (after one round), or a `⌈32 ln(m/ν) / ε²⌉` budget |
 //! | [`MlpBoost`](crate::boosters::mlpboost::MlpBoost) | soft-margin, Frank–Wolfe with LP steps | `nu`, `tolerance`, `update_rule` | optimality gap `≤ ε/2`, `ν = m` (after one round), or a `⌈32 ln(m/ν) / ε²⌉` budget |
 //! | [`SmoothBoost`](crate::boosters::smoothboost::SmoothBoost) | smooth | `kappa`, `gamma` | total example weight below `κ m`, or a `⌈2 / (κ γ² √(1 - γ))⌉` budget |
+//! | [`SparsiBoost`](crate::boosters::sparsiboost::SparsiBoost) | hard-margin, AdaBoostV then sparsification | target `T`, `seed` | `c T` AdaBoostV rounds with `c = ⌈lg m / lg(2 + m/T)⌉`, or a hypothesis with weighted edge `±1`; then at most `T` hypotheses kept |
 //! | [`SoftBoost`](crate::boosters::softboost::SoftBoost) | soft-margin, totally corrective | `nu`, `tolerance` | infeasible or zero-entry entropy projection, solver failure, or a `⌈2 ln(m/ν) / ε²⌉` budget |
 //! | [`TotalBoost`](crate::boosters::totalboost::TotalBoost) | hard-margin, totally corrective | `tolerance` | as SoftBoost with `ν = 1` |
 //! | [`GraphSeparationBoosting`](crate::boosters::graph_separation_boosting::GraphSeparationBoosting) | sample-compression (consistent aggregation) | none | every oppositely labeled pair separated, or a round separates no new pair |
@@ -123,4 +124,5 @@ pub mod madaboost;
 pub mod mlpboost;
 pub mod smoothboost;
 pub mod softboost;
+pub mod sparsiboost;
 pub mod totalboost;

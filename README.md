@@ -117,6 +117,7 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 | `MlpBoost` | [Mitsuboshi, Hatano, and Takimoto][mlpboost] |
 | `SmoothBoost` | [Servedio][smoothboost] |
 | `SoftBoost` | [Warmuth, Glocer, and Rätsch][softboost] |
+| `SparsiBoost` | [Grønlund, Larsen, and Mathiasen][sparsiboost] |
 | `TotalBoost` | [Warmuth, Liao, and Rätsch][totalboost] |
 | `GraphSeparationBoosting` | [Alon, Gonen, Hazan, and Moran][graphsepboost] |
 
@@ -160,6 +161,12 @@ than count as convergence. SoftBoost and TotalBoost can instead stop early on
 an entropy-solver accuracy failure; inspect `numerical_stop_reason()` after
 training. Such a stop does not certify convergence, and final LP fitting can
 still fail. See the [migration notes](MIGRATION.md) for numerical changes.
+
+SparsiBoost takes the target number of hypotheses `T` instead of a tolerance.
+It runs AdaBoostV for a fixed number of rounds and then sparsifies the ensemble
+with a randomized discrepancy-minimization step, so record its `seed`. That
+step is a heuristic that does not certify the paper's bound; inspect
+`sparsification_error()` for the measured largest change of a training margin.
 
 For fair comparisons, use the same data splits, preprocessing, weak learner,
 and evaluation metrics. State each algorithm's stopping rule and use a common
@@ -220,4 +227,5 @@ MiniBoosts is licensed under [MIT](https://github.com/rmitsuboshi/miniboosts/blo
 [madaboost]: https://www.learningtheory.org/colt2000/papers/DomingoWatanabe.pdf
 [smoothboost]: https://link.springer.com/chapter/10.1007/3-540-44581-1_31
 [softboost]: https://proceedings.neurips.cc/paper/2007/file/cfbce4c1d7c425baf21d6b6f2babe6be-Paper.pdf
+[sparsiboost]: https://arxiv.org/abs/1901.10789
 [totalboost]: https://dl.acm.org/doi/10.1145/1143844.1143970

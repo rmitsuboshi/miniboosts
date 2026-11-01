@@ -23,6 +23,9 @@
 //!   solved by ERLPBoost.
 //! - [`FrankWolfe`] with an [`ObjectiveFunction`]: step-size rules for
 //!   Frank-Wolfe updates used by MLPBoost and Corrective ERLPBoost.
+//! - [`sparsification`]: margin-preserving sparsification of hypothesis
+//!   weights by discrepancy minimization, used by
+//!   [`SparsiBoost`](crate::SparsiBoost). It needs no solver.
 //!
 //! Linear, quadratic, and conic problems are solved with the
 //! [Clarabel](https://docs.rs/clarabel) interior-point solver. Solver failures
@@ -79,6 +82,7 @@ mod entropy_solver;
 pub mod frank_wolfe;
 pub mod objective_function;
 pub mod soft_margin_optimization;
+pub mod sparsification;
 
 pub use edge_minimization::{
     EntropyRegularizedMaxEdge, RowGeneration, RowGenerationObjective, edge_minimization,

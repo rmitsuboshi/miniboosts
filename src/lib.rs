@@ -26,6 +26,7 @@ pub use crate::boosters::madaboost::MadaBoost;
 pub use crate::boosters::mlpboost::MlpBoost;
 pub use crate::boosters::smoothboost::SmoothBoost;
 pub use crate::boosters::softboost::SoftBoost;
+pub use crate::boosters::sparsiboost::SparsiBoost;
 pub use crate::boosters::totalboost::TotalBoost;
 
 pub use crate::weak_learners::decision_tree::{

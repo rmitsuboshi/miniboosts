@@ -5,7 +5,8 @@
 //!   reader [`SampleReader`];
 //! - every booster ([`AdaBoost`], [`AdaBoostV`], [`CorrectiveErlpBoost`],
 //!   [`ErlpBoost`], [`GraphSeparationBoosting`], [`LpBoost`], [`MadaBoost`],
-//!   [`MlpBoost`], [`SmoothBoost`], [`SoftBoost`], [`TotalBoost`]);
+//!   [`MlpBoost`], [`SmoothBoost`], [`SoftBoost`], [`SparsiBoost`],
+//!   [`TotalBoost`]);
 //! - the decision-tree weak learner's [`DecisionTreeBuilder`] and [`SplitBy`].
 //!
 //! It does **not** import [`Sample`](crate::Sample),
@@ -53,5 +54,6 @@ pub use crate::boosters::madaboost::MadaBoost;
 pub use crate::boosters::mlpboost::MlpBoost;
 pub use crate::boosters::smoothboost::SmoothBoost;
 pub use crate::boosters::softboost::SoftBoost;
+pub use crate::boosters::sparsiboost::SparsiBoost;
 pub use crate::boosters::totalboost::TotalBoost;
 pub use crate::weak_learners::decision_tree::{DecisionTreeBuilder, SplitBy};

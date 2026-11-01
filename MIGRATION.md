@@ -1,3 +1,11 @@
+# Unreleased
+
+`SparsiBoost` (Grønlund, Larsen, and Mathiasen, ICML 2019) is new, together
+with the `optimization::sparsification` module (`sparsify`,
+`sparsify_ensemble`, `discrepancy_coloring`, `max_margin_change`). It is also
+exported from the prelude; a glob import of `miniboosts::prelude::*` now brings
+`SparsiBoost` into scope. No existing API changed.
+
 # Changes in 0.5.1
 
 Version 0.5.1 adds rustdoc with runnable examples for every public item and
