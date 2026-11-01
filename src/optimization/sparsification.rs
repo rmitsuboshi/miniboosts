@@ -8,6 +8,10 @@
 //! Mathiasen, Larsen, and Grønlund (ICML 2019); the column subset of each
 //! halving step comes from [`discrepancy_coloring`].
 //!
+//! [`sparsify_within`] instead stops on a measured accuracy: it returns the
+//! sparsest weights on the same halving path whose margins all stay within a
+//! given distance of the original ones, optionally capped at `T` entries.
+//!
 //! The matrix is passed column by column: `columns[j][i] = u_ij`, the margin
 //! of hypothesis `j` on example `i`. [`sparsify_ensemble`] builds these
 //! columns from a [`WeightedMajority`] and a [`Sample`].
@@ -124,6 +128,92 @@ use crate::hypotheses::WeightedMajority;
 /// ```
 pub fn sparsify(columns: &[Vec<f64>], weights: &[f64], target: usize, seed: u64) -> Vec<f64> {
     assert!(target > 0, "sparsification target must be positive");
+    let mut w = normalized_weights(columns, weights);
+    let mut rng = SplitMix64::new(seed);
+    while nonzeros(&w) > target {
+        halving_pass(columns, &mut w, &mut rng);
+    }
+    w
+}
+
+/// Returns the sparsest weights `w'` on the halving path of [`sparsify`]
+/// whose margins stay within `max_change` of the original ones, capped at
+/// `max_nonzeros` nonzero entries if given.
+///
+/// The weights are normalized to `‖w‖_1 = 1`, and the halving passes of
+/// Algorithm 2 (see [`sparsify`]) are applied one at a time. After each pass
+/// the change `‖U w - U w'‖_∞` relative to the normalized input is measured
+/// with [`max_margin_change`]:
+/// - while it is at most `max_change`, the pass is accepted and halving
+///   continues (until one nonzero entry is left);
+/// - at the first pass that exceeds `max_change`, the previous weights are
+///   returned, unless they have more than `max_nonzeros` nonzero entries.
+///   In that case the cap takes precedence: halving continues until at most
+///   `max_nonzeros` entries are left, and the result may exceed
+///   `max_change`. Check it with [`max_margin_change`].
+///
+/// This turns the accuracy-driven description of SparsiBoost (Section 1.2
+/// of the paper: change every margin by at most `v/2`) into a rule that
+/// needs no constants hidden in `O(·)`: the change is measured, not bounded
+/// by Theorem 2.2. Stopping at the first pass that exceeds `max_change` is
+/// an implementation choice; a later pass could in principle move margins
+/// back.
+///
+/// # Panics
+/// Panics if `max_change` is negative or NaN, if `max_nonzeros == Some(0)`,
+/// or for the inputs on which [`sparsify`] panics.
+///
+/// # Examples
+/// ```
+/// use miniboosts::optimization::sparsification::{max_margin_change, sparsify_within};
+///
+/// let columns: Vec<Vec<f64>> = (0..32)
+///     .map(|j| (0..10).map(|i| if (j * 7 + i * 3) % 5 < 3 { 1.0 } else { -1.0 }).collect())
+///     .collect();
+/// let weights = vec![1.0 / 32.0; 32];
+///
+/// // Every margin may move by at most 0.25.
+/// let w = sparsify_within(&columns, &weights, 0.25, None, 0);
+/// assert!(max_margin_change(&columns, &weights, &w) <= 0.25);
+///
+/// // A cap of 2 hypotheses takes precedence over the accuracy goal.
+/// let w = sparsify_within(&columns, &weights, 0.25, Some(2), 0);
+/// assert!(w.iter().filter(|wj| **wj != 0.0).count() <= 2);
+/// ```
+pub fn sparsify_within(
+    columns: &[Vec<f64>],
+    weights: &[f64],
+    max_change: f64,
+    max_nonzeros: Option<usize>,
+    seed: u64,
+) -> Vec<f64> {
+    assert!(
+        max_change >= 0.0,
+        "the allowed margin change must be nonnegative"
+    );
+    assert!(max_nonzeros != Some(0), "the nonzero cap must be positive");
+    let original = normalized_weights(columns, weights);
+    let cap = max_nonzeros.unwrap_or(usize::MAX);
+    let mut rng = SplitMix64::new(seed);
+    let mut w = original.clone();
+    while nonzeros(&w) > 1 {
+        let mut next = w.clone();
+        halving_pass(columns, &mut next, &mut rng);
+        let within = max_margin_change(columns, &original, &next) <= max_change;
+        if !within && nonzeros(&w) <= cap {
+            break;
+        }
+        w = next;
+        if !within && nonzeros(&w) <= cap {
+            // The cap forced this pass; stop as soon as it is met.
+            break;
+        }
+    }
+    w
+}
+
+/// Validates the inputs and returns `weights / ‖weights‖_1`.
+fn normalized_weights(columns: &[Vec<f64>], weights: &[f64]) -> Vec<f64> {
     assert_eq!(
         columns.len(),
         weights.len(),
@@ -139,53 +229,54 @@ pub fn sparsify(columns: &[Vec<f64>], weights: &[f64], target: usize, seed: u64)
         l1 > 0.0 && l1.is_finite(),
         "sparsification weights must have a positive, finite l1 norm"
     );
-    let mut w: Vec<f64> = weights.iter().map(|wj| wj / l1).collect();
-    let n_rows = columns.first().map_or(0, |c| c.len());
-    let mut rng = SplitMix64::new(seed);
+    weights.iter().map(|wj| wj / l1).collect()
+}
 
-    loop {
-        let mut support: Vec<usize> = (0..w.len()).filter(|&j| w[j] != 0.0).collect();
-        if support.len() <= target {
-            return w;
+fn nonzeros(w: &[f64]) -> usize {
+    w.iter().filter(|wj| **wj != 0.0).count()
+}
+
+/// One pass of the `while` loop of Algorithm 2 (steps 3-14) on `w` with
+/// `‖w‖_0 ≥ 2`; keeps at most `‖w‖_0 / 2` nonzero entries.
+fn halving_pass(columns: &[Vec<f64>], w: &mut [f64], rng: &mut SplitMix64) {
+    let mut support: Vec<usize> = (0..w.len()).filter(|&j| w[j] != 0.0).collect();
+    debug_assert!(support.len() >= 2);
+    // Steps 3-4: R = the largest third (by |w'_j|, ties by index).
+    support.sort_by(|&a, &b| w[b].abs().total_cmp(&w[a].abs()).then(a.cmp(&b)));
+    let n_kept = (support.len() / 3).max(1);
+    let mut rest = support.split_off(n_kept);
+    let omega = w[rest[0]].abs();
+
+    // Steps 5-13: halve the entries outside R twice.
+    for _ in 0..2 {
+        rest.retain(|&j| w[j] != 0.0);
+        if rest.is_empty() {
+            break;
         }
-        // Steps 3-4: R = the largest third (by |w'_j|, ties by index).
-        support.sort_by(|&a, &b| w[b].abs().total_cmp(&w[a].abs()).then(a.cmp(&b)));
-        let n_kept = (support.len() / 3).max(1);
-        let mut rest = support.split_off(n_kept);
-        let omega = w[rest[0]].abs();
-
-        // Steps 5-13: halve the entries outside R twice.
-        for _ in 0..2 {
-            rest.retain(|&j| w[j] != 0.0);
-            if rest.is_empty() {
-                break;
-            }
-            let a: Vec<Vec<f64>> = rest
-                .iter()
-                .map(|&j| {
-                    let scale = w[j] / omega;
-                    let mut col: Vec<f64> = columns[j].iter().map(|u| u * scale).collect();
-                    col.push(scale.abs());
-                    col
-                })
-                .collect();
-            debug_assert_eq!(a[0].len(), n_rows + 1);
-            let x = coloring(&a, &mut rng);
-            let n_plus = x.iter().filter(|&&xj| xj > 0.0).count();
-            let sigma = if 2 * n_plus <= x.len() { 1.0 } else { -1.0 };
-            for (&j, &xj) in rest.iter().zip(&x) {
-                w[j] = if xj == sigma { 2.0 * w[j] } else { 0.0 };
-            }
+        let a: Vec<Vec<f64>> = rest
+            .iter()
+            .map(|&j| {
+                let scale = w[j] / omega;
+                let mut col: Vec<f64> = columns[j].iter().map(|u| u * scale).collect();
+                col.push(scale.abs());
+                col
+            })
+            .collect();
+        let x = coloring(&a, rng);
+        let n_plus = x.iter().filter(|&&xj| xj > 0.0).count();
+        let sigma = if 2 * n_plus <= x.len() { 1.0 } else { -1.0 };
+        for (&j, &xj) in rest.iter().zip(&x) {
+            w[j] = if xj == sigma { 2.0 * w[j] } else { 0.0 };
         }
-
-        // Step 14.
-        let l1 = w.iter().map(|wj| wj.abs()).sum::<f64>();
-        assert!(
-            l1 > 0.0 && l1.is_finite(),
-            "sparsification produced a non-finite or zero l1 norm"
-        );
-        w.iter_mut().for_each(|wj| *wj /= l1);
     }
+
+    // Step 14.
+    let l1 = w.iter().map(|wj| wj.abs()).sum::<f64>();
+    assert!(
+        l1 > 0.0 && l1.is_finite(),
+        "sparsification produced a non-finite or zero l1 norm"
+    );
+    w.iter_mut().for_each(|wj| *wj /= l1);
 }
 
 /// Returns `‖U w - U w'‖_∞ = max_i |Σ_j u_ij (w_j - w'_j)|`, the largest
@@ -760,6 +851,59 @@ mod tests {
                 0.0
             };
             assert!((w[j] - expected).abs() < 1e-15, "entry {j}");
+        }
+    }
+
+    #[test]
+    fn sparsify_within_keeps_the_budget_without_a_cap() {
+        let columns = sign_matrix(40, 96, 8);
+        let weights = vec![1.0; 96];
+        let uniform = vec![1.0 / 96.0; 96];
+        let mut previous_nnz = usize::MAX;
+        for budget in [0.05, 0.1, 0.2, 0.4] {
+            let w = sparsify_within(&columns, &weights, budget, None, 4);
+            assert!(max_margin_change(&columns, &uniform, &w) <= budget);
+            // The same seed walks the same halving path, so a larger budget
+            // stops at the same point or later.
+            let nnz = nonzeros(&w);
+            assert!(
+                nnz <= previous_nnz,
+                "budget {budget}: {nnz} > {previous_nnz}"
+            );
+            previous_nnz = nnz;
+        }
+        // An unlimited budget halves down to a single hypothesis, and a zero
+        // budget keeps the normalized input (each pass moves some margin).
+        assert_eq!(
+            nonzeros(&sparsify_within(&columns, &weights, f64::INFINITY, None, 4)),
+            1
+        );
+        assert_eq!(sparsify_within(&columns, &weights, 0.0, None, 4), uniform);
+    }
+
+    #[test]
+    fn sparsify_within_lets_the_cap_take_precedence() {
+        let columns = sign_matrix(40, 96, 8);
+        let weights = vec![1.0; 96];
+        let uniform = vec![1.0 / 96.0; 96];
+        // A zero budget alone keeps all 96 entries; the cap forces halving.
+        let w = sparsify_within(&columns, &weights, 0.0, Some(10), 4);
+        assert!(nonzeros(&w) <= 10);
+        assert!(max_margin_change(&columns, &uniform, &w) > 0.0);
+        // A cap that the budget already meets changes nothing.
+        let loose = sparsify_within(&columns, &weights, 0.2, None, 4);
+        let capped = sparsify_within(&columns, &weights, 0.2, Some(96), 4);
+        assert_eq!(loose, capped);
+    }
+
+    #[test]
+    fn sparsify_within_rejects_invalid_budgets() {
+        let columns = sign_matrix(5, 4, 0);
+        let weights = [1.0; 4];
+        for (budget, cap) in [(-0.1, None), (f64::NAN, None), (0.1, Some(0))] {
+            let result =
+                std::panic::catch_unwind(|| sparsify_within(&columns, &weights, budget, cap, 0));
+            assert!(result.is_err(), "{budget} {cap:?}");
         }
     }
 

@@ -162,11 +162,15 @@ an entropy-solver accuracy failure; inspect `numerical_stop_reason()` after
 training. Such a stop does not certify convergence, and final LP fitting can
 still fail. See the [migration notes](MIGRATION.md) for numerical changes.
 
-SparsiBoost takes the target number of hypotheses `T` instead of a tolerance.
-It runs AdaBoostV for a fixed number of rounds and then sparsifies the ensemble
-with a randomized discrepancy-minimization step, so record its `seed`. That
-step is a heuristic that does not certify the paper's bound; inspect
+SparsiBoost needs `n_hypotheses(T)` (at most `T` hypotheses), `tolerance(v)`
+(target gap `v`), or both; with both, `T` takes precedence and
+`sparsification_within_tolerance()` reports whether the margin-change budget
+`v/2` was kept. It runs AdaBoostV and then sparsifies the ensemble with a
+randomized discrepancy-minimization step, so record its `seed`. That step is a
+heuristic that does not certify the paper's bound; inspect
 `sparsification_error()` for the measured largest change of a training margin.
+A small `v` needs `⌈8 ln m / v²⌉` AdaBoostV rounds, and the sparsification
+time grows cubically in that number.
 
 For fair comparisons, use the same data splits, preprocessing, weak learner,
 and evaluation metrics. State each algorithm's stopping rule and use a common

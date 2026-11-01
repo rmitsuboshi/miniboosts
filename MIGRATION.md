@@ -1,8 +1,9 @@
 # Unreleased
 
 `SparsiBoost` (Grønlund, Larsen, and Mathiasen, ICML 2019) is new, together
-with the `optimization::sparsification` module (`sparsify`,
-`sparsify_ensemble`, `discrepancy_coloring`, `max_margin_change`). It is also
+with the `optimization::sparsification` module (`sparsify`, `sparsify_within`,
+`sparsify_ensemble`, `discrepancy_coloring`, `max_margin_change`). Configure it
+with `n_hypotheses(T)`, `tolerance(v)`, or both. It is also
 exported from the prelude; a glob import of `miniboosts::prelude::*` now brings
 `SparsiBoost` into scope. No existing API changed.
 
