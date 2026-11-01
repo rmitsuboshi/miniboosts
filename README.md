@@ -54,8 +54,10 @@ set to evaluate performance on unseen data.
 
 The optional [Python package](python/README.md) exposes the same Rust algorithms
 through classes such as `AdaBoostClassifier`, with `fit(X, y)`, `predict(X)`,
-and `decision_function(X)`. Weak learners can be native decision trees or
-compatible custom Python/sklearn estimators; confidence values are strictly
+and `decision_function(X)`. Weak learners can be native Rust learners
+(decision trees, bounded linear functions, logistic regression, Gaussian naive
+Bayes, RBF bumps, finite classes) or compatible custom Python/sklearn
+estimators; confidence values are strictly
 validated in [-1, +1]. Binary labels are encoded with a mapping warning and
 restored on prediction.
 

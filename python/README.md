@@ -81,7 +81,7 @@ Invalid confidence raises an error during training or prediction, with the
 learner class, round, row (zero-based), and value for range/nonfinite failures.
 There is no clipping or automatic score/probability transformation. Exceptions
 raised by custom learners propagate to the caller. Rust algorithm failures and
-SoftBoost/TotalBoost numerical solver stops raise `RuntimeError`.
+SoftBoost/TotalBoost/BrownBoost numerical solver stops raise `RuntimeError`.
 
 Many sklearn estimators have unbounded `decision_function` outputs or only
 provide `predict`. To explicitly use **hard predictions** as -1/+1 weak scores:
@@ -99,18 +99,55 @@ model.fit(X, y)
 
 `PredictionAdapter` discards confidence magnitude. Its wrapped estimator must
 accept `sample_weight`. It does not silently rescue invalid confidence from a
-learner passed directly to a booster. The native `DecisionTreeClassifier` can
-also be used on its own and accepts `sample_weight` in its own `fit` method.
+learner passed directly to a booster.
+
+### Native weak learners
+
+These wrap the Rust weak learners. Each can also be used on its own: its `fit`
+accepts `sample_weight` (normalized to a distribution), and labels are encoded
+as for the boosters. Rust failures (e.g. non-convergence) raise `RuntimeError`.
+
+| Python class | Parameters (defaults) | Hypothesis |
+| --- | --- | --- |
+| `DecisionTreeClassifier` | `max_depth=1` | Entropy-split tree with bounded leaf confidence |
+| `BoundedLinearClassifier` | none | Edge-maximizing `(w·x + b) / S`, `‖(w, b)‖₂ ≤ 1`, `S = √(R² + 1)` |
+| `LogisticRegressionClassifier` | `regularization=1e-4`, `output="sign"` | Weighted L2-regularized logistic regression |
+| `NaiveBayesClassifier` | `var_smoothing=1e-9` | Weighted Gaussian naive Bayes, `P(+1∣x) − P(−1∣x)` |
+| `RBFClassifier` | `bandwidth` (required), `centers=None` | Edge-maximizing Gaussian bump `±exp(−‖x − c‖² / (2σ²))` |
+| `FiniteClassClassifier` | `hypotheses` (required), `with_negations=False` | Edge-maximizing member of a fixed list |
+
+- `BoundedLinearClassifier` exactly maximizes the edge over its class; `R` is
+  the largest training-row norm, and confidences outside that radius are
+  clamped to [-1, +1]. Boosting it yields a single linear function. The class
+  depends on feature scale.
+- `LogisticRegressionClassifier` minimizes a surrogate loss and need not
+  maximize the edge (it can return a zero-edge hypothesis on symmetric data).
+  `output="sign"` gives a halfspace; `"tanh"` gives `tanh((w·x + b)/2)`.
+  The bias is regularized too.
+- `NaiveBayesClassifier` uses weighted means, variances, and priors; it has no
+  edge guarantee. With uniform weights it matches sklearn's `GaussianNB`.
+- `RBFClassifier` chooses among bumps centered at the training rows indexed by
+  `centers` (all rows by default). After fitting, `center_index_`, `center_`,
+  and `sign_` describe the chosen bump. The class has no bias term, and each
+  fit evaluates every bump on every row (`O(n k d)` for `k` centers).
+- `FiniteClassClassifier` takes already fitted objects with
+  `decision_function` values in [-1, +1] and selects the one with the largest
+  weighted edge (`-h` too with `with_negations=True`; ties go to the smaller
+  index, then to `+h`). `index_`, `sign_`, and `hypothesis_` describe the
+  choice. `clone` keeps the same hypothesis objects instead of refitting
+  copies; do not mutate them.
 
 ## Algorithms and parameters
 
-All boosters accept `estimator=None` and `max_iterations=100`. The latter is a
-hard cap on calls to the Rust boosting step; the algorithm may stop earlier.
+All boosters accept `estimator=None` and `max_iterations=100` (SparsiBoost:
+`None`, see below). The latter is a hard cap on calls to the Rust boosting
+step; the algorithm may stop earlier.
 
 | Python class | Additional parameters (defaults) |
 | --- | --- |
 | `AdaBoostClassifier` | `tolerance=0.01` |
 | `AdaBoostVClassifier` | `tolerance=0.01` |
+| `BrownBoostClassifier` | `tolerance=0.1`, `edge_threshold=1e-3` |
 | `MadaBoostClassifier` | `tolerance=0.01` |
 | `LPBoostClassifier` | `nu=1.0`, `tolerance=0.01` |
 | `ERLPBoostClassifier` | `nu=1.0`, `tolerance=0.01` |
@@ -118,6 +155,7 @@ hard cap on calls to the Rust boosting step; the algorithm may stop earlier.
 | `MLPBoostClassifier` | `nu=1.0`, `tolerance=0.01`, `update_rule="line_search"` |
 | `SmoothBoostClassifier` | `gamma=0.25`, `kappa=0.1` |
 | `SoftBoostClassifier` | `nu=1.0`, `tolerance=0.01` |
+| `SparsiBoostClassifier` | `n_hypotheses=None`, `tolerance=None`, `seed=0`, `max_iterations=None` |
 | `TotalBoostClassifier` | `tolerance=0.01` |
 | `GraphSeparationBoostingClassifier` | none |
 
@@ -128,14 +166,39 @@ Equal values do not imply equal accuracy. `nu` lies in [1, number of examples]
 and caps example weights at `1/nu`. SmoothBoost requires `0 < gamma < 0.5` and
 `0 < kappa < 1`; its weak-learning assumption must hold on each distribution.
 `update_rule` accepts `classic`, `short_step`, or `line_search`.
+
+BrownBoost's `tolerance` is the target training error `ε` in (0, 1), which
+sets the total time `c = (erfc⁻¹(ε))²`; `edge_threshold` is `ν` in [0, 1).
+BrownBoost has no iteration bound, so `max_iterations` matters. After fitting,
+`total_time_` is `c` and `remaining_time_` is the time left: `≤ 0` means the
+loop exited, which is when Theorem 2 of Freund (2001) bounds the training error
+by `ε`. A positive value means training stopped early and the bound does not
+apply.
+
+SparsiBoost needs `n_hypotheses` (at most `T` output hypotheses), `tolerance`
+(target gap `v`), or both; the size cap takes precedence. It runs AdaBoostV
+for a round count derived from the target, then sparsifies the ensemble with a
+seeded randomized discrepancy step (equal seeds give equal results). With
+`max_iterations=None` all of these rounds run; a smaller cap truncates
+AdaBoostV and voids the guarantee. After fitting, `adaboostv_rounds_` and
+`adaboostv_tolerance_` give the AdaBoostV stage, `n_selected_` the number of
+hypotheses with nonzero weight (possibly fewer than `T`),
+`sparsification_error_` the largest change of a training margin, and
+`sparsification_within_tolerance_` whether it is at most `v/2` (`None` without
+a `tolerance`). `estimators_` holds all AdaBoostV-round learners, including
+those the sparsification dropped.
+
 See the repository README and Rust documentation for references and guarantees.
 
 After fitting, `n_iter_` records the number of successfully produced weak
 learners, excluding terminal calls that do not train a learner. `stop_reason_` is `"max_iterations"`,
-`"algorithm_stop"`, or, for SmoothBoost only, `"round_budget"`. `"algorithm_stop"`
-is an algorithm stop, not a generic convergence certificate. `"round_budget"`
-means SmoothBoost reached its theoretical round bound without its stopping test
-firing, so its margin guarantee does not apply. `estimators_` and `estimator_rounds_` expose all successfully
+`"algorithm_stop"`, for SmoothBoost only `"round_budget"`, or for BrownBoost
+only `"edge_threshold"`. `"algorithm_stop"` is an algorithm stop, not a generic
+convergence certificate. `"round_budget"` means SmoothBoost reached its
+theoretical round bound without its stopping test firing, so its margin
+guarantee does not apply. `"edge_threshold"` means a BrownBoost weak hypothesis
+had weighted correlation at most `edge_threshold`; it was discarded, training
+stopped before the time ran out, and Theorem 2 does not apply. `estimators_` and `estimator_rounds_` expose all successfully
 produced candidates, including candidates discarded by the Rust algorithm.
 Do not mutate these fitted learners or lists.
 
@@ -145,7 +208,7 @@ This first binding supports dense binary classification. It does not yet
 provide sparse inputs, multiclass, model persistence/pickling, `predict_proba`,
 or an interactive UI. Do not share a fitted model across concurrent prediction
 calls. Process-based workflows that serialize fitted native models are not
-supported. Native tree fitting releases the Python GIL; the entire boosting
+supported. Native weak-learner fitting releases the Python GIL; the entire boosting
 loop does not. Array conversion and callback copies incur overhead, so include
 them when reporting Python-facing timings. Training caches use O(nT) memory
 for n examples and T candidate learners, in addition to algorithm-specific

@@ -12,6 +12,13 @@ use std::{
 };
 
 type Scores = Arc<RwLock<Vec<Vec<f64>>>>;
+type BoxedClassifier = Box<dyn Classifier + Send + Sync>;
+
+// `BrownBoost::numerical_stop_reason` when a weak hypothesis has correlation
+// at most `ν` (Freund 2001, Eq. 5 has only the solution α = t = 0). This is a
+// weak-learning failure, not a solver failure; a test pins the text.
+const BROWNBOOST_EDGE_STOP: &str =
+    "the weak hypothesis has weighted correlation at most the edge threshold";
 
 #[derive(Clone, Debug)]
 struct Hypothesis {
@@ -91,15 +98,42 @@ fn panic_error(payload: Box<dyn std::any::Any + Send>) -> PyErr {
     PyRuntimeError::new_err(format!("MiniBoosts failed: {message}"))
 }
 
+/// Algorithm-specific values read from the booster after training; `None`
+/// for algorithms that do not define them.
+#[derive(Default)]
+struct Diagnostics {
+    remaining_time: Option<f64>,
+    total_time: Option<f64>,
+    sparsification_error: Option<f64>,
+    sparsification_within_tolerance: Option<bool>,
+    adaboostv_rounds: Option<usize>,
+    adaboostv_tolerance: Option<f64>,
+    n_selected: Option<usize>,
+}
+
 #[pyclass]
 struct Model {
-    model: Box<dyn Classifier + Send + Sync>,
+    model: BoxedClassifier,
     scores: Scores,
     count: usize,
     #[pyo3(get)]
     n_iterations: usize,
     #[pyo3(get)]
     stop_reason: String,
+    #[pyo3(get)]
+    remaining_time: Option<f64>,
+    #[pyo3(get)]
+    total_time: Option<f64>,
+    #[pyo3(get)]
+    sparsification_error: Option<f64>,
+    #[pyo3(get)]
+    sparsification_within_tolerance: Option<bool>,
+    #[pyo3(get)]
+    adaboostv_rounds: Option<usize>,
+    #[pyo3(get)]
+    adaboostv_tolerance: Option<f64>,
+    #[pyo3(get)]
+    n_selected: Option<usize>,
 }
 #[pymethods]
 impl Model {
@@ -130,51 +164,76 @@ impl Model {
     }
 }
 
-fn run<B>(
-    mut booster: B,
+type Fitted = (BoxedClassifier, &'static str, Diagnostics);
+
+/// Runs at most `limit` boosting steps; returns whether the algorithm stopped
+/// by itself (`ControlFlow::Break`) rather than at the limit.
+fn boost_loop<B: Booster<Hypothesis>>(
+    booster: &mut B,
     learner: &CallbackLearner,
     limit: usize,
-) -> (Box<dyn Classifier + Send + Sync>, String)
+) -> bool {
+    booster.preprocess();
+    for round in 1..=limit {
+        learner.round.set(round);
+        if booster.boost(learner, round).is_break() {
+            return true;
+        }
+    }
+    false
+}
+
+fn stop_name(algorithm_stop: bool) -> &'static str {
+    if algorithm_stop {
+        "algorithm_stop"
+    } else {
+        "max_iterations"
+    }
+}
+
+fn plain<B>(mut booster: B, learner: &CallbackLearner, limit: usize) -> PyResult<Fitted>
 where
     B: Booster<Hypothesis>,
     B::Output: Classifier + Send + Sync + 'static,
 {
-    booster.preprocess();
-    let mut stop = "max_iterations".to_string();
-    for round in 1..=limit {
-        learner.round.set(round);
-        if booster.boost(learner, round).is_break() {
-            stop = "algorithm_stop".into();
-            break;
-        }
-    }
-    (Box::new(booster.postprocess()), stop)
+    let stop = stop_name(boost_loop(&mut booster, learner, limit));
+    Ok((
+        Box::new(booster.postprocess()),
+        stop,
+        Diagnostics::default(),
+    ))
 }
 
 #[pyfunction]
-#[pyo3(signature = (algorithm, x, y, callback, max_iterations, tolerance=0.01, nu=1.0, gamma=0.25, kappa=0.1, update_rule="default"))]
+#[pyo3(signature = (
+    algorithm, x, y, callback, max_iterations, tolerance=None, nu=1.0, gamma=0.25,
+    kappa=0.1, update_rule="default", edge_threshold=1e-3, n_hypotheses=None, seed=0,
+))]
 #[allow(clippy::too_many_arguments)]
 fn train(
     algorithm: &str,
     x: Vec<Vec<f64>>,
     y: Vec<f64>,
     callback: Py<PyAny>,
-    max_iterations: usize,
-    tolerance: f64,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
     nu: f64,
     gamma: f64,
     kappa: f64,
     update_rule: &str,
+    edge_threshold: f64,
+    n_hypotheses: Option<usize>,
+    seed: u64,
 ) -> PyResult<Model> {
     let sample = Sample::from_dense(&x, Some(&y)).map_err(PyValueError::new_err)?;
-    if max_iterations == 0 {
+    if max_iterations == Some(0) {
         return Err(PyValueError::new_err("max_iterations must be positive"));
     }
-    if y.iter().any(|v| *v != -1.0 && *v != 1.0) || !y.contains(&-1.0) || !y.contains(&1.0) {
-        return Err(PyValueError::new_err(
-            "training requires both -1 and +1 labels",
-        ));
+    // Only SparsiBoost derives its own round count from its target.
+    if max_iterations.is_none() && algorithm != "sparsiboost" {
+        return Err(PyValueError::new_err("max_iterations is required"));
     }
+    check_labels(&y)?;
     let rule = match update_rule {
         "default" => None,
         "classic" => Some(FwUpdateRule::Classic),
@@ -188,19 +247,20 @@ fn train(
         error: RefCell::new(None),
         round: Cell::new(0),
     };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| -> PyResult<Fitted> {
         let s = &sample;
         let l = &learner;
-        let n = max_iterations;
-        let value = match algorithm {
-            "adaboost" => run(AdaBoost::init(s).tolerance(tolerance), l, n),
-            "adaboostv" => run(AdaBoostV::init(s).tolerance(tolerance), l, n),
-            "madaboost" => run(MadaBoost::init(s).tolerance(tolerance), l, n),
-            "lpboost" => run(LpBoost::init(s).nu(nu).tolerance(tolerance), l, n),
-            "erlpboost" => run(ErlpBoost::init(s).nu(nu).tolerance(tolerance), l, n),
+        let tol = tolerance.unwrap_or(0.01);
+        let n = max_iterations.unwrap_or(0);
+        match algorithm {
+            "adaboost" => plain(AdaBoost::init(s).tolerance(tol), l, n),
+            "adaboostv" => plain(AdaBoostV::init(s).tolerance(tol), l, n),
+            "madaboost" => plain(MadaBoost::init(s).tolerance(tol), l, n),
+            "lpboost" => plain(LpBoost::init(s).nu(nu).tolerance(tol), l, n),
+            "erlpboost" => plain(ErlpBoost::init(s).nu(nu).tolerance(tol), l, n),
             "corrective_erlpboost" => {
-                let b = CorrectiveErlpBoost::init(s).nu(nu).tolerance(tolerance);
-                run(
+                let b = CorrectiveErlpBoost::init(s).nu(nu).tolerance(tol);
+                plain(
                     if let Some(rule) = rule {
                         b.update_rule(rule)
                     } else {
@@ -211,8 +271,8 @@ fn train(
                 )
             }
             "mlpboost" => {
-                let b = MlpBoost::init(s).nu(nu).tolerance(tolerance);
-                run(
+                let b = MlpBoost::init(s).nu(nu).tolerance(tol);
+                plain(
                     if let Some(rule) = rule {
                         b.update_rule(rule)
                     } else {
@@ -224,74 +284,88 @@ fn train(
             }
             "smoothboost" => {
                 let mut b = SmoothBoost::init(s).gamma(gamma).kappa(kappa);
-                b.preprocess();
-                let mut stop = "max_iterations".to_string();
-                for round in 1..=n {
-                    l.round.set(round);
-                    if b.boost(l, round).is_break() {
-                        // The paper's round bound without the stopping test
-                        // firing is not an algorithm stop with a guarantee.
-                        stop = if b.reached_round_budget() {
-                            "round_budget"
-                        } else {
-                            "algorithm_stop"
-                        }
-                        .into();
-                        break;
-                    }
-                }
-                (
-                    Box::new(b.postprocess()) as Box<dyn Classifier + Send + Sync>,
-                    stop,
-                )
+                // The paper's round bound without the stopping test firing
+                // is not an algorithm stop with a guarantee.
+                let stop = match boost_loop(&mut b, l, n) {
+                    true if b.reached_round_budget() => "round_budget",
+                    stopped => stop_name(stopped),
+                };
+                Ok((Box::new(b.postprocess()), stop, Diagnostics::default()))
             }
             "softboost" => {
-                let mut b = SoftBoost::init(s).nu(nu).tolerance(tolerance);
-                b.preprocess();
-                let mut stop = "max_iterations".to_string();
-                for round in 1..=n {
-                    l.round.set(round);
-                    if b.boost(l, round).is_break() {
-                        stop = "algorithm_stop".into();
-                        break;
-                    }
-                }
+                let mut b = SoftBoost::init(s).nu(nu).tolerance(tol);
+                let stop = stop_name(boost_loop(&mut b, l, n));
                 if let Some(reason) = b.numerical_stop_reason() {
                     return Err(PyRuntimeError::new_err(reason.to_owned()));
                 }
-                (
-                    Box::new(b.postprocess()) as Box<dyn Classifier + Send + Sync>,
-                    stop,
-                )
+                Ok((Box::new(b.postprocess()), stop, Diagnostics::default()))
             }
             "totalboost" => {
-                let mut b = TotalBoost::init(s).tolerance(tolerance);
-                b.preprocess();
-                let mut stop = "max_iterations".to_string();
-                for round in 1..=n {
-                    l.round.set(round);
-                    if b.boost(l, round).is_break() {
-                        stop = "algorithm_stop".into();
-                        break;
-                    }
-                }
+                let mut b = TotalBoost::init(s).tolerance(tol);
+                let stop = stop_name(boost_loop(&mut b, l, n));
                 if let Some(reason) = b.numerical_stop_reason() {
                     return Err(PyRuntimeError::new_err(reason.to_owned()));
                 }
-                (
-                    Box::new(b.postprocess()) as Box<dyn Classifier + Send + Sync>,
-                    stop,
-                )
+                Ok((Box::new(b.postprocess()), stop, Diagnostics::default()))
             }
-            "graph_separation" => run(GraphSeparationBoosting::init(s), l, n),
-            _ => return Err(PyValueError::new_err("unknown boosting algorithm")),
-        };
-        Ok(value)
+            "brownboost" => {
+                let mut b = BrownBoost::init(s)
+                    .tolerance(tol)
+                    .edge_threshold(edge_threshold);
+                let mut stop = stop_name(boost_loop(&mut b, l, n));
+                match b.numerical_stop_reason() {
+                    None => {}
+                    Some(BROWNBOOST_EDGE_STOP) => stop = "edge_threshold",
+                    Some(reason) => {
+                        return Err(PyRuntimeError::new_err(format!("BrownBoost: {reason}")));
+                    }
+                }
+                let diagnostics = Diagnostics {
+                    remaining_time: b.remaining_time(),
+                    total_time: Some(b.total_time()),
+                    ..Diagnostics::default()
+                };
+                Ok((Box::new(b.postprocess()), stop, diagnostics))
+            }
+            "sparsiboost" => {
+                if n_hypotheses.is_none() && tolerance.is_none() {
+                    return Err(PyValueError::new_err(
+                        "SparsiBoost needs n_hypotheses, tolerance, or both",
+                    ));
+                }
+                let mut b = SparsiBoost::init(s).seed(seed);
+                if let Some(t) = n_hypotheses {
+                    b = b.n_hypotheses(t);
+                }
+                if let Some(v) = tolerance {
+                    b = b.tolerance(v);
+                }
+                let rounds = b.max_loop();
+                let nu = b.adaboostv_tolerance();
+                // By default, allow the terminal call in which AdaBoostV
+                // reports that its `rounds` iterations are done.
+                let limit = max_iterations.unwrap_or(rounds.saturating_add(1));
+                let stop = stop_name(boost_loop(&mut b, l, limit));
+                let f = b.postprocess();
+                let diagnostics = Diagnostics {
+                    sparsification_error: b.sparsification_error(),
+                    sparsification_within_tolerance: b.sparsification_within_tolerance(),
+                    adaboostv_rounds: Some(rounds),
+                    adaboostv_tolerance: Some(nu),
+                    // `from_slices` drops the hypotheses with zero weight.
+                    n_selected: Some(f.hypotheses.len()),
+                    ..Diagnostics::default()
+                };
+                Ok((Box::new(f), stop, diagnostics))
+            }
+            "graph_separation" => plain(GraphSeparationBoosting::init(s), l, n),
+            _ => Err(PyValueError::new_err("unknown boosting algorithm")),
+        }
     }));
     if let Some(error) = learner.error.into_inner() {
         return Err(error);
     }
-    let (model, stop_reason) = result.map_err(panic_error)??;
+    let (model, stop_reason, diagnostics) = result.map_err(panic_error)??;
     let count = learner
         .scores
         .read()
@@ -302,17 +376,51 @@ fn train(
         scores: learner.scores,
         count,
         n_iterations: count,
-        stop_reason,
+        stop_reason: stop_reason.to_string(),
+        remaining_time: diagnostics.remaining_time,
+        total_time: diagnostics.total_time,
+        sparsification_error: diagnostics.sparsification_error,
+        sparsification_within_tolerance: diagnostics.sparsification_within_tolerance,
+        adaboostv_rounds: diagnostics.adaboostv_rounds,
+        adaboostv_tolerance: diagnostics.adaboostv_tolerance,
+        n_selected: diagnostics.n_selected,
     })
 }
 
+fn check_labels(y: &[f64]) -> PyResult<()> {
+    if y.iter().any(|v| *v != -1.0 && *v != 1.0) || !y.contains(&-1.0) || !y.contains(&1.0) {
+        return Err(PyValueError::new_err(
+            "training requires both -1 and +1 labels",
+        ));
+    }
+    Ok(())
+}
+
+fn check_distribution(weights: &[f64], n: usize) -> PyResult<()> {
+    if weights.len() != n
+        || weights.iter().any(|v| !v.is_finite() || *v < 0.0)
+        || (weights.iter().sum::<f64>() - 1.0).abs() > 1e-8
+    {
+        return Err(PyValueError::new_err(
+            "weights must be a finite probability distribution",
+        ));
+    }
+    Ok(())
+}
+
+/// A fitted native weak hypothesis. `index` and `sign` identify the chosen
+/// member `sign · h_index` for learners over a finite class.
 #[pyclass]
-struct Tree {
-    model: miniboosts::DecisionTreeClassifier,
+struct NativeClassifier {
+    model: BoxedClassifier,
     n_features: usize,
+    #[pyo3(get)]
+    index: Option<usize>,
+    #[pyo3(get)]
+    sign: Option<f64>,
 }
 #[pymethods]
-impl Tree {
+impl NativeClassifier {
     fn decision_function(&self, x: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
         let sample = Sample::from_dense(&x, None).map_err(PyValueError::new_err)?;
         if sample.shape().1 != self.n_features {
@@ -321,6 +429,35 @@ impl Tree {
         catch_unwind(AssertUnwindSafe(|| self.model.confidence_all(&sample))).map_err(panic_error)
     }
 }
+
+/// Validates the training data, then fits without the GIL. Rust panics
+/// (invalid parameters, non-convergence) become `RuntimeError`.
+fn fit_native<H: Send>(
+    py: Python<'_>,
+    x: Vec<Vec<f64>>,
+    y: Vec<f64>,
+    weights: Vec<f64>,
+    fit: impl FnOnce(&Sample, &[f64]) -> H + Send,
+) -> PyResult<(H, usize)> {
+    let sample = Sample::from_dense(&x, Some(&y)).map_err(PyValueError::new_err)?;
+    check_labels(&y)?;
+    check_distribution(&weights, y.len())?;
+    let n_features = sample.shape().1;
+    let h = py
+        .detach(|| catch_unwind(AssertUnwindSafe(|| fit(&sample, &weights))))
+        .map_err(panic_error)?;
+    Ok((h, n_features))
+}
+
+fn native(model: impl Classifier + Send + Sync + 'static, n_features: usize) -> NativeClassifier {
+    NativeClassifier {
+        model: Box::new(model),
+        n_features,
+        index: None,
+        sign: None,
+    }
+}
+
 #[pyfunction]
 fn fit_tree(
     py: Python<'_>,
@@ -328,45 +465,140 @@ fn fit_tree(
     y: Vec<f64>,
     weights: Vec<f64>,
     max_depth: usize,
-) -> PyResult<Tree> {
-    let sample = Sample::from_dense(&x, Some(&y)).map_err(PyValueError::new_err)?;
-    if max_depth == 0
-        || y.iter().any(|v| *v != -1.0 && *v != 1.0)
-        || !y.contains(&-1.0)
-        || !y.contains(&1.0)
-    {
+) -> PyResult<NativeClassifier> {
+    if max_depth == 0 {
+        return Err(PyValueError::new_err("tree needs positive depth"));
+    }
+    let (h, d) = fit_native(py, x, y, weights, |s, w| {
+        DecisionTreeBuilder::new(s)
+            .max_depth(max_depth)
+            .split_by(SplitBy::Entropy)
+            .build()
+            .produce(s, w)
+    })?;
+    Ok(native(h, d))
+}
+
+#[pyfunction]
+fn fit_bounded_linear(
+    py: Python<'_>,
+    x: Vec<Vec<f64>>,
+    y: Vec<f64>,
+    weights: Vec<f64>,
+) -> PyResult<NativeClassifier> {
+    let (h, d) = fit_native(py, x, y, weights, |s, w| BoundedLinear::new().produce(s, w))?;
+    Ok(native(h, d))
+}
+
+#[pyfunction]
+fn fit_logistic_regression(
+    py: Python<'_>,
+    x: Vec<Vec<f64>>,
+    y: Vec<f64>,
+    weights: Vec<f64>,
+    regularization: f64,
+    output: &str,
+) -> PyResult<NativeClassifier> {
+    let output = match output {
+        "sign" => LinearOutput::Sign,
+        "tanh" => LinearOutput::Tanh,
+        _ => return Err(PyValueError::new_err("output must be sign or tanh")),
+    };
+    let (h, d) = fit_native(py, x, y, weights, |s, w| {
+        LogisticRegression::new()
+            .regularization(regularization)
+            .output(output)
+            .produce(s, w)
+    })?;
+    Ok(native(h, d))
+}
+
+#[pyfunction]
+fn fit_naive_bayes(
+    py: Python<'_>,
+    x: Vec<Vec<f64>>,
+    y: Vec<f64>,
+    weights: Vec<f64>,
+    var_smoothing: f64,
+) -> PyResult<NativeClassifier> {
+    let (h, d) = fit_native(py, x, y, weights, |s, w| {
+        NaiveBayes::new().var_smoothing(var_smoothing).produce(s, w)
+    })?;
+    Ok(native(h, d))
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, y, weights, bandwidth, centers=None))]
+fn fit_rbf(
+    py: Python<'_>,
+    x: Vec<Vec<f64>>,
+    y: Vec<f64>,
+    weights: Vec<f64>,
+    bandwidth: f64,
+    centers: Option<Vec<usize>>,
+) -> PyResult<NativeClassifier> {
+    let (h, d) = fit_native(py, x, y, weights, |s, w| {
+        let builder = RbfClassBuilder::new(s).bandwidth(bandwidth);
+        match centers {
+            Some(rows) => builder.centers(rows),
+            None => builder,
+        }
+        .build()
+        .produce(s, w)
+    })?;
+    let (index, sign) = (h.index, h.sign);
+    Ok(NativeClassifier {
+        index: Some(index),
+        sign: Some(sign),
+        ..native(h, d)
+    })
+}
+
+/// Returns `(j, sign)` maximizing the edge of `sign · columns[j]` under
+/// `weights`, as `FiniteClass::produce` does.
+#[pyfunction]
+fn select_finite_class(
+    columns: Vec<Vec<f64>>,
+    y: Vec<f64>,
+    weights: Vec<f64>,
+    with_negations: bool,
+) -> PyResult<(usize, f64)> {
+    // The table ignores features; one constant column gives the sample shape.
+    let rows = vec![vec![0.0]; y.len()];
+    let sample = Sample::from_dense(&rows, Some(&y)).map_err(PyValueError::new_err)?;
+    check_labels(&y)?;
+    check_distribution(&weights, y.len())?;
+    if columns.is_empty() {
         return Err(PyValueError::new_err(
-            "tree needs positive depth and both -1/+1 classes",
+            "the finite class needs at least one hypothesis",
         ));
     }
-    if weights.len() != y.len()
-        || weights.iter().any(|v| !v.is_finite() || *v < 0.0)
-        || (weights.iter().sum::<f64>() - 1.0).abs() > 1e-8
-    {
-        return Err(PyValueError::new_err(
-            "tree weights must be a finite probability distribution",
-        ));
+    for column in &columns {
+        validate_scores(column, y.len())?;
     }
-    let n_features = sample.shape().1;
-    let model = py
-        .detach(|| {
-            catch_unwind(AssertUnwindSafe(|| {
-                DecisionTreeBuilder::new(&sample)
-                    .max_depth(max_depth)
-                    .split_by(SplitBy::Entropy)
-                    .build()
-                    .produce(&sample, &weights)
-            }))
-        })
-        .map_err(panic_error)?;
-    Ok(Tree { model, n_features })
+    catch_unwind(AssertUnwindSafe(|| {
+        let class = FiniteClass::from_table(&sample, columns);
+        let class = if with_negations {
+            class.with_negations()
+        } else {
+            class
+        };
+        let member = class.produce(&sample, &weights);
+        (member.index, member.sign)
+    }))
+    .map_err(panic_error)
 }
 
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(train, m)?)?;
     m.add_function(wrap_pyfunction!(fit_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_bounded_linear, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_logistic_regression, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_naive_bayes, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_rbf, m)?)?;
+    m.add_function(wrap_pyfunction!(select_finite_class, m)?)?;
     m.add_class::<Model>()?;
-    m.add_class::<Tree>()?;
+    m.add_class::<NativeClassifier>()?;
     Ok(())
 }
