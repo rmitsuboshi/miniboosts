@@ -4,7 +4,7 @@ members = ["img/example"]
 exclude = ["python"]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.5.1"
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/rmitsuboshi/miniboosts"

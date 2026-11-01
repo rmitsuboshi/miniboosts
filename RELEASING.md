@@ -1,7 +1,7 @@
 # Publishing MiniBoosts
 
 The release is a single `miniboosts` package. Its version is set in
-`[workspace.package]` (currently `0.5.0`). The only other workspace member,
+`[workspace.package]` (currently `0.5.1`). The only other workspace member,
 `miniboosts-example`, has `publish = false`. There are no internal registry
 dependencies to publish first.
 
@@ -35,7 +35,7 @@ publish `miniboosts`; local token presence and dry-run success do not establish
 server-side permission. Authenticate interactively with `cargo login` if needed;
 never put tokens in this repository.
 
-After verifying that `0.5.0` is still unused, publish only the root package:
+After verifying that the new version (e.g. `0.5.1`) is still unused, publish only the root package:
 
 ```sh
 cargo publish --locked

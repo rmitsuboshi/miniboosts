@@ -4,7 +4,7 @@ MiniBoosts is a Rust library for implementing and comparing boosting algorithms.
 Its algorithms share the `Booster`, `WeakLearner`, and `Classifier` traits, so you
 can use the same data and weak learner across experiments.
 
-Version 0.5.0 ships as one `miniboosts` crate; algorithms and utilities are
+Since version 0.5.0, MiniBoosts ships as one `miniboosts` crate; algorithms and utilities are
 internal modules, not separate registry packages. Earlier releases have a
 different API; see the [migration notes](MIGRATION.md) when upgrading.
 Rust 1.85 or newer is required (edition 2024).
@@ -15,7 +15,7 @@ Add MiniBoosts to your application's `Cargo.toml`:
 
 ```toml
 [dependencies]
-miniboosts = "0.5.0"
+miniboosts = "0.5.1"
 ```
 
 The optimization routines use Clarabel for linear, quadratic, and conic
