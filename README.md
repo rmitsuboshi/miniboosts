@@ -110,6 +110,7 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 | --- | --- |
 | `AdaBoost` | [Freund and Schapire][adaboost] |
 | `AdaBoostV` | [Rätsch and Warmuth][adaboostv] |
+| `BrownBoost` | [Freund][brownboost] |
 | `MadaBoost` | [Domingo and Watanabe][madaboost] |
 | `LpBoost` | [Demiriz, Bennett, and Shawe-Taylor][lpboost] |
 | `ErlpBoost` | [Warmuth, Glocer, and Vishwanathan][erlpboost] |
@@ -161,6 +162,11 @@ than count as convergence. SoftBoost and TotalBoost can instead stop early on
 an entropy-solver accuracy failure; inspect `numerical_stop_reason()` after
 training. Such a stop does not certify convergence, and final LP fitting can
 still fail. See the [migration notes](MIGRATION.md) for numerical changes.
+
+BrownBoost's `tolerance` is the target training error `ε`; it sets the total
+time `c` with `1 - erf(√c) = ε`. Its training-error guarantee applies only when
+`remaining_time()` reaches `0`; otherwise check `numerical_stop_reason()`. It
+has no iteration bound, so set `force_quit_at` in experiments.
 
 SparsiBoost needs `n_hypotheses(T)` (at most `T` hypotheses), `tolerance(v)`
 (target gap `v`), or both; with both, `T` takes precedence and
@@ -222,6 +228,7 @@ MiniBoosts is licensed under [MIT](https://github.com/rmitsuboshi/miniboosts/blo
 
 [adaboost]: https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub
 [adaboostv]: http://jmlr.org/papers/v6/ratsch05a.html
+[brownboost]: https://doi.org/10.1023/A:1010852229904
 [cerlpboost]: https://link.springer.com/article/10.1007/s10994-010-5173-z
 [decisiontree]: https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418
 [erlpboost]: https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf

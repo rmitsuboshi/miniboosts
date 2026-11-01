@@ -1,5 +1,10 @@
 # Unreleased
 
+`BrownBoost` (Freund, 2001) is new. It adds the dependency
+[`libm`](https://crates.io/crates/libm) (rust-lang's pure-Rust port of musl's
+math library) for `erf` and `erfc`, which the standard library does not
+provide on stable Rust.
+
 `SparsiBoost` (Grønlund, Larsen, and Mathiasen, ICML 2019) is new, together
 with the `optimization::sparsification` module (`sparsify`, `sparsify_within`,
 `sparsify_ensemble`, `discrepancy_coloring`, `max_margin_change`). Configure it

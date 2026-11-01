@@ -16,6 +16,7 @@
 //! | --- | --- | --- | --- |
 //! | [`AdaBoost`](crate::boosters::adaboost::AdaBoost) | adaptive | `tolerance`, `force_quit_at` | budget `⌈ln(m) / ε²⌉` rounds, or a hypothesis with weighted edge `±1` |
 //! | [`AdaBoostV`](crate::boosters::adaboostv::AdaBoostV) | adaptive, hard-margin | `tolerance`, `force_quit_at` | budget `⌊2 ln(m) / ε²⌋` rounds, or a hypothesis with weighted edge `±1` |
+//! | [`BrownBoost`](crate::boosters::brownboost::BrownBoost) | adaptive boost-by-majority (noise-tolerant) | `tolerance` (target training error `ε`), `edge_threshold`, `force_quit_at` | remaining time `s` (initially `c = (erfc⁻¹(ε))²`) reaches `0`; no iteration bound otherwise |
 //! | [`MadaBoost`](crate::boosters::madaboost::MadaBoost) | adaptive (bounded weights) | `tolerance`, `force_quit_at` | budget `⌈(m - 1) / ε²⌉` rounds, or a hypothesis with weighted edge `±1` |
 //! | [`LpBoost`](crate::boosters::lpboost::LpBoost) | soft-margin, totally corrective | `nu`, `tolerance` | LP value `≥ γ̂ - ε` (min edge so far); no iteration bound |
 //! | [`ErlpBoost`](crate::boosters::erlpboost::ErlpBoost) | soft-margin, totally corrective | `nu`, `tolerance` | entropy-regularized gap `≤ ε/2`, or a `⌈max(8/ε, 32 ln(m/ν) / ε²)⌉` budget |
@@ -116,6 +117,7 @@
 
 pub mod adaboost;
 pub mod adaboostv;
+pub mod brownboost;
 pub mod corrective_erlpboost;
 pub mod erlpboost;
 pub mod graph_separation_boosting;

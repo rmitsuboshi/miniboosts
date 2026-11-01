@@ -18,6 +18,7 @@ pub use crate::optimization::*;
 
 pub use crate::boosters::adaboost::AdaBoost;
 pub use crate::boosters::adaboostv::AdaBoostV;
+pub use crate::boosters::brownboost::BrownBoost;
 pub use crate::boosters::corrective_erlpboost::CorrectiveErlpBoost;
 pub use crate::boosters::erlpboost::ErlpBoost;
 pub use crate::boosters::graph_separation_boosting::GraphSeparationBoosting;

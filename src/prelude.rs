@@ -3,10 +3,10 @@
 //! `use miniboosts::prelude::*;` imports
 //! - the traits [`Booster`], [`WeakLearner`], [`Classifier`], and the file
 //!   reader [`SampleReader`];
-//! - every booster ([`AdaBoost`], [`AdaBoostV`], [`CorrectiveErlpBoost`],
-//!   [`ErlpBoost`], [`GraphSeparationBoosting`], [`LpBoost`], [`MadaBoost`],
-//!   [`MlpBoost`], [`SmoothBoost`], [`SoftBoost`], [`SparsiBoost`],
-//!   [`TotalBoost`]);
+//! - every booster ([`AdaBoost`], [`AdaBoostV`], [`BrownBoost`],
+//!   [`CorrectiveErlpBoost`], [`ErlpBoost`], [`GraphSeparationBoosting`],
+//!   [`LpBoost`], [`MadaBoost`], [`MlpBoost`], [`SmoothBoost`],
+//!   [`SoftBoost`], [`SparsiBoost`], [`TotalBoost`]);
 //! - the decision-tree weak learner's [`DecisionTreeBuilder`] and [`SplitBy`].
 //!
 //! It does **not** import [`Sample`](crate::Sample),
@@ -46,6 +46,7 @@ pub use crate::core::{Booster, Classifier, SampleReader, WeakLearner};
 
 pub use crate::boosters::adaboost::AdaBoost;
 pub use crate::boosters::adaboostv::AdaBoostV;
+pub use crate::boosters::brownboost::BrownBoost;
 pub use crate::boosters::corrective_erlpboost::CorrectiveErlpBoost;
 pub use crate::boosters::erlpboost::ErlpBoost;
 pub use crate::boosters::graph_separation_boosting::GraphSeparationBoosting;
