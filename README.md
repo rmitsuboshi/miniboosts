@@ -122,7 +122,7 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 
 The built-in weak learner is a [decision tree][decisiontree]. Implement
 `WeakLearner` to use your own learner. The gradient boosting machine (GBM) and
-regression tree implementations are not compiled into the library.
+regression tree are not included; see the migration notes.
 See the [migration notes](MIGRATION.md) for removed APIs.
 
 Custom hypotheses must return consistent predictions for a fixed sample.
@@ -207,9 +207,7 @@ retested. See the [release guide](RELEASING.md) for publishing `miniboosts`.
 
 ## License
 
-MiniBoosts is licensed under [MIT](https://github.com/rmitsuboshi/miniboosts/blob/main/LICENSE). Clarabel 0.11.1 is licensed under
-[Apache-2.0](https://github.com/oxfordcontrol/Clarabel.rs/blob/v0.11.1/LICENSE.md);
-its license remains separate from MiniBoosts' license.
+MiniBoosts is licensed under [MIT](https://github.com/rmitsuboshi/miniboosts/blob/main/LICENSE).
 
 [adaboost]: https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub
 [adaboostv]: http://jmlr.org/papers/v6/ratsch05a.html

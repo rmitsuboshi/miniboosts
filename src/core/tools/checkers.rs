@@ -34,15 +34,6 @@ pub fn stepsize(size: f64) {
     );
 }
 
-/// Check the deformation parameter
-#[inline(always)]
-pub fn deformation_parameter(t: f64) {
-    assert!(
-        (0f64..=1f64).contains(&t),
-        "deformation parameter `t` must be in [0, 1]. got `t = {t}.`"
-    );
-}
-
 #[inline(always)]
 pub fn capped_simplex_condition(slice: &[f64], nu: f64) {
     let length = slice.len();
@@ -132,37 +123,5 @@ mod tests {
     fn test_stepsize_failure_02() {
         let s = 1.0001;
         stepsize(s);
-    }
-
-    #[test]
-    fn test_deformation_parameter_success_01() {
-        let s = 0.5f64;
-        deformation_parameter(s);
-    }
-
-    #[test]
-    fn test_deformation_parameter_success_02() {
-        let s = 0f64;
-        deformation_parameter(s);
-    }
-
-    #[test]
-    fn test_deformation_parameter_success_03() {
-        let s = 1f64;
-        deformation_parameter(s);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_deformation_parameter_failure_01() {
-        let s = -0.0001;
-        deformation_parameter(s);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_deformation_parameter_failure_02() {
-        let s = 1.0001;
-        deformation_parameter(s);
     }
 }

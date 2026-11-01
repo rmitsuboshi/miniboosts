@@ -6,8 +6,7 @@ pub mod objective_function;
 pub mod soft_margin_optimization;
 
 pub use edge_minimization::{
-    DeformedEntropyRegularizedMaxEdge, EntropyRegularizedMaxEdge, RowGeneration,
-    RowGenerationObjective, edge_minimization,
+    EntropyRegularizedMaxEdge, RowGeneration, RowGenerationObjective, edge_minimization,
 };
 pub use frank_wolfe::{FrankWolfe, FwUpdateRule, StepSize};
 pub use objective_function::{

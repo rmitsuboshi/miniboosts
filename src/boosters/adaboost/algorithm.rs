@@ -366,6 +366,48 @@ mod log_weight_tests {
 }
 
 #[cfg(test)]
+mod negative_coefficient_tests {
+    use super::*;
+
+    // Margins `y h(x)` per row; the sign pattern fixes the edge.
+    #[derive(Clone)]
+    struct Margins(&'static [f64]);
+    impl Classifier for Margins {
+        fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+            self.0[row] * sample.target()[row]
+        }
+    }
+    impl WeakLearner for Margins {
+        type Hypothesis = Self;
+        fn produce(&self, _: &Sample, _: &[f64]) -> Self {
+            self.clone()
+        }
+    }
+
+    #[test]
+    fn negative_edge_keeps_its_negative_coefficient() {
+        let sample = Sample::dummy(4);
+        // Uniform edge -0.5, so alpha = atanh(-0.5) < 0 and the
+        // normalized ensemble is -h.
+        let learner = Margins(&[-1.0, -1.0, -1.0, 1.0]);
+        let f = AdaBoost::init(&sample).force_quit_at(1).run(&learner);
+        assert_eq!(f.weights, vec![-1.0]);
+        assert_eq!(f.predict_all(&sample), vec![1, 1, -1, 1]);
+    }
+
+    #[test]
+    fn perfectly_wrong_hypothesis_terminates_with_its_negation() {
+        let sample = Sample::dummy(4);
+        let learner = Margins(&[-1.0; 4]);
+        let mut booster = AdaBoost::init(&sample);
+        let f = booster.run(&learner);
+        assert_eq!(booster.terminated, 1);
+        assert_eq!(f.weights, vec![-1.0]);
+        assert_eq!(f.predict_all(&sample), vec![1, 1, -1, -1]);
+    }
+}
+
+#[cfg(test)]
 mod parameter_tests {
     use super::*;
 

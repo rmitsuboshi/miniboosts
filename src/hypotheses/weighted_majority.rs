@@ -59,13 +59,17 @@ pub struct WeightedMajority<H> {
 
 impl<H: Clone> WeightedMajority<H> {
     /// Construct a new `WeightedMajority` from given slices.
+    /// Drops exactly-zero weights and normalizes `\| w \|_1 = 1`.
+    /// Negative weights are kept: AdaBoost assigns a negative coefficient
+    /// to a hypothesis with a negative edge, and the distribution update
+    /// already used that coefficient.
     #[inline]
     pub fn from_slices(weights: &[f64], hypotheses: &[H]) -> Self {
         let mut new_weights = Vec::with_capacity(weights.len());
         let mut new_hypotheses = Vec::with_capacity(hypotheses.len());
 
         weights.iter().copied().zip(hypotheses).for_each(|(w, h)| {
-            if w > 0.0 {
+            if w != 0.0 {
                 new_weights.push(w);
                 new_hypotheses.push(h.clone());
             }
@@ -124,5 +128,29 @@ where
             .zip(&self.hypotheses[..])
             .map(|(w, h)| *w * h.predict(sample, row))
             .sum::<f64>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct Constant(f64);
+    impl Classifier for Constant {
+        fn confidence(&self, _: &Sample, _: usize) -> f64 {
+            self.0
+        }
+    }
+
+    #[test]
+    fn from_slices_keeps_negative_weights_and_drops_zeros() {
+        let hypotheses = [Constant(1.0), Constant(1.0), Constant(-1.0)];
+        let f = WeightedMajority::from_slices(&[-1.0, 0.0, 3.0], &hypotheses);
+        assert_eq!(f.weights, vec![-0.25, 0.75]);
+        assert_eq!(f.hypotheses, vec![Constant(1.0), Constant(-1.0)]);
+        // -0.25 * 1 + 0.75 * (-1) = -1.
+        let sample = Sample::dummy(1);
+        assert_eq!(f.confidence(&sample, 0), -1.0);
     }
 }

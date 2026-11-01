@@ -543,6 +543,89 @@ fn require_candidate_status(status: SolverStatus) {
 mod row_generation_tests {
     use super::*;
 
+    /// Test-only Tsallis (deformed) entropy objective, `t ∈ [0, 1)`. It exercises
+    /// the generic SQP path with a non-Shannon regularizer; no booster uses it.
+    struct DeformedEntropyRegularizedMaxEdge {
+        t: f64,
+        eta: f64,
+    }
+
+    impl DeformedEntropyRegularizedMaxEdge {
+        fn new(t: f64, eta: f64) -> Self {
+            assert!((0.0..1.0).contains(&t) && eta > 0.0);
+            Self { t, eta }
+        }
+    }
+
+    impl RowGenerationObjective for DeformedEntropyRegularizedMaxEdge {
+        fn objective_value<H: Classifier>(
+            &self,
+            sample: &Sample,
+            hypotheses: &[H],
+            dist: &[f64],
+        ) -> f64 {
+            assert_eq!(dist.len(), sample.shape().0);
+            let max_edge = hypotheses
+                .iter()
+                .map(|h| helpers::edge(sample, &dist, h))
+                .reduce(f64::max)
+                .expect("Failed to compute the max-edge");
+            // sum_i d_i ln_t(d_i), with ln_t(x) = (x^{1-t} - 1) / (1-t).
+            let entropy = dist
+                .iter()
+                .map(|&d| d * (d.powf(1.0 - self.t) - 1.0) / (1.0 - self.t))
+                .sum::<f64>();
+            max_edge + (entropy / self.eta)
+        }
+
+        /// outputs the gradient vector at a given point `d`:
+        /// ```txt
+        /// ┏                                          ┓
+        /// ┃ 1 c*d₁^{1-t}  c*d₂^{1-t}  ... c*dm^{1-t} ┃
+        /// ┗                                          ┛
+        /// ```
+        /// where `c = t * (2-t) / (η * (1-t)).`
+        fn gradient(&self, dist: &[f64]) -> Vec<f64> {
+            let constant = self.t * (2f64 - self.t) / (1f64 - self.t);
+            iter::once(1f64)
+                .chain(
+                    dist.iter()
+                        .map(|&d| constant * (d + PERTURBATION).powf(1f64 - self.t) / self.eta),
+                )
+                .collect()
+        }
+
+        /// outputs the hessian at a given point `d`:
+        /// ```txt
+        ///      γ   d₁     d₂    ...    dm
+        ///    ┏                               ┓
+        /// γ  ┃ 0   0      0     ...    0     ┃
+        /// d₁ ┃ 0  1/d₁^t  0     ...    0     ┃ * (2-t)
+        /// d₂ ┃ 0   0     1/d₂^t  0           ┃
+        ///  . ┃ .   .      0     1/d₃^t       ┃
+        ///  . ┃ .   .                         ┃
+        ///  . ┃ .   .                         ┃
+        /// dm ┃ 0   0     ...    ...   1/dm^t ┃
+        ///    ┗                               ┛
+        /// ```
+        fn hessian(&self, dist: &[f64]) -> CscMatrix<f64> {
+            let n_rows = dist.len() + 1;
+            let n_cols = n_rows;
+
+            let n_examples = dist.len();
+
+            let col_ptr = iter::once(0).chain(0..=n_examples).collect();
+            let row_idx = (1..=n_examples).collect();
+
+            let constant = (2f64 - self.t) / self.eta;
+            let nonzero = dist
+                .iter()
+                .map(|&d| constant / (d + PERTURBATION).powf(self.t))
+                .collect();
+            CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
+        }
+    }
+
     #[test]
     fn deformed_entropy_converges_near_a_simplex_boundary() {
         let sample = Sample::dummy(3);
@@ -777,85 +860,6 @@ impl RowGenerationObjective for EntropyRegularizedMaxEdge {
         let nonzero = dist
             .iter()
             .map(|&d| 1f64 / ((d + PERTURBATION) * eta))
-            .collect();
-        CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
-    }
-}
-
-/// The objective function for ErlpBoost.
-pub struct DeformedEntropyRegularizedMaxEdge {
-    t: f64,
-    eta: f64,
-}
-
-impl DeformedEntropyRegularizedMaxEdge {
-    /// Constructs `Self` from the deformation parameter `t ∈ [0, 1]`
-    /// and regularization parameter `η > 0.`
-    pub fn new(t: f64, eta: f64) -> Self {
-        Self { t, eta }
-    }
-}
-
-impl RowGenerationObjective for DeformedEntropyRegularizedMaxEdge {
-    fn objective_value<H: Classifier>(
-        &self,
-        sample: &Sample,
-        hypotheses: &[H],
-        dist: &[f64],
-    ) -> f64 {
-        assert_eq!(dist.len(), sample.shape().0);
-        let max_edge = hypotheses
-            .iter()
-            .map(|h| helpers::edge(sample, &dist, h))
-            .reduce(f64::max)
-            .expect("Failed to compute the max-edge");
-        let entropy = helpers::deformed_entropy(self.t, &dist);
-        max_edge + (entropy / self.eta)
-    }
-
-    /// outputs the gradient vector at a given point `d`:
-    /// ```txt
-    /// ┏                                          ┓
-    /// ┃ 1 c*d₁^{1-t}  c*d₂^{1-t}  ... c*dm^{1-t} ┃
-    /// ┗                                          ┛
-    /// ```
-    /// where `c = t * (2-t) / (η * (1-t)).`
-    fn gradient(&self, dist: &[f64]) -> Vec<f64> {
-        let constant = self.t * (2f64 - self.t) / (1f64 - self.t);
-        iter::once(1f64)
-            .chain(
-                dist.iter()
-                    .map(|&d| constant * (d + PERTURBATION).powf(1f64 - self.t) / self.eta),
-            )
-            .collect()
-    }
-
-    /// outputs the hessian at a given point `d`:
-    /// ```txt
-    ///      γ   d₁     d₂    ...    dm
-    ///    ┏                               ┓
-    /// γ  ┃ 0   0      0     ...    0     ┃
-    /// d₁ ┃ 0  1/d₁^t  0     ...    0     ┃ * (2-t)
-    /// d₂ ┃ 0   0     1/d₂^t  0           ┃
-    ///  . ┃ .   .      0     1/d₃^t       ┃
-    ///  . ┃ .   .                         ┃
-    ///  . ┃ .   .                         ┃
-    /// dm ┃ 0   0     ...    ...   1/dm^t ┃
-    ///    ┗                               ┛
-    /// ```
-    fn hessian(&self, dist: &[f64]) -> CscMatrix<f64> {
-        let n_rows = dist.len() + 1;
-        let n_cols = n_rows;
-
-        let n_examples = dist.len();
-
-        let col_ptr = iter::once(0).chain(0..=n_examples).collect();
-        let row_idx = (1..=n_examples).collect();
-
-        let constant = (2f64 - self.t) / self.eta;
-        let nonzero = dist
-            .iter()
-            .map(|&d| constant / (d + PERTURBATION).powf(self.t))
             .collect();
         CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
     }

@@ -169,6 +169,12 @@ where
                 .collect::<Vec<_>>();
             let grad = self.objective.gradient(&mid[..]);
             let val = helpers::inner_product(&grad[..], dir);
+            // A NaN derivative would otherwise fall through to `break`
+            // and return an unchecked midpoint as the step size.
+            assert!(
+                val.is_finite(),
+                "line-search derivative is not finite: {val}"
+            );
             if val < 0f64 {
                 lb = stepsize;
             } else if val > 0f64 {

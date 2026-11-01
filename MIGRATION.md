@@ -26,11 +26,25 @@ and the numerical changes developed in the former workspace layout.
 | `miniboosts::booster` / `weak_learner` / `hypothesis` modules | Root re-exports or the member crates |
 | `gurobi` feature | Removed; current solvers use Clarabel |
 
+`WeightedMajority::from_slices` now drops only exactly-zero weights and keeps
+negative ones. Previously it also dropped negative weights, so an AdaBoost
+hypothesis with a negative edge was used in the distribution update but omitted
+from the final classifier, and a perfectly wrong hypothesis made training panic.
+With symmetric hypothesis classes (such as decision trees), weak learners return
+nonnegative edges and results are unchanged.
+
+The unused deformed-entropy (Tsallis) ERLPBoost components were removed:
+`DeformedEntropyRegularizedMaxEdge`, `objective_function::DeformedErlpSoftMarginObjective`,
+the `deformed_*` and `gradient_of_conjugate_deformed_entropy` helpers, and
+`checkers::deformation_parameter`. No booster used them, and their
+normalization bisection could fail to terminate.
+
 The prelude exports common boosters and traits, `SampleReader`,
 `DecisionTreeBuilder`, and `SplitBy`. Import `Sample`, logger types, and objective
 adapters explicitly from `miniboosts`.
 
-GBM and regression-tree sources remain outside the compiled library. Gaussian naive
+The uncompiled GBM and regression-tree sources were removed from the repository;
+they remain available in the git history (commit `4b8be8c`). Gaussian naive
 Bayes, neural networks, the worst-case LPBoost learner, and the previous
 cross-validation helper are not exposed by this workspace. There is no automatic
 replacement: retain a compatible older checkout if required, or implement the

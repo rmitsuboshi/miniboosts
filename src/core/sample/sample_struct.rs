@@ -389,6 +389,10 @@ impl Sample {
 
     /// Check whether `self` is
     /// a training set for binary classification or not.
+    ///
+    /// # Panics
+    /// Panics instead of returning `false` if the target is unset,
+    /// non-integer, or does not take exactly two label values.
     pub fn is_valid_binary_instance(&self) {
         // Check whether the target column is specified.
         self.target_is_specified();

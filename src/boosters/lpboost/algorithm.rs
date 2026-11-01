@@ -1,7 +1,8 @@
-//! This file defines `LpBoost` based on the paper
-//! ``Boosting algorithms for Maximizing the Soft Margin''
-//! by Warmuth et al.
-//!
+//! Defines `LpBoost` (Demiriz, Bennett, and Shawe-Taylor, 2002,
+//! "Linear Programming Boosting via Column Generation").
+//! The `gamma_hat` stopping rule follows the LPBoost description in
+//! Warmuth, Glocer, and Rätsch, "Boosting Algorithms for Maximizing the
+//! Soft Margin" (NeurIPS 2007).
 use crate::core::CurrentHypothesis;
 use crate::core::{
     Booster, Classifier, Sample, WeakLearner,
