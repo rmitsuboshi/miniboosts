@@ -16,4 +16,13 @@ if grep -q "$HOME" "$wasm"; then
     exit 1
 fi
 wasm-bindgen --target web --no-typescript --out-dir "$out" "$wasm"
+# Shrink the published module (wasm-opt is part of binaryen). The features
+# match those rustc enables by default for wasm32-unknown-unknown.
+command -v wasm-opt >/dev/null || {
+    echo "error: wasm-opt not found; install binaryen (brew install binaryen)" >&2
+    exit 1
+}
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
+    --enable-sign-ext --enable-mutable-globals --enable-reference-types \
+    --enable-multivalue -o "$out/miniboosts_web_bg.wasm" "$out/miniboosts_web_bg.wasm"
 ls -l "$out"
