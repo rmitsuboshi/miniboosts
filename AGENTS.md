@@ -20,6 +20,18 @@ Prioritize mathematical correctness, reproducible experiments, and clear APIs.
   Do not treat non-finite values or solver failures as successful results.
 - Keep changes scoped; avoid unrelated formatting and dependency updates.
 - Report discrepancies between documentation and implementation.
+- Keep APIs consistent across boosters: construct with `init(&sample)`,
+  configure with builder methods, and reuse existing parameter names
+  (e.g. `tolerance`, `nu`, `force_quit_at`) for the same roles.
+
+## Documentation
+Write rustdoc for docs.rs users. Each booster documents at least:
+- an overview of the algorithm;
+- its theoretical guarantee, if any, with assumptions;
+- limitations;
+- the original paper (authors, title, link).
+
+Document every public method and function.
 
 ## Experiments
 - Match data splits, preprocessing, weak learners, and evaluation conditions.
