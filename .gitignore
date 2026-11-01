@@ -2,6 +2,7 @@
 /tmp/
 /.venv/
 /python/target/
+/web/target/
 /python/.pytest_cache/
 /python/dist/
 __pycache__/

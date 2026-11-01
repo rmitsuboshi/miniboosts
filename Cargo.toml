@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["img/example"]
-exclude = ["python"]
+exclude = ["python", "web"]
 
 [workspace.package]
 version = "0.5.1"
