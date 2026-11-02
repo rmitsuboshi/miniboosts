@@ -265,7 +265,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "miniboosts"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "clarabel",
  "colored",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "miniboosts-web"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",

@@ -10,4 +10,4 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-miniboosts = { path = "../..", version = "0.5.1" }
+miniboosts = { path = "../..", version = "0.5.2" }

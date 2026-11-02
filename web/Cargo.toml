@@ -1,6 +1,6 @@
 [package]
 name = "miniboosts-web"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -12,7 +12,7 @@ repository = "https://github.com/rmitsuboshi/miniboosts"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-miniboosts = { path = "..", version = "0.5.1" }
+miniboosts = { path = "..", version = "0.5.2" }
 # Must match the installed `wasm-bindgen` CLI version exactly.
 wasm-bindgen = "=0.2.130"
 js-sys = "0.3.107"

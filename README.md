@@ -15,7 +15,7 @@ Add MiniBoosts to your application's `Cargo.toml`:
 
 ```toml
 [dependencies]
-miniboosts = "0.5.1"
+miniboosts = "0.5.2"
 ```
 
 The optimization routines use Clarabel for linear, quadratic, and conic

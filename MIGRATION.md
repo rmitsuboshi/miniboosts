@@ -1,4 +1,8 @@
-# Unreleased
+# Changes in 0.5.2
+
+Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles
+unchanged, except that a glob import of `miniboosts::prelude::*` brings the new
+names below into scope and may clash with local names.
 
 New boosters: `ArcGv` (Breiman, 1999), `BoostByMajority` (Freund, 1995; returns
 the new `MajorityVote`), `RobustBoost` (Freund, 2009), `GradientBoosting`
@@ -27,6 +31,11 @@ with the `optimization::sparsification` module (`sparsify`, `sparsify_within`,
 with `n_hypotheses(T)`, `tolerance(v)`, or both. It is also
 exported from the prelude; a glob import of `miniboosts::prelude::*` now brings
 `SparsiBoost` into scope. No existing API changed.
+
+`SmoothBoost::reached_round_budget` reports whether training stopped at the
+round budget without the paper's stopping test firing; the margin guarantee
+does not apply in that case. SmoothBoost now panics if a weak hypothesis
+returns a non-finite confidence instead of continuing with it.
 
 # Changes in 0.5.1
 

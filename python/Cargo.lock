@@ -285,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "miniboosts"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "clarabel",
  "colored",
@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "miniboosts-python"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "miniboosts",
  "pyo3",
