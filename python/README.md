@@ -1,21 +1,34 @@
 # MiniBoosts for Python
 
-Python bindings for the Rust MiniBoosts library, with algorithm-specific,
-scikit-learn-style binary classifiers. Boosting and aggregation use the Rust
-implementations; weak learners can be Rust decision trees or Python estimators.
+Python bindings for the Rust [MiniBoosts](https://github.com/rmitsuboshi/miniboosts)
+library, with algorithm-specific, scikit-learn-style binary classifiers.
+Boosting and aggregation use the Rust implementations; weak learners can be
+native Rust learners or Python/sklearn estimators.
 
-## Install from this repository
+Try the algorithms in the browser with the
+[interactive demo](https://rmitsuboshi.github.io/miniboosts/).
 
-Requires Rust 1.85+, Python 3.10+, NumPy, and scikit-learn 1.6+ (below 2).
-From the repository root, with a virtual environment activated:
+## Install
+
+Requires Python 3.10+, NumPy 1.24+, and scikit-learn 1.6+ (below 2):
+
+```sh
+python -m pip install miniboosts
+```
+
+Prebuilt wheels cover Linux (glibc and musl; x86_64 and aarch64), macOS
+(x86_64 and arm64), and Windows (x64 and arm64), for every CPython from 3.10
+(one abi3 wheel per platform). On other platforms pip builds the source
+distribution, which needs Rust 1.85+.
+
+To install from a checkout instead, run this from the repository root:
 
 ```sh
 python -m pip install ./python
 ```
 
-This builds a native extension locally. The Python package has not been
-published to PyPI. The existing Rust crate remains usable without Python or
-PyO3; `python/` is a separate, non-published Cargo package.
+The Rust crate remains usable without Python or PyO3; `python/` is a separate
+Cargo package that is published to PyPI only.
 
 For development:
 
@@ -247,7 +260,9 @@ hypotheses with nonzero weight (possibly fewer than `T`),
 a `tolerance`). `estimators_` holds all AdaBoostV-round learners, including
 those the sparsification dropped.
 
-See the repository README and Rust documentation for references and guarantees.
+See the [repository README](https://github.com/rmitsuboshi/miniboosts#readme)
+and the [Rust documentation](https://docs.rs/miniboosts) for references and
+guarantees.
 
 After fitting, `n_iter_` records the number of successfully produced weak
 learners, excluding terminal calls that do not train a learner. `stop_reason_` is `"max_iterations"`,
@@ -283,4 +298,4 @@ supported. Native weak-learner fitting releases the Python GIL; the entire boost
 loop does not. Array conversion and callback copies incur overhead, so include
 them when reporting Python-facing timings. Training caches use O(nT) memory
 for n examples and T candidate learners, in addition to algorithm-specific
-storage. No wheels for other platforms are bundled with this source tree.
+storage. Free-threaded CPython builds are not supported.

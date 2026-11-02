@@ -9,7 +9,27 @@ description = "Rust boosting algorithms with scikit-learn-style Python estimator
 requires-python = ">=3.10"
 license = "MIT"
 readme = "README.md"
+authors = [{ name = "Ryotaro Mitsuboshi" }]
+keywords = ["boosting", "machine-learning", "scikit-learn", "ensemble", "margin"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = ["numpy>=1.24", "scikit-learn>=1.6,<2"]
+
+[project.urls]
+Homepage = "https://github.com/rmitsuboshi/miniboosts"
+Repository = "https://github.com/rmitsuboshi/miniboosts"
+Documentation = "https://github.com/rmitsuboshi/miniboosts/blob/main/python/README.md"
+Demo = "https://rmitsuboshi.github.io/miniboosts/"
+Issues = "https://github.com/rmitsuboshi/miniboosts/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=8"]

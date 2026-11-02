@@ -9,6 +9,10 @@ internal modules, not separate registry packages. Earlier releases have a
 different API; see the [migration notes](MIGRATION.md) when upgrading.
 Rust 1.85 or newer is required (edition 2024).
 
+Try the algorithms in the browser with the
+[interactive demo](https://rmitsuboshi.github.io/miniboosts/), or use them
+from Python with `pip install miniboosts` (see [Python bindings](#python-bindings)).
+
 ## Getting started
 
 Add MiniBoosts to your application's `Cargo.toml`:
@@ -62,14 +66,14 @@ validated in [-1, +1]. Gradient boosting and LogitBoost use regression weak
 learners (the native regression tree or sklearn regressors). Binary labels are encoded with a mapping warning and
 restored on prediction.
 
-From a checkout, with Rust and a Python virtual environment available:
+Install it from PyPI (prebuilt wheels for Linux, macOS, and Windows):
 
 ```sh
-python -m pip install ./python
+python -m pip install miniboosts
 ```
 
-This builds the extension locally; the Python package is not yet on PyPI.
-Rust users need no Python dependencies. See the Python guide for examples,
+To build it from a checkout instead (requires Rust), run
+`python -m pip install ./python`. Rust users need no Python dependencies. See the Python guide for examples,
 algorithm parameters, the explicit sklearn `PredictionAdapter`, and limits.
 
 ## Decision boundaries from Python

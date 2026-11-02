@@ -1,0 +1,199 @@
+# Builds the Python package (abi3 wheels for CPython 3.10+ and an sdist) and
+# publishes it with PyPI Trusted Publishing; no API token is stored.
+#
+# - Push a tag `py-v<version>` (e.g. `py-v0.5.2`) to publish to PyPI.
+# - Run the workflow manually (Actions > Python release > Run workflow) to
+#   build everything and publish to TestPyPI instead.
+#
+# Based on the template of `maturin generate-ci github` (maturin 1.16.0).
+# Free-threaded wheels are omitted: the bindings use the abi3 stable ABI.
+name: Python release
+
+on:
+  push:
+    tags:
+      - 'py-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check that the tag and the package versions agree
+        shell: bash
+        run: |
+          set -euo pipefail
+          project=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -n 1)
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/Cargo.toml | head -n 1)
+          module=$(sed -n "s/^__version__ = '\(.*\)'$/\1/p" python/miniboosts/__init__.py)
+          echo "pyproject.toml: $project, Cargo.toml: $crate, __init__.py: $module"
+          test "$project" = "$crate" && test "$project" = "$module"
+          if [[ "$GITHUB_REF" == refs/tags/py-v* ]]; then
+            test "${GITHUB_REF#refs/tags/py-v}" = "$project"
+          fi
+
+  linux:
+    needs: check-version
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+        manylinux: [auto, musllinux_1_2]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --manifest-path python/Cargo.toml
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          manylinux: ${{ matrix.manylinux }}
+      - name: Test the wheel
+        # Only the native glibc wheel can run on this runner.
+        if: ${{ matrix.target == 'x86_64' && matrix.manylinux == 'auto' }}
+        run: |
+          python -m pip install 'numpy>=1.24' 'scikit-learn>=1.6,<2' 'pytest>=8'
+          python -m pip install --no-index --no-deps --find-links dist miniboosts
+          python -m pytest python/tests
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-linux-${{ matrix.target }}-${{ matrix.manylinux }}
+          path: dist
+
+  windows:
+    needs: check-version
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: windows-latest
+            target: x64
+            python_arch: x64
+          - runner: windows-11-arm
+            target: aarch64
+            python_arch: arm64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          architecture: ${{ matrix.platform.python_arch }}
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --manifest-path python/Cargo.toml
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Test the wheel
+        if: ${{ matrix.platform.target == 'x64' }}
+        run: |
+          python -m pip install 'numpy>=1.24' 'scikit-learn>=1.6,<2' 'pytest>=8'
+          python -m pip install --no-index --no-deps --find-links dist miniboosts
+          python -m pytest python/tests
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-windows-${{ matrix.platform.target }}
+          path: dist
+
+  macos:
+    needs: check-version
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: macos-15-intel
+            target: x86_64
+          - runner: macos-latest
+            target: aarch64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --manifest-path python/Cargo.toml
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Test the wheel
+        run: |
+          python -m pip install 'numpy>=1.24' 'scikit-learn>=1.6,<2' 'pytest>=8'
+          python -m pip install --no-index --no-deps --find-links dist miniboosts
+          python -m pytest python/tests
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-macos-${{ matrix.platform.target }}
+          path: dist
+
+  sdist:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist --manifest-path python/Cargo.toml
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test the sdist
+        run: |
+          python -m pip install dist/*.tar.gz 'pytest>=8'
+          python -m pytest python/tests
+      - name: Upload sdist
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-sdist
+          path: dist
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: [linux, windows, macos, sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/miniboosts
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    if: ${{ startsWith(github.ref, 'refs/tags/py-v') }}
+    needs: [linux, windows, macos, sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/miniboosts
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1

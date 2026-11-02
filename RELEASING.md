@@ -47,3 +47,37 @@ pre-release installation instructions, and tag the released commit.
 
 MiniBoosts uses MIT. Clarabel 0.11.1 is Apache-2.0; dependency licenses remain
 applicable when redistributing their code or binaries.
+
+## Python package
+
+The Python package `miniboosts` (in `python/`) is published to PyPI by
+`.github/workflows/release-python.yml`, which builds abi3 wheels for Linux
+(glibc and musl), macOS, and Windows plus an sdist, tests the native wheels and
+the sdist, and uploads with PyPI Trusted Publishing (no API token).
+
+One-time setup (by the PyPI account owner):
+
+1. On both <https://pypi.org> and <https://test.pypi.org>, add a pending
+   publisher for project `miniboosts`: owner `rmitsuboshi`, repository
+   `miniboosts`, workflow `release-python.yml`, and environment `pypi`
+   (PyPI) or `testpypi` (TestPyPI).
+2. In the GitHub repository settings, create the environments `pypi` and
+   `testpypi`. Adding a required reviewer to `pypi` makes every upload wait
+   for approval.
+
+Each release:
+
+1. Set the same version in `python/pyproject.toml`, `python/Cargo.toml`
+   (including its `miniboosts` dependency), and `python/miniboosts/__init__.py`;
+   the workflow fails if they differ.
+2. Run `python -m pytest python/tests` after `maturin develop --release`.
+3. Run the workflow manually (Actions > Python release > Run workflow) on the
+   release commit. It publishes to TestPyPI; check the result in a fresh
+   environment with
+   `pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ miniboosts`.
+4. Tag the commit `py-v<version>` (e.g. `py-v0.5.2`) and push the tag. The
+   workflow checks that the tag matches the package version and publishes to
+   PyPI.
+
+A version uploaded to PyPI or TestPyPI can never be uploaded again, even after
+deleting it; bump the version to retry.
