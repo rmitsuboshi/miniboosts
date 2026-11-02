@@ -3,7 +3,7 @@ import numbers
 import warnings
 
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, clone
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
 from sklearn.utils.validation import check_is_fitted, validate_data
 
 from . import _native
@@ -19,6 +19,11 @@ def _reset(estimator):
 def _positive_integer(name, value):
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Integral) or value < 1:
         raise ValueError(f'{name} must be a positive integer')
+
+
+def _nonnegative_integer(name, value):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Integral) or value < 0:
+        raise ValueError(f'{name} must be a nonnegative integer')
 
 
 def _finite_real(name, value):
@@ -93,11 +98,42 @@ def _confidence(estimator, X, context):
     return values
 
 
+def _prediction(estimator, X, context):
+    # Regression weak learners: finite, unbounded real predictions.
+    raw = estimator.predict(X)
+    if np.iscomplexobj(raw):
+        raise ValueError(f'{context}: prediction must be real')
+    try:
+        values = np.asarray(raw, dtype=np.float64)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f'{context}: prediction must be a numeric vector') from error
+    if values.shape != (len(X),):
+        raise ValueError(f'{context}: prediction shape {values.shape}; expected ({len(X)},)')
+    invalid = ~np.isfinite(values)
+    if np.any(invalid):
+        row = int(np.flatnonzero(invalid)[0])
+        raise ValueError(f'{context}, row {row}: invalid prediction {values[row]!r}; '
+                         'expected a finite value')
+    return values
+
+
 def _round_context(estimator, round_number):
     return f'{type(estimator).__name__}, round {round_number}'
 
 
 class _BoostClassifier(ClassifierMixin, BaseEstimator):
+    # Boosters whose weak learners fit real-valued working responses.
+    _regression = False
+
+    def _default_estimator(self):
+        return DecisionTreeClassifier()
+
+    def _weak_values(self, learner, X, round_number):
+        context = _round_context(learner, round_number)
+        if self._regression:
+            return _prediction(learner, X, context)
+        return _confidence(learner, X, context)
+
     def _max_iterations(self):
         _positive_integer('max_iterations', self.max_iterations)
         return int(self.max_iterations)
@@ -130,28 +166,32 @@ class _BoostClassifier(ClassifierMixin, BaseEstimator):
         try:
             max_iterations = self._max_iterations()
             X, encoded, classes = _training_data(self, X, y)
-            template = self.estimator if self.estimator is not None else DecisionTreeClassifier()
-            if not callable(getattr(template, 'fit', None)) or not callable(getattr(template, 'decision_function', None)):
-                raise TypeError('estimator needs fit(X, y, sample_weight=...) and decision_function(X)')
+            template = self.estimator if self.estimator is not None else self._default_estimator()
+            method = 'predict' if self._regression else 'decision_function'
+            if not callable(getattr(template, 'fit', None)) or not callable(getattr(template, method, None)):
+                raise TypeError(f'estimator needs fit(X, y, sample_weight=...) and {method}(X)')
             options = self._options(len(X))
             fitted, rounds = [], []
             # Own the training buffers: callbacks must not mutate shared X/y.
             training_X = np.array(X, copy=True)
             training_y = np.array(encoded, copy=True)
 
-            def produce(weights, round_number):
+            def produce(weights, round_number, target):
                 learner = clone(template)
+                # Regression boosters pass their working response as target.
+                fit_y = np.array(target, dtype=np.float64) if self._regression else training_y.copy()
                 try:
-                    learner.fit(training_X.copy(), training_y.copy(),
+                    learner.fit(training_X.copy(), fit_y,
                                 sample_weight=np.array(weights, dtype=np.float64))
                 except Exception as error:
                     if hasattr(error, 'add_note'):
                         error.add_note(f'{type(learner).__name__}, round {round_number}: weak learner fit failed')
                     raise
-                if hasattr(learner, 'classes_') and not np.array_equal(learner.classes_, [-1, 1]):
+                if (not self._regression and hasattr(learner, 'classes_')
+                        and not np.array_equal(learner.classes_, [-1, 1])):
                     raise ValueError(f'{type(learner).__name__}, round {round_number}: '
                                      'classes_ must be ordered [-1, +1]')
-                values = _confidence(learner, training_X.copy(), _round_context(learner, round_number))
+                values = self._weak_values(learner, training_X.copy(), round_number)
                 fitted.append(learner)
                 rounds.append(round_number)
                 return values.tolist()
@@ -174,8 +214,7 @@ class _BoostClassifier(ClassifierMixin, BaseEstimator):
         """Return ensemble confidence, not a probability or bounded weak score."""
         check_is_fitted(self, '_model_')
         X = validate_data(self, X, reset=False, dtype=np.float64)
-        predictions = [_confidence(estimator, np.array(X, copy=True),
-                                   _round_context(estimator, round_number)).tolist()
+        predictions = [self._weak_values(estimator, np.array(X, copy=True), round_number).tolist()
                        for estimator, round_number in zip(self.estimators_, self.estimator_rounds_)]
         return np.asarray(self._model_.decision_function(predictions, len(X)))
 
@@ -209,6 +248,52 @@ class AdaBoostVClassifier(_ToleranceClassifier):
     _algorithm = 'adaboostv'
 
 
+class ArcGvClassifier(_BoostClassifier):
+    """Arc-gv (Breiman, 1999); its minimal margin converges to the optimum.
+
+    The guarantee is asymptotic, so ``max_iterations`` is the round limit.
+    ``stop_reason_ == "algorithm_stop"`` means a step size of 0 (the weak
+    hypothesis does not beat the current minimal margin).
+    """
+    _algorithm = 'arcgv'
+
+    def __init__(self, *, estimator=None, max_iterations=100):
+        self.estimator = estimator
+        self.max_iterations = max_iterations
+
+
+class BoostByMajorityClassifier(_BoostClassifier):
+    """Boost-by-majority (Freund, 1995): an unweighted vote of k hypotheses.
+
+    ``gamma`` is the assumed advantage (weighted error at most 1/2 - gamma)
+    and ``tolerance`` the target training error; k = ceil(ln(1/tolerance) /
+    (2 gamma^2)). ``max_iterations=None`` runs all k rounds.
+    """
+    _algorithm = 'bbm'
+
+    def __init__(self, *, estimator=None, gamma, tolerance=0.01, max_iterations=None):
+        self.estimator = estimator
+        self.gamma = gamma
+        self.tolerance = tolerance
+        self.max_iterations = max_iterations
+
+    def _max_iterations(self):
+        return None if self.max_iterations is None else super()._max_iterations()
+
+    def _options(self, n_samples):
+        gamma = _finite_real('gamma', self.gamma)
+        if not 0 < gamma < .5:
+            raise ValueError('gamma must lie strictly between 0 and 0.5')
+        tolerance = _finite_real('tolerance', self.tolerance)
+        if not 0 < tolerance < 1:
+            raise ValueError('tolerance must lie strictly between 0 and 1')
+        return {'gamma': gamma, 'tolerance': tolerance}
+
+    def _set_diagnostics(self, native):
+        self.n_rounds_ = native.n_rounds
+        self.decided_early_ = native.decided_early
+
+
 class BrownBoostClassifier(_BoostClassifier):
     """BrownBoost (Freund, 2001); tolerance is the target training error.
 
@@ -237,6 +322,70 @@ class BrownBoostClassifier(_BoostClassifier):
     def _set_diagnostics(self, native):
         self.remaining_time_ = native.remaining_time
         self.total_time_ = native.total_time
+
+
+class GradientBoostingClassifier(_BoostClassifier):
+    """Gradient boosting (Friedman, 2001) with a regression weak learner.
+
+    Each round fits ``estimator`` (default ``RegressionTreeRegressor()``) to
+    the pseudo-residuals with uniform weights, then line-searches the step.
+    ``loss`` is ``"logistic"``, ``"exponential"``, or ``"squared"``.
+    ``stop_reason_ == "no_minimizer"`` means a weak hypothesis with
+    y h(x) >= 0 on every training row left the line search without a
+    minimizer (logistic/exponential loss); that hypothesis is discarded.
+    """
+    _algorithm = 'gradient_boosting'
+    _regression = True
+
+    def __init__(self, *, estimator=None, loss='logistic', shrinkage=1.0, max_iterations=100):
+        self.estimator = estimator
+        self.loss = loss
+        self.shrinkage = shrinkage
+        self.max_iterations = max_iterations
+
+    def _default_estimator(self):
+        return RegressionTreeRegressor()
+
+    def _options(self, n_samples):
+        if self.loss not in ('logistic', 'exponential', 'squared'):
+            raise ValueError('loss must be logistic, exponential, or squared')
+        shrinkage = _finite_real('shrinkage', self.shrinkage)
+        if not 0 < shrinkage <= 1:
+            raise ValueError('shrinkage must lie in (0, 1]')
+        return {'loss': self.loss, 'shrinkage': shrinkage}
+
+    def _set_diagnostics(self, native):
+        self.intercept_ = native.intercept
+        self.coefficients_ = np.asarray(native.coefficients)
+
+
+class LogitBoostClassifier(_BoostClassifier):
+    """Two-class LogitBoost (Friedman, Hastie, and Tibshirani, 2000).
+
+    Each round fits ``estimator`` (default ``RegressionTreeRegressor()``) by
+    weighted least squares to the working response, clipped to
+    [-max_response, max_response].
+    """
+    _algorithm = 'logitboost'
+    _regression = True
+
+    def __init__(self, *, estimator=None, max_response=4.0, max_iterations=100):
+        self.estimator = estimator
+        self.max_response = max_response
+        self.max_iterations = max_iterations
+
+    def _default_estimator(self):
+        return RegressionTreeRegressor()
+
+    def _options(self, n_samples):
+        max_response = _finite_real('max_response', self.max_response)
+        if max_response < 1:
+            raise ValueError('max_response must be at least 1')
+        return {'max_response': max_response}
+
+    def _set_diagnostics(self, native):
+        self.intercept_ = native.intercept
+        self.coefficients_ = np.asarray(native.coefficients)
 
 
 class MadaBoostClassifier(_ToleranceClassifier):
@@ -272,6 +421,37 @@ class MLPBoostClassifier(_CappedClassifier):
                  max_iterations=100, update_rule='line_search'):
         super().__init__(estimator=estimator, nu=nu, tolerance=tolerance, max_iterations=max_iterations)
         self.update_rule = update_rule
+
+
+class RobustBoostClassifier(_BoostClassifier):
+    """RobustBoost (Freund, 2009); tolerance is the error goal epsilon.
+
+    ``remaining_time_ == 0`` means the clock reached 1, so at most a fraction
+    2 * tolerance of the training scores y H(x) are at most ``theta``.
+    ``stop_reason_`` is ``"nonpositive_edge"`` if a weak hypothesis had
+    nonpositive weighted correlation; solver failures raise ``RuntimeError``.
+    """
+    _algorithm = 'robustboost'
+
+    def __init__(self, *, estimator=None, tolerance=0.1, theta=0.0, sigma_f=0.1, max_iterations=100):
+        self.estimator = estimator
+        self.tolerance = tolerance
+        self.theta = theta
+        self.sigma_f = sigma_f
+        self.max_iterations = max_iterations
+
+    def _options(self, n_samples):
+        tolerance = _finite_real('tolerance', self.tolerance)
+        if not 0 < tolerance < 1:
+            raise ValueError('tolerance must lie strictly between 0 and 1')
+        theta = _finite_real('theta', self.theta)
+        if theta < 0:
+            raise ValueError('theta must be nonnegative')
+        _positive_finite('sigma_f', self.sigma_f)
+        return {'tolerance': tolerance, 'theta': theta, 'sigma_f': float(self.sigma_f)}
+
+    def _set_diagnostics(self, native):
+        self.remaining_time_ = native.remaining_time
 
 
 class SmoothBoostClassifier(_BoostClassifier):
@@ -465,6 +645,40 @@ class RBFClassifier(_NativeWeakClassifier):
         self.center_ = X[self.center_index_].copy()
         self.sign_ = model.sign
         return model
+
+
+class RegressionTreeRegressor(RegressorMixin, BaseEstimator):
+    """Rust weighted least-squares regression tree, for regression boosters.
+
+    A feature with at most ``n_bins`` (default 255) distinct values gets
+    every split between consecutive values (threshold at the midpoint);
+    otherwise its splits lie on ``n_bins`` equal-width bin boundaries.
+    ``max_depth=0`` gives the weighted mean. Predictions are unbounded.
+    """
+    def __init__(self, *, max_depth=3, n_bins=None):
+        self.max_depth = max_depth
+        self.n_bins = n_bins
+
+    def fit(self, X, y, sample_weight=None):
+        _reset(self)
+        try:
+            _nonnegative_integer('max_depth', self.max_depth)
+            if self.n_bins is not None:
+                _positive_integer('n_bins', self.n_bins)
+            X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True)
+            weights = _distribution(sample_weight, len(X))
+            n_bins = None if self.n_bins is None else int(self.n_bins)
+            self._model_ = _native.fit_regression_tree(X.tolist(), np.asarray(y, dtype=np.float64).tolist(),
+                                                       weights.tolist(), int(self.max_depth), n_bins)
+            return self
+        except BaseException:
+            _reset(self)
+            raise
+
+    def predict(self, X):
+        check_is_fitted(self, '_model_')
+        X = validate_data(self, X, reset=False, dtype=np.float64)
+        return np.asarray(self._model_.predict(X.tolist()))
 
 
 class FiniteClassClassifier(ClassifierMixin, BaseEstimator):
