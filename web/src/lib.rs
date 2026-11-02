@@ -1476,8 +1476,14 @@ mod tests {
         check_cached_snapshots(MlpBoost::init(&s).nu(2.0).tolerance(0.01), &tree);
         check_cached_snapshots(BoostByMajority::init(&s).gamma(0.1).tolerance(0.1), &tree);
         let regression = RegressionTreeBuilder::new(&s).max_depth(2).build();
+        // Squared loss: since 0.5.2 the logistic and exponential losses stop
+        // after one round when a tree separates this small sample (the line
+        // search has no minimizer), which leaves too few rounds to compare.
         check_cached_snapshots(
-            GradientBoosting::init(&s).shrinkage(0.5).force_quit_at(10),
+            GradientBoosting::init(&s)
+                .loss(GbmLoss::Squared)
+                .shrinkage(0.5)
+                .force_quit_at(10),
             &regression,
         );
         check_cached_snapshots(LogitBoost::init(&s).force_quit_at(10), &regression);
