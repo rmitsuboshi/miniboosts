@@ -3,14 +3,16 @@
 //! `use miniboosts::prelude::*;` imports
 //! - the traits [`Booster`], [`WeakLearner`], [`Classifier`], and the file
 //!   reader [`SampleReader`];
-//! - every booster ([`AdaBoost`], [`AdaBoostV`], [`BrownBoost`],
-//!   [`CorrectiveErlpBoost`], [`ErlpBoost`], [`GraphSeparationBoosting`],
-//!   [`LpBoost`], [`MadaBoost`], [`MlpBoost`], [`SmoothBoost`],
-//!   [`SoftBoost`], [`SparsiBoost`], [`TotalBoost`]);
+//! - every booster ([`AdaBoost`], [`AdaBoostV`], [`ArcGv`],
+//!   [`BoostByMajority`], [`BrownBoost`], [`CorrectiveErlpBoost`],
+//!   [`ErlpBoost`], [`GradientBoosting`] with [`GbmLoss`],
+//!   [`GraphSeparationBoosting`], [`LogitBoost`], [`LpBoost`], [`MadaBoost`],
+//!   [`MlpBoost`], [`RobustBoost`], [`SmoothBoost`], [`SoftBoost`],
+//!   [`SparsiBoost`], [`TotalBoost`]);
 //! - the weak learners' entry points: the decision tree's
 //!   [`DecisionTreeBuilder`] and [`SplitBy`], [`FiniteClass`],
 //!   [`RbfClassBuilder`], [`BoundedLinear`], [`LogisticRegression`] with
-//!   [`LinearOutput`], and [`NaiveBayes`].
+//!   [`LinearOutput`], [`NaiveBayes`], and [`RegressionTreeBuilder`].
 //!
 //! It does **not** import [`Sample`](crate::Sample),
 //! [`Regressor`](crate::Regressor), the combined hypotheses
@@ -49,13 +51,18 @@ pub use crate::core::{Booster, Classifier, SampleReader, WeakLearner};
 
 pub use crate::boosters::adaboost::AdaBoost;
 pub use crate::boosters::adaboostv::AdaBoostV;
+pub use crate::boosters::arcgv::ArcGv;
+pub use crate::boosters::bbm::BoostByMajority;
 pub use crate::boosters::brownboost::BrownBoost;
 pub use crate::boosters::corrective_erlpboost::CorrectiveErlpBoost;
 pub use crate::boosters::erlpboost::ErlpBoost;
+pub use crate::boosters::gradient_boosting::{GbmLoss, GradientBoosting};
 pub use crate::boosters::graph_separation_boosting::GraphSeparationBoosting;
+pub use crate::boosters::logitboost::LogitBoost;
 pub use crate::boosters::lpboost::LpBoost;
 pub use crate::boosters::madaboost::MadaBoost;
 pub use crate::boosters::mlpboost::MlpBoost;
+pub use crate::boosters::robustboost::RobustBoost;
 pub use crate::boosters::smoothboost::SmoothBoost;
 pub use crate::boosters::softboost::SoftBoost;
 pub use crate::boosters::sparsiboost::SparsiBoost;
@@ -65,3 +72,4 @@ pub use crate::weak_learners::finite_class::FiniteClass;
 pub use crate::weak_learners::linear::{BoundedLinear, LinearOutput, LogisticRegression};
 pub use crate::weak_learners::naive_bayes::NaiveBayes;
 pub use crate::weak_learners::rbf::RbfClassBuilder;
+pub use crate::weak_learners::regression_tree::RegressionTreeBuilder;

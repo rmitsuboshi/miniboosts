@@ -1,5 +1,14 @@
 # Unreleased
 
+New boosters: `ArcGv` (Breiman, 1999), `BoostByMajority` (Freund, 1995; returns
+the new `MajorityVote`), `RobustBoost` (Freund, 2009), `GradientBoosting`
+(Friedman, 2001; with `GbmLoss`), and `LogitBoost` (Friedman, Hastie, and
+Tibshirani, 2000). The last two fit real-valued responses with a regression weak
+learner, such as the new `RegressionTreeBuilder`, and return the new
+`AdditiveModel`. `Sample::with_target` returns a copy with replaced targets.
+`ArcGv`, `GradientBoosting`, and `LogitBoost` require `force_quit_at`, and
+`BoostByMajority` requires `gamma`.
+
 Two weak learners are new: `FiniteClass` (with `ClassMember` and
 `TableHypothesis`) returns an edge-maximizing member of a finite hypothesis
 class, and `RbfClassBuilder` builds a `FiniteClass` of Gaussian radial basis

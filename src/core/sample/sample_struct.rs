@@ -533,6 +533,40 @@ impl Sample {
         self.n_feature = self.features.len();
     }
 
+    /// Returns a copy of `self` with the target values replaced by `target`
+    /// (one per example), keeping the features and their names.
+    ///
+    /// Boosters that fit real-valued working responses (for example
+    /// gradient boosting's pseudo-residuals) use it to pass them to a
+    /// regression weak learner. The values need not be labels.
+    ///
+    /// Time complexity: `O(m d)`, a copy of the features.
+    ///
+    /// # Panics
+    /// Panics if `target` does not have one value per example.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0], vec![1.0]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0])).unwrap();
+    /// let residuals = sample.with_target(vec![0.25, -0.5]);
+    /// assert_eq!(residuals.target(), &[0.25, -0.5]);
+    /// assert_eq!(residuals["feature_0"][1], 1.0);
+    /// ```
+    pub fn with_target(&self, target: Vec<f64>) -> Self {
+        assert_eq!(
+            target.len(),
+            self.n_sample,
+            "the target needs one value per example"
+        );
+        Self {
+            target,
+            ..self.clone()
+        }
+    }
+
     /// Returns `(number of examples, number of features)`.
     /// The label column is not counted as a feature.
     ///

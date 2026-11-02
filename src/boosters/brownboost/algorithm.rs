@@ -1,7 +1,8 @@
 //! Implementation of BrownBoost (Freund, 2001) as [`BrownBoost`].
 //! See the [`BrownBoost`] struct for details and an example.
-use super::solver::{Event, Round, erfc_inverse};
+use super::solver::{Event, Round};
 use crate::core::CurrentHypothesis;
+use crate::core::tools::special::erfc_inverse;
 use crate::core::{Booster, Classifier, Sample, WeakLearner, tools::helpers};
 use crate::hypotheses::WeightedMajority;
 

@@ -4,7 +4,9 @@
 //! distinct feature value as a split threshold. Instead, each feature is cut
 //! once into equal-width bins ([`Bins::cut`]), and only bin boundaries are
 //! candidate thresholds. At each node, [`Bins::pack`] accumulates the
-//! booster's example weights per bin and label.
+//! booster's example weights per bin and label. The regression tree
+//! ([`crate::RegressionTree`]) instead gives each distinct value its own bin
+//! when there are at most as many values as its bin cap.
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -161,6 +163,65 @@ impl Bins {
             left = right;
         }
         Self(bins)
+    }
+
+    /// Returns one bin per distinct value of a nonempty, finite feature
+    /// (sparse implicit zeros count as a value), so that every threshold
+    /// between consecutive distinct values is a bin boundary. The boundary
+    /// between `a < b` is their midpoint, or `b` if the midpoint rounds to
+    /// `a` (adjacent floats); the outer bins extend to `f64::MIN` and
+    /// `f64::MAX`.
+    ///
+    /// Panics for empty features or non-finite values.
+    pub(crate) fn per_value(feature: &Feature) -> Self {
+        let mut values: Vec<f64> = match feature {
+            Feature::Dense { vals, .. } => vals.clone(),
+            Feature::Sparse { vals, .. } => {
+                let mut values: Vec<f64> = vals.iter().map(|&(_, v)| v).collect();
+                if feature.has_zero() {
+                    values.push(0.0);
+                }
+                values
+            }
+        };
+        assert!(!values.is_empty(), "cannot bin an empty feature");
+        assert!(
+            values.iter().all(|v| v.is_finite()),
+            "binning requires finite feature values"
+        );
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        values.dedup();
+        let mut bins = Vec::with_capacity(values.len());
+        let mut left = f64::MIN;
+        for pair in values.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            // Halves first: `a + b` may overflow.
+            let mid = a / 2.0 + b / 2.0;
+            let right = if a < mid && mid <= b { mid } else { b };
+            bins.push(Bin::new(left..right));
+            left = right;
+        }
+        bins.push(Bin::new(left..f64::MAX));
+        Self(bins)
+    }
+
+    /// Returns the index of the bin containing `x`. The bins cover the
+    /// whole real line, so every finite `x` has one.
+    pub(crate) fn index_of(&self, x: f64) -> usize {
+        self.0
+            .binary_search_by(|bin| {
+                if bin.contains(&x) {
+                    Ordering::Equal
+                } else {
+                    bin.0.start.partial_cmp(&x).unwrap()
+                }
+            })
+            .expect("every finite value falls into a bin")
+    }
+
+    /// Returns the bins in increasing order.
+    pub(crate) fn as_slice(&self) -> &[Bin] {
+        &self.0
     }
 
     /// Accumulates, for each bin, the total weight `dist[i]` of the examples

@@ -3,4 +3,5 @@
 pub mod binning;
 pub mod checkers;
 pub mod helpers;
+pub(crate) mod special;
 pub mod tree;

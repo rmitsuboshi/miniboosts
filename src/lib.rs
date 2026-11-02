@@ -12,19 +12,26 @@ pub mod weak_learners;
 pub mod prelude;
 
 pub use crate::core::{Booster, Classifier, Regressor, Sample, SampleReader, WeakLearner};
-pub use crate::hypotheses::{NaiveAggregation, WeightedMajority};
+pub use crate::hypotheses::{
+    AdditiveModel, MajorityVote, NaiveAggregation, ScoreLink, WeightedMajority,
+};
 pub use crate::logging::*;
 pub use crate::optimization::*;
 
 pub use crate::boosters::adaboost::AdaBoost;
 pub use crate::boosters::adaboostv::AdaBoostV;
+pub use crate::boosters::arcgv::ArcGv;
+pub use crate::boosters::bbm::BoostByMajority;
 pub use crate::boosters::brownboost::BrownBoost;
 pub use crate::boosters::corrective_erlpboost::CorrectiveErlpBoost;
 pub use crate::boosters::erlpboost::ErlpBoost;
+pub use crate::boosters::gradient_boosting::{GbmLoss, GradientBoosting};
 pub use crate::boosters::graph_separation_boosting::GraphSeparationBoosting;
+pub use crate::boosters::logitboost::LogitBoost;
 pub use crate::boosters::lpboost::LpBoost;
 pub use crate::boosters::madaboost::MadaBoost;
 pub use crate::boosters::mlpboost::MlpBoost;
+pub use crate::boosters::robustboost::RobustBoost;
 pub use crate::boosters::smoothboost::SmoothBoost;
 pub use crate::boosters::softboost::SoftBoost;
 pub use crate::boosters::sparsiboost::SparsiBoost;
@@ -39,3 +46,6 @@ pub use crate::weak_learners::linear::{
 };
 pub use crate::weak_learners::naive_bayes::{NaiveBayes, NaiveBayesClassifier};
 pub use crate::weak_learners::rbf::{RbfClassBuilder, RbfHypothesis};
+pub use crate::weak_learners::regression_tree::{
+    RegressionTree, RegressionTreeBuilder, RegressionTreeRegressor,
+};

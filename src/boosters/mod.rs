@@ -16,7 +16,10 @@
 //! | --- | --- | --- | --- |
 //! | [`AdaBoost`](crate::boosters::adaboost::AdaBoost) | adaptive | `tolerance`, `force_quit_at` | budget `⌈ln(m) / ε²⌉` rounds, or a hypothesis with weighted edge `±1` |
 //! | [`AdaBoostV`](crate::boosters::adaboostv::AdaBoostV) | adaptive, hard-margin | `tolerance`, `force_quit_at` | budget `⌊2 ln(m) / ε²⌋` rounds, or a hypothesis with weighted edge `±1` |
+//! | [`ArcGv`](crate::boosters::arcgv::ArcGv) | hard-margin (game value) | `force_quit_at` (required) | `Δ_k = 0` (edge at most the current minimal margin), or the round limit |
+//! | [`BoostByMajority`](crate::boosters::bbm::BoostByMajority) | non-adaptive, unweighted majority | `gamma` (required), `tolerance` (target training error `ε`) | `k = ⌈ln(1/ε) / (2γ²)⌉` rounds, or every vote decided |
 //! | [`BrownBoost`](crate::boosters::brownboost::BrownBoost) | adaptive boost-by-majority (noise-tolerant) | `tolerance` (target training error `ε`), `edge_threshold`, `force_quit_at` | remaining time `s` (initially `c = (erfc⁻¹(ε))²`) reaches `0`; no iteration bound otherwise |
+//! | [`RobustBoost`](crate::boosters::robustboost::RobustBoost) | BrownBoost with a non-convex, margin-goal potential | `tolerance` (`ε`), `theta`, `sigma_f`, `force_quit_at` | time `t` reaches `1`; no iteration bound otherwise |
 //! | [`MadaBoost`](crate::boosters::madaboost::MadaBoost) | adaptive (bounded weights) | `tolerance`, `force_quit_at` | budget `⌈(m - 1) / ε²⌉` rounds, or a hypothesis with weighted edge `±1` |
 //! | [`LpBoost`](crate::boosters::lpboost::LpBoost) | soft-margin, totally corrective | `nu`, `tolerance` | LP value `≥ γ̂ - ε` (min edge so far); no iteration bound |
 //! | [`ErlpBoost`](crate::boosters::erlpboost::ErlpBoost) | soft-margin, totally corrective | `nu`, `tolerance` | entropy-regularized gap `≤ ε/2`, or a `⌈max(8/ε, 32 ln(m/ν) / ε²)⌉` budget |
@@ -27,10 +30,19 @@
 //! | [`SoftBoost`](crate::boosters::softboost::SoftBoost) | soft-margin, totally corrective | `nu`, `tolerance` | infeasible or zero-entry entropy projection, solver failure, or a `⌈2 ln(m/ν) / ε²⌉` budget |
 //! | [`TotalBoost`](crate::boosters::totalboost::TotalBoost) | hard-margin, totally corrective | `tolerance` | as SoftBoost with `ν = 1` |
 //! | [`GraphSeparationBoosting`](crate::boosters::graph_separation_boosting::GraphSeparationBoosting) | sample-compression (consistent aggregation) | none | every oppositely labeled pair separated, or a round separates no new pair |
+//! | [`GradientBoosting`](crate::boosters::gradient_boosting::GradientBoosting) | functional gradient descent (regression weak learner) | `loss`, `shrinkage`, `force_quit_at` (required) | the round limit |
+//! | [`LogitBoost`](crate::boosters::logitboost::LogitBoost) | Newton steps on the log-likelihood (regression weak learner) | `max_response`, `force_quit_at` (required) | the round limit |
 //!
-//! All boosters except [`GraphSeparationBoosting`](crate::boosters::graph_separation_boosting::GraphSeparationBoosting)
-//! return a [`WeightedMajority`](crate::hypotheses::WeightedMajority);
-//! it returns a [`NaiveAggregation`](crate::hypotheses::NaiveAggregation).
+//! Most boosters return a [`WeightedMajority`](crate::hypotheses::WeightedMajority).
+//! [`GraphSeparationBoosting`](crate::boosters::graph_separation_boosting::GraphSeparationBoosting)
+//! returns a [`NaiveAggregation`](crate::hypotheses::NaiveAggregation),
+//! [`BoostByMajority`](crate::boosters::bbm::BoostByMajority) a
+//! [`MajorityVote`](crate::hypotheses::MajorityVote), and
+//! [`GradientBoosting`](crate::boosters::gradient_boosting::GradientBoosting) and
+//! [`LogitBoost`](crate::boosters::logitboost::LogitBoost) an
+//! [`AdditiveModel`](crate::hypotheses::AdditiveModel); the last two need a
+//! weak learner that returns a [`Regressor`](crate::Regressor) and accepts
+//! real-valued targets.
 //!
 //! `tolerance` is algorithm-specific: for the adaptive methods it sets an
 //! iteration budget, and for the margin-maximizing methods it is an
@@ -117,13 +129,18 @@
 
 pub mod adaboost;
 pub mod adaboostv;
+pub mod arcgv;
+pub mod bbm;
 pub mod brownboost;
 pub mod corrective_erlpboost;
 pub mod erlpboost;
+pub mod gradient_boosting;
 pub mod graph_separation_boosting;
+pub mod logitboost;
 pub mod lpboost;
 pub mod madaboost;
 pub mod mlpboost;
+pub mod robustboost;
 pub mod smoothboost;
 pub mod softboost;
 pub mod sparsiboost;
