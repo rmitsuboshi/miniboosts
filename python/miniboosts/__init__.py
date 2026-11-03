@@ -1,4 +1,4 @@
-"""Rust boosting algorithms through scikit-learn-style estimators."""
+"""Boosting algorithms for research and comparison, implemented in Rust, with scikit-learn-style estimators."""
 from ._estimators import (
     AdaBoostClassifier, AdaBoostVClassifier, ArcGvClassifier, BoostByMajorityClassifier,
     BrownBoostClassifier, GradientBoostingClassifier, LogitBoostClassifier, MadaBoostClassifier,
