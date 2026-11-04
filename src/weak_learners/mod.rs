@@ -14,7 +14,9 @@
 //! - [`regression_tree`]: a weighted least-squares regression tree for the
 //!   boosters that fit real-valued responses
 //!   ([`GradientBoosting`](crate::GradientBoosting),
-//!   [`LogitBoost`](crate::LogitBoost)).
+//!   [`LogitBoost`](crate::LogitBoost));
+//! - [`union`]: the candidate with the largest edge among other weak
+//!   learners, possibly with different hypothesis types.
 //!
 //! Implement `WeakLearner` for your own hypothesis class to compare
 //! boosters with other learners.
@@ -25,3 +27,4 @@ pub mod linear;
 pub mod naive_bayes;
 pub mod rbf;
 pub mod regression_tree;
+pub mod union;

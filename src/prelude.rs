@@ -12,7 +12,8 @@
 //! - the weak learners' entry points: the decision tree's
 //!   [`DecisionTreeBuilder`] and [`SplitBy`], [`FiniteClass`],
 //!   [`RbfClassBuilder`], [`BoundedLinear`], [`LogisticRegression`] with
-//!   [`LinearOutput`], [`NaiveBayes`], and [`RegressionTreeBuilder`].
+//!   [`LinearOutput`], [`NaiveBayes`], [`RegressionTreeBuilder`], and
+//!   [`WeakLearnerUnion`].
 //!
 //! It does **not** import [`Sample`](crate::Sample),
 //! [`Regressor`](crate::Regressor), the combined hypotheses
@@ -73,3 +74,4 @@ pub use crate::weak_learners::linear::{BoundedLinear, LinearOutput, LogisticRegr
 pub use crate::weak_learners::naive_bayes::NaiveBayes;
 pub use crate::weak_learners::rbf::RbfClassBuilder;
 pub use crate::weak_learners::regression_tree::RegressionTreeBuilder;
+pub use crate::weak_learners::union::WeakLearnerUnion;

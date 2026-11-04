@@ -1,6 +1,7 @@
 //! Prediction traits: [`Classifier`] for confidence-rated binary classifiers
 //! and [`Regressor`] for real-valued predictors.
 use crate::core::Sample;
+use std::sync::Arc;
 
 /// A confidence-rated binary classifier.
 ///
@@ -85,6 +86,45 @@ pub trait Classifier {
         (0..n_sample)
             .map(|row| self.predict(sample, row))
             .collect::<Vec<_>>()
+    }
+}
+
+/// Forwards to the shared classifier, so that type-erased hypotheses such as
+/// [`DynClassifier`](crate::weak_learners::union::DynClassifier) can be
+/// combined by boosters.
+///
+/// # Examples
+/// ```
+/// use std::sync::Arc;
+/// use miniboosts::{Classifier, Sample};
+///
+/// struct Positive;
+/// impl Classifier for Positive {
+///     fn confidence(&self, _: &Sample, _: usize) -> f64 {
+///         0.5
+///     }
+/// }
+///
+/// let sample = Sample::dummy(1);
+/// let h: Arc<dyn Classifier> = Arc::new(Positive);
+/// assert_eq!(h.confidence(&sample, 0), 0.5);
+/// assert_eq!(h.predict(&sample, 0), 1);
+/// ```
+impl<H: Classifier + ?Sized> Classifier for Arc<H> {
+    fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+        (**self).confidence(sample, row)
+    }
+
+    fn predict(&self, sample: &Sample, row: usize) -> i64 {
+        (**self).predict(sample, row)
+    }
+
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        (**self).confidence_all(sample)
+    }
+
+    fn predict_all(&self, sample: &Sample) -> Vec<i64> {
+        (**self).predict_all(sample)
     }
 }
 

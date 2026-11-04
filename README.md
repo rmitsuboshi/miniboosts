@@ -143,7 +143,8 @@ bounded linear functions; boosting it yields a linear classifier),
 `tanh` rules, with no edge guarantee), `NaiveBayes` (weighted Gaussian naive
 Bayes), and `RegressionTreeBuilder` (a weighted least-squares regression tree for
 `GradientBoosting` and `LogitBoost`, which fit real-valued responses and return
-an `AdditiveModel`). Implement `WeakLearner` to use your own
+an `AdditiveModel`). `WeakLearnerUnion` runs several of these learners and returns
+the candidate with the largest edge in each round. Implement `WeakLearner` to use your own
 learner. The gradient boosting machine (GBM) and
 regression tree are not included; see the migration notes.
 See the [migration notes](MIGRATION.md) for removed APIs.

@@ -49,3 +49,4 @@ pub use crate::weak_learners::rbf::{RbfClassBuilder, RbfHypothesis};
 pub use crate::weak_learners::regression_tree::{
     RegressionTree, RegressionTreeBuilder, RegressionTreeRegressor,
 };
+pub use crate::weak_learners::union::{DynClassifier, WeakLearnerUnion};

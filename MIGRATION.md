@@ -1,3 +1,11 @@
+# Unreleased
+
+`WeakLearnerUnion` is a new weak learner, also in the prelude. It holds other
+weak learners, possibly with different hypothesis types, and returns the
+candidate with the largest edge, as a `DynClassifier`. Members run in parallel
+and must be `Send + Sync`. `Classifier` is now
+implemented for `Arc<H>`. No existing API changed.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles
