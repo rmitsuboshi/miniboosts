@@ -4,7 +4,11 @@ MiniBoosts is a Rust library for implementing and comparing boosting algorithms.
 Its algorithms share the `Booster`, `WeakLearner`, and `Classifier` traits, so you
 can use the same data and weak learner across experiments.
 
-[![AdaBoost with decision trees on noisy spirals: the decision boundary and the 0-1 error by round](https://raw.githubusercontent.com/rmitsuboshi/miniboosts/main/img/demo.gif)](https://rmitsuboshi.github.io/miniboosts/)
+[![AdaBoost and ERLPBoost with RBF weak learners on spirals: the decision boundary and the 0-1 error by round](https://raw.githubusercontent.com/rmitsuboshi/miniboosts/main/img/demo.gif)](https://rmitsuboshi.github.io/miniboosts/)
+
+*AdaBoost and ERLPBoost on the same data and RBF weak learner, shown round by round
+(playground's Spirals preset, σ = 0.2, ν = 10). AdaBoost catches up after about 3000
+rounds on this data, and a round's cost differs across boosters.*
 
 **[Try it in your browser](https://rmitsuboshi.github.io/miniboosts/)**, with no
 installation: draw points, pick a booster and a weak learner, and replay training.
