@@ -1,7 +1,7 @@
 //! [`DecisionTreeBuilder`]: configures and builds a [`DecisionTree`].
 use crate::core::{Sample, binning::*, tree::*};
-use crate::weak_learners::decision_tree::DecisionTree;
 use crate::weak_learners::decision_tree::split_by::*;
+use crate::weak_learners::decision_tree::{DecisionTree, LeafConfidence};
 use std::collections::HashMap;
 
 /// The default maximal number of bins per feature. Each feature gets
@@ -22,6 +22,8 @@ pub const DEFAULT_MAX_DEPTH: usize = 2;
 /// | [`Self::max_depth`] | `2` | maximal number of split levels (`>= 1`) |
 /// | [`Self::split_by`] | [`SplitBy::Entropy`] | splitting criterion |
 /// | [`Self::set_nbins`] | `min(distinct values, 255)` | bins of one feature |
+/// | [`Self::exact_splits`] | off | thresholds between all distinct values |
+/// | [`Self::leaf_confidence`] | [`LeafConfidence::Purity`] | what nodes predict |
 ///
 /// # Examples
 /// Configure every parameter, build the weak learner, and train a booster.
@@ -51,6 +53,8 @@ pub struct DecisionTreeBuilder<'a> {
     n_bins: HashMap<&'a str, usize>,
     max_depth: Depth,
     split_by: SplitBy,
+    exact_splits: bool,
+    leaf_confidence: LeafConfidence,
 }
 
 impl<'a> DecisionTreeBuilder<'a> {
@@ -97,6 +101,8 @@ impl<'a> DecisionTreeBuilder<'a> {
             n_bins,
             max_depth,
             split_by,
+            exact_splits: false,
+            leaf_confidence: LeafConfidence::Purity,
         }
     }
 
@@ -214,8 +220,61 @@ impl<'a> DecisionTreeBuilder<'a> {
         }
     }
 
+    /// Uses every midpoint between consecutive distinct values of a feature
+    /// as a candidate threshold (see [`Bins::per_value`]), instead of
+    /// equal-width bins. Bin counts set by [`Self::set_nbins`] are ignored.
+    ///
+    /// The split search then costs `O(m)` per feature and node instead of
+    /// `O(number of bins)` (plus the `O(m)` pass over the node's examples in
+    /// both cases), and building sorts every feature once.
+    ///
+    /// # Examples
+    /// Equal-width bins cannot separate `0` from `0.1` when `100` stretches
+    /// the range; exact splits can.
+    /// ```
+    /// use miniboosts::{Classifier, DecisionTreeBuilder, Sample, WeakLearner};
+    ///
+    /// let rows = vec![vec![0.0], vec![0.1], vec![100.0]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// let uniform = [1.0 / 3.0; 3];
+    ///
+    /// let binned = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// assert_ne!(binned.produce(&sample, &uniform).predict_all(&sample), vec![-1, 1, 1]);
+    ///
+    /// let exact = DecisionTreeBuilder::new(&sample).max_depth(1).exact_splits().build();
+    /// assert_eq!(exact.produce(&sample, &uniform).predict_all(&sample), vec![-1, 1, 1]);
+    /// ```
+    pub fn exact_splits(mut self) -> Self {
+        self.exact_splits = true;
+        self
+    }
+
+    /// Sets what the nodes predict; see [`LeafConfidence`]. Default is
+    /// [`LeafConfidence::Purity`].
+    ///
+    /// # Examples
+    /// An exact edge-maximizing decision stump; see
+    /// [`DecisionTree`](crate::DecisionTree#theoretical-guarantee).
+    /// ```
+    /// use miniboosts::{DecisionTreeBuilder, LeafConfidence, Sample, SplitBy, WeakLearner};
+    ///
+    /// let sample = Sample::from_dense(&[vec![0.0], vec![1.0]], Some(&[-1.0, 1.0])).unwrap();
+    /// let stump = DecisionTreeBuilder::new(&sample)
+    ///     .max_depth(1)
+    ///     .split_by(SplitBy::Edge)
+    ///     .exact_splits()
+    ///     .leaf_confidence(LeafConfidence::Sign)
+    ///     .build();
+    /// assert!(stump.to_string().contains("Leaf confidence: Sign"));
+    /// ```
+    pub fn leaf_confidence(mut self, leaf_confidence: LeafConfidence) -> Self {
+        self.leaf_confidence = leaf_confidence;
+        self
+    }
+
     /// Builds the [`DecisionTree`], cutting every feature into its bins
-    /// with [`Bins::cut`]. This method consumes `self`.
+    /// with [`Bins::cut`] (or [`Bins::per_value`] with
+    /// [`Self::exact_splits`]). This method consumes `self`.
     ///
     /// # Panics
     /// Panics if some feature gets `0` bins (e.g., an empty feature), is
@@ -243,13 +302,16 @@ impl<'a> DecisionTreeBuilder<'a> {
             .iter()
             .map(|feature| {
                 let name = feature.name();
-                let n_bins = *self.n_bins.get(name).unwrap();
-
-                (name, Bins::cut(feature, n_bins))
+                let bins = if self.exact_splits {
+                    Bins::per_value(feature)
+                } else {
+                    Bins::cut(feature, *self.n_bins.get(name).unwrap())
+                };
+                (name, bins)
             })
             .collect::<HashMap<_, _>>();
 
-        let dtree = DecisionTree::new(bins, self.split_by, self.max_depth);
+        let dtree = DecisionTree::new(bins, self.split_by, self.max_depth, self.leaf_confidence);
 
         dtree
     }

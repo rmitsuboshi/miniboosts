@@ -32,6 +32,8 @@
 //! | [`GraphSeparationBoosting`](crate::boosters::graph_separation_boosting::GraphSeparationBoosting) | sample-compression (consistent aggregation) | none | every oppositely labeled pair separated, or a round separates no new pair |
 //! | [`GradientBoosting`](crate::boosters::gradient_boosting::GradientBoosting) | functional gradient descent (regression weak learner) | `loss`, `shrinkage`, `force_quit_at` (required) | the round limit |
 //! | [`LogitBoost`](crate::boosters::logitboost::LogitBoost) | Newton steps on the log-likelihood (regression weak learner) | `max_response`, `force_quit_at` (required) | the round limit |
+//! | [`MajorityOfFive`](crate::boosters::subsample_majority::MajorityOfFive) | majority of boosters on disjoint parts (sample-optimal) | `n_parts`, `seed`; booster given as a closure | one booster run per part |
+//! | [`LarsenRitzert`](crate::boosters::subsample_majority::LarsenRitzert) | majority of boosters on Hanneke's sub-samples (sample-optimal) | `seed`, `max_subsamples`; booster given as a closure | one booster run per sub-sample |
 //!
 //! Most boosters return a [`WeightedMajority`](crate::hypotheses::WeightedMajority).
 //! [`GraphSeparationBoosting`](crate::boosters::graph_separation_boosting::GraphSeparationBoosting)
@@ -144,4 +146,5 @@ pub mod robustboost;
 pub mod smoothboost;
 pub mod softboost;
 pub mod sparsiboost;
+pub mod subsample_majority;
 pub mod totalboost;

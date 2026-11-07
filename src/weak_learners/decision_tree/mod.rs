@@ -22,5 +22,5 @@ pub mod split_by;
 
 pub use builder::{DEFAULT_MAX_DEPTH, DEFAULT_NBIN, DecisionTreeBuilder};
 pub use classifier::DecisionTreeClassifier;
-pub use dtree::DecisionTree;
+pub use dtree::{DecisionTree, LeafConfidence};
 pub use split_by::SplitBy;

@@ -10,7 +10,11 @@
 //!   with `nu = 1`) and measure a booster's gap `ρ* - ρ` directly;
 //! - reproduce constructions stated as a matrix `A = (y_i h_j(x_i))`, such
 //!   as lower-bound instances, with [`FiniteClass::from_table`];
-//! - run deterministically, since ties are broken by index.
+//! - run deterministically, since ties are broken by index;
+//! - play an adversarial weak learner that returns barely enough edge, with
+//!   [`FiniteClass::weakest_with_edge`] or [`FiniteClass::edge_exactly`], to
+//!   test a booster's guarantee under the weak-learning assumption with a
+//!   given `γ`.
 //!
 //! [`RbfClassBuilder`](crate::weak_learners::rbf::RbfClassBuilder) builds
 //! a finite class of Gaussian radial basis functions.
@@ -48,6 +52,7 @@
 use crate::core::{Classifier, Sample, WeakLearner};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A weak learner over a finite hypothesis class `{h_1, ..., h_k}`: each
 /// call returns a member with the largest edge under the given
@@ -63,10 +68,26 @@ use serde::{Deserialize, Serialize};
 /// that makes its edge nonnegative. Ties go to the smaller index, and to
 /// `+h_j` over `-h_j`.
 ///
+/// Two other rules model a weak learner that gives the booster no more than
+/// the weak-learning assumption promises:
+/// - [`FiniteClass::weakest_with_edge`]`(γ)` returns the member with the
+///   *smallest* edge among those with edge at least `γ`;
+/// - [`FiniteClass::edge_exactly`]`(γ)` returns that member scaled by
+///   `γ / γ_j`, so that its edge is exactly `γ`. The scaled member is
+///   confidence-rated (its confidences shrink toward `0`), even if the
+///   class's hypotheses predict `±1`.
+///
+/// If no member has edge at least `γ`, the assumption fails for that
+/// distribution: both rules then return a member with the largest edge,
+/// unscaled, and count the call in
+/// [`FiniteClass::assumption_violations`].
+///
 /// # Guarantee
-/// The returned member maximizes the edge over the class exactly, up to
+/// The default rule maximizes the edge over the class exactly, up to
 /// floating-point rounding in the sums (ties within rounding may resolve
-/// either way).
+/// either way). The other two rules return an edge of at least `γ` (exactly
+/// `γ` up to rounding for [`FiniteClass::edge_exactly`]) whenever some member
+/// has one.
 ///
 /// # Limitations
 /// - [`produce`](WeakLearner::produce) uses the margins cached at
@@ -76,6 +97,9 @@ use serde::{Deserialize, Serialize};
 ///   (`8 m k` bytes) for `m` examples and `k` hypotheses.
 /// - Confidences must be finite and lie in `[-1, 1]`, the range the
 ///   boosters' analyses assume.
+/// - The adversarial rules choose greedily, one round at a time. They do
+///   not maximize a booster's number of rounds over all sequences of
+///   answers, which an adversary in a lower-bound proof may do.
 ///
 /// # Examples
 /// Wrap any [`Classifier`]s; here, two decision stumps trained beforehand.
@@ -107,6 +131,18 @@ pub struct FiniteClass<H> {
     // Training labels, to check that `produce` gets the same sample.
     target: Vec<f64>,
     with_negations: bool,
+    rule: Rule,
+    // Calls in which no member had edge at least `γ` under an adversarial
+    // rule.
+    violations: AtomicUsize,
+}
+
+// How `produce` chooses a member.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Rule {
+    Strongest,
+    Weakest(f64),
+    Exactly(f64),
 }
 
 impl<H: Classifier> FiniteClass<H> {
@@ -155,6 +191,8 @@ impl<H: Classifier> FiniteClass<H> {
             margins,
             target,
             with_negations: false,
+            rule: Rule::Strongest,
+            violations: AtomicUsize::new(0),
         }
     }
 }
@@ -215,6 +253,92 @@ impl<H> FiniteClass<H> {
         self
     }
 
+    /// Makes [`produce`](WeakLearner::produce) return, among the members with
+    /// edge at least `gamma`, one with the smallest edge, instead of the
+    /// largest. Ties go to the smaller index, and to `+h_j` over `-h_j`.
+    /// See [`FiniteClass`] for the case without such a member.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics unless `0 < gamma <= 1`.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::{Sample, WeakLearner};
+    /// use miniboosts::weak_learners::finite_class::FiniteClass;
+    ///
+    /// let sample = Sample::dummy(4); // labels +1, +1, -1, -1
+    /// // Under the uniform distribution, the edges are 1, 0.5, and 0.
+    /// let columns = vec![
+    ///     vec![1.0, 1.0, -1.0, -1.0],
+    ///     vec![1.0, 1.0, -1.0, 1.0],
+    ///     vec![1.0, 1.0, 1.0, 1.0],
+    /// ];
+    /// let learner = FiniteClass::from_table(&sample, columns).weakest_with_edge(0.25);
+    /// assert_eq!(learner.produce(&sample, &[0.25; 4]).index, 1);
+    /// assert_eq!(learner.assumption_violations(), 0);
+    /// ```
+    pub fn weakest_with_edge(mut self, gamma: f64) -> Self {
+        check_gamma(gamma);
+        self.rule = Rule::Weakest(gamma);
+        self
+    }
+
+    /// Makes [`produce`](WeakLearner::produce) return the member that
+    /// [`FiniteClass::weakest_with_edge`]`(gamma)` would, scaled by
+    /// `gamma / γ_j` so that its edge is exactly `gamma`. The scale is
+    /// stored in [`ClassMember::sign`]. See [`FiniteClass`] for the case
+    /// without a member with edge at least `gamma`.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics unless `0 < gamma <= 1`.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::{Classifier, Sample, WeakLearner};
+    /// use miniboosts::weak_learners::finite_class::FiniteClass;
+    ///
+    /// let sample = Sample::dummy(4); // labels +1, +1, -1, -1
+    /// // The only member is correct everywhere: edge 1.
+    /// let learner = FiniteClass::from_table(&sample, vec![vec![1.0, 1.0, -1.0, -1.0]])
+    ///     .edge_exactly(0.25);
+    /// let h = learner.produce(&sample, &[0.25; 4]);
+    /// assert_eq!(h.sign, 0.25);
+    /// assert_eq!(h.confidence_all(&sample), vec![0.25, 0.25, -0.25, -0.25]);
+    /// ```
+    pub fn edge_exactly(mut self, gamma: f64) -> Self {
+        check_gamma(gamma);
+        self.rule = Rule::Exactly(gamma);
+        self
+    }
+
+    /// Returns the number of calls to [`produce`](WeakLearner::produce) in
+    /// which no member had edge at least `γ` under
+    /// [`FiniteClass::weakest_with_edge`] or [`FiniteClass::edge_exactly`].
+    /// It is always `0` under the default rule.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::{Sample, WeakLearner};
+    /// use miniboosts::weak_learners::finite_class::FiniteClass;
+    ///
+    /// let sample = Sample::dummy(2); // labels +1, -1
+    /// // Edge 0.5 under the uniform distribution: below γ = 0.75.
+    /// let learner = FiniteClass::from_table(&sample, vec![vec![1.0, 0.0]]).weakest_with_edge(0.75);
+    /// let h = learner.produce(&sample, &[0.5, 0.5]);
+    /// // The best member is returned, and the call is counted.
+    /// assert_eq!(h.index, 0);
+    /// assert_eq!(learner.assumption_violations(), 1);
+    /// ```
+    pub fn assumption_violations(&self) -> usize {
+        self.violations.load(Ordering::Relaxed)
+    }
+
     /// Returns the hypotheses of the class, `h_1, ..., h_k`, without
     /// negations.
     ///
@@ -260,14 +384,20 @@ where
     }
 
     fn info(&self) -> Option<Vec<(&str, String)>> {
+        let rule = match self.rule {
+            Rule::Strongest => "largest edge".to_string(),
+            Rule::Weakest(gamma) => format!("smallest edge at least {gamma}"),
+            Rule::Exactly(gamma) => format!("edge exactly {gamma}"),
+        };
         Some(vec![
             ("# of hypotheses", self.hypotheses.len().to_string()),
             ("Negations", self.with_negations.to_string()),
+            ("Rule", rule),
         ])
     }
 
-    /// Returns a member with the largest edge under `dist`; see
-    /// [`FiniteClass`].
+    /// Returns a member chosen by the learner's rule under `dist`: by
+    /// default one with the largest edge; see [`FiniteClass`].
     ///
     /// # Panics
     /// Panics if `sample` differs from the training sample in size or
@@ -278,16 +408,36 @@ where
             "FiniteClass must be called with its training sample"
         );
         let edges = self.edges(dist);
-        let mut best = (0, 1.0, f64::NEG_INFINITY);
-        for (j, &edge) in edges.iter().enumerate() {
-            if edge > best.2 {
-                best = (j, 1.0, edge);
+        // Members in tie-breaking order: by index, `+h_j` before `-h_j`.
+        let members = edges.iter().enumerate().flat_map(|(j, &edge)| {
+            let negation = self.with_negations.then_some((j, -1.0, -edge));
+            [Some((j, 1.0, edge)), negation].into_iter().flatten()
+        });
+        let strongest = |members: &mut dyn Iterator<Item = (usize, f64, f64)>| {
+            members.fold((0, 1.0, f64::NEG_INFINITY), |best, member| {
+                if member.2 > best.2 { member } else { best }
+            })
+        };
+        let (index, sign, _) = match self.rule {
+            Rule::Strongest => strongest(&mut members.into_iter()),
+            Rule::Weakest(gamma) | Rule::Exactly(gamma) => {
+                let weakest = members.clone().filter(|member| member.2 >= gamma).fold(
+                    None,
+                    |best: Option<(usize, f64, f64)>, member| match best {
+                        Some(b) if b.2 <= member.2 => Some(b),
+                        _ => Some(member),
+                    },
+                );
+                match (weakest, self.rule) {
+                    (Some((j, sign, edge)), Rule::Exactly(_)) => (j, sign * gamma / edge, gamma),
+                    (Some(member), _) => member,
+                    (None, _) => {
+                        self.violations.fetch_add(1, Ordering::Relaxed);
+                        strongest(&mut members.into_iter())
+                    }
+                }
             }
-            if self.with_negations && -edge > best.2 {
-                best = (j, -1.0, -edge);
-            }
-        }
-        let (index, sign, _) = best;
+        };
         ClassMember {
             index,
             sign,
@@ -313,7 +463,10 @@ where
 pub struct ClassMember<H> {
     /// Index `j` of the hypothesis in the class.
     pub index: usize,
-    /// `1.0` for `h_j`, `-1.0` for its negation.
+    /// `1.0` for `h_j`, `-1.0` for its negation. Under
+    /// [`FiniteClass::edge_exactly`]`(γ)` it is instead `±γ / γ_j`, the
+    /// signed scale that gives the member edge `γ`; its magnitude is at most
+    /// `1`.
     pub sign: f64,
     /// The hypothesis `h_j`.
     pub hypothesis: H,
@@ -353,6 +506,13 @@ impl TableHypothesis {
     pub fn new(confidences: Vec<f64>) -> Self {
         Self { confidences }
     }
+}
+
+fn check_gamma(gamma: f64) {
+    assert!(
+        gamma > 0.0 && gamma <= 1.0,
+        "the edge γ must satisfy 0 < γ <= 1, got {gamma}"
+    );
 }
 
 impl Classifier for TableHypothesis {
@@ -419,6 +579,74 @@ mod tests {
     }
 
     #[test]
+    fn weakest_with_edge_returns_the_smallest_sufficient_edge() {
+        let (sample, learner) = table_learner();
+        // Uniform: edges 0, 0.5, -1, 0.5; with negations also 0, -0.5, 1,
+        // -0.5. Ties at 0.5 go to the smaller index.
+        let learner = learner.with_negations().weakest_with_edge(0.25);
+        let h = learner.produce(&sample, &[0.25; 4]);
+        assert_eq!((h.index, h.sign), (1, 1.0));
+        // Only -h_2 reaches 0.75.
+        let (sample, learner) = table_learner();
+        let learner = learner.with_negations().weakest_with_edge(0.75);
+        let h = learner.produce(&sample, &[0.25; 4]);
+        assert_eq!((h.index, h.sign), (2, -1.0));
+        assert_eq!(learner.assumption_violations(), 0);
+    }
+
+    #[test]
+    fn edge_exactly_scales_the_member_to_edge_gamma() {
+        let (sample, learner) = table_learner();
+        let learner = learner.with_negations().edge_exactly(0.25);
+        for d in [[0.25; 4], [0.1, 0.2, 0.3, 0.4], [0.4, 0.3, 0.2, 0.1]] {
+            let h = learner.produce(&sample, &d);
+            let edge: f64 = (0..4)
+                .map(|i| d[i] * sample.target()[i] * h.confidence(&sample, i))
+                .sum();
+            // A sum of four products of values with few significant bits.
+            assert!((edge - 0.25).abs() < 1e-15, "{edge}");
+            assert!(h.sign.abs() <= 1.0);
+        }
+        assert_eq!(learner.assumption_violations(), 0);
+    }
+
+    #[test]
+    fn without_a_sufficient_edge_the_best_member_is_returned_and_counted() {
+        let (sample, learner) = table_learner();
+        // Without negations the largest edge is 0.5 < 0.75.
+        let learner = learner.edge_exactly(0.75);
+        let h = learner.produce(&sample, &[0.25; 4]);
+        assert_eq!((h.index, h.sign), (1, 1.0));
+        learner.produce(&sample, &[0.25; 4]);
+        assert_eq!(learner.assumption_violations(), 2);
+    }
+
+    #[test]
+    fn adaboost_meets_its_bound_against_edge_exactly() {
+        use crate::{AdaBoost, Booster};
+        // Margins u_j: hypothesis j misclassifies example j only.
+        let m = 8;
+        let sample = Sample::dummy(m);
+        let y = sample.target().to_vec();
+        let columns = (0..m)
+            .map(|j| (0..m).map(|i| if i == j { -y[i] } else { y[i] }).collect())
+            .collect();
+        let gamma = 0.1;
+        let learner = FiniteClass::from_table(&sample, columns).edge_exactly(gamma);
+        let rounds = 60;
+        let f = AdaBoost::init(&sample).force_quit_at(rounds).run(&learner);
+        assert_eq!(learner.assumption_violations(), 0);
+        // Training error <= Π_t sqrt(1 - γ_t²) = (1 - γ²)^{T/2} with γ_t = γ,
+        // which also holds for confidence-rated hypotheses (Schapire and
+        // Singer, 1999, Sec. 3.1); the error is a multiple of 1/m.
+        let error = (0..m)
+            .filter(|&i| y[i] * f.confidence(&sample, i) <= 0.0)
+            .count() as f64
+            / m as f64;
+        assert!(error <= (1.0 - gamma * gamma).powf(rounds as f64 / 2.0));
+    }
+
+    #[test]
     fn invalid_inputs_panic() {
         let sample = Sample::dummy(2);
         for columns in [
@@ -434,5 +662,10 @@ mod tests {
         let other = Sample::dummy(3);
         let result = std::panic::catch_unwind(|| learner.produce(&other, &[0.5, 0.5]));
         assert!(result.is_err());
+        for gamma in [0.0, -0.5, 1.5, f64::NAN] {
+            let learner = FiniteClass::from_table(&sample, vec![vec![1.0, 1.0]]);
+            let result = std::panic::catch_unwind(|| learner.weakest_with_edge(gamma));
+            assert!(result.is_err());
+        }
     }
 }

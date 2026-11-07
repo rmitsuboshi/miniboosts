@@ -35,7 +35,8 @@ use std::fmt;
 /// holds for labels `±1`). Hence `c_S ∈ [-1, 1]`; its sign is the weighted
 /// majority label and its magnitude the weighted purity. A tie gives `0`,
 /// which [`crate::Classifier::predict`] maps to `+1`. Only leaf
-/// confidences are used for prediction.
+/// confidences are used for prediction. With [`LeafConfidence::Sign`], every
+/// node stores the sign of `c_S` instead (`+1` for a tie).
 ///
 /// **Growth.** Starting from the root with the depth budget `max_depth`, a
 /// node becomes a leaf if
@@ -52,16 +53,29 @@ use std::fmt;
 ///
 /// **Candidate thresholds.** Each feature is cut once, when the builder is
 /// built, into equal-width bins (see [`crate::core::binning::Bins::cut`];
-/// by default `min(number of distinct values, 255)` bins). At each node the
+/// by default `min(number of distinct values, 255)` bins), or, with
+/// [`DecisionTreeBuilder::exact_splits`](crate::DecisionTreeBuilder::exact_splits),
+/// at the midpoints between consecutive distinct values. At each node the
 /// candidate thresholds for a feature are the boundaries between the bins
 /// that contain at least one of the node's examples. The criterion is
 /// evaluated for every candidate of every feature; see [`SplitBy`] for the
 /// formulas.
 ///
 /// # Theoretical guarantee
-/// None. In particular, a depth-limited tree is not guaranteed to satisfy a
-/// booster's weak-learning assumption (edge `>= γ > 0` on every
-/// distribution).
+/// A decision stump (`max_depth = 1`) built with
+/// [`exact_splits`](crate::DecisionTreeBuilder::exact_splits),
+/// [`SplitBy::Edge`], and [`LeafConfidence::Sign`] maximizes the edge exactly
+/// (up to rounding) over the class of the constants `±1` and the stumps
+/// `±sign(x[f] - t)` for every feature `f` and threshold `t`. The edge
+/// criterion maximizes `|Δ_R - Δ_L|` over the thresholds and the unsplit
+/// node, where `Δ_A = Σ_{i ∈ A} d_i y_i`; since `Δ_L + Δ_R = Δ_S`, the edge
+/// of the stump with leaves `sign(Δ_L)` and `sign(Δ_R)` is
+/// `|Δ_L| + |Δ_R| = max(|Δ_R - Δ_L|, |Δ_S|)`, which is the largest edge in
+/// that class.
+///
+/// Otherwise there is no guarantee. In particular, a depth-limited tree is
+/// not guaranteed to satisfy a booster's weak-learning assumption (edge
+/// `>= γ > 0` on every distribution), and deeper trees are grown greedily.
 ///
 /// # Limitations
 /// - Labels must be `-1` and `+1`. They are converted with `as i64` /
@@ -141,17 +155,59 @@ pub struct DecisionTree<'a> {
     bins: HashMap<&'a str, Bins>,
     split_by: SplitBy,
     max_depth: Depth,
+    leaf_confidence: LeafConfidence,
+}
+
+/// What a [`DecisionTree`]'s nodes predict.
+///
+/// # Examples
+/// With weights `3/4` on `+1` and `1/4` on `-1` in a single leaf, the weighted
+/// purity is `1/2` and the sign is `1`.
+/// ```
+/// use miniboosts::{Classifier, DecisionTreeBuilder, LeafConfidence, Sample, WeakLearner};
+///
+/// let sample = Sample::from_dense(&[vec![0.0], vec![0.0]], Some(&[1.0, -1.0])).unwrap();
+/// let dist = [0.75, 0.25];
+/// for (leaf, expected) in [(LeafConfidence::Purity, 0.5), (LeafConfidence::Sign, 1.0)] {
+///     let tree = DecisionTreeBuilder::new(&sample).leaf_confidence(leaf).build();
+///     assert_eq!(tree.produce(&sample, &dist).confidence(&sample, 0), expected);
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LeafConfidence {
+    /// The weighted purity `(W_{S,+1} - W_{S,-1}) / (W_{S,+1} + W_{S,-1})`.
+    /// This is the default.
+    #[default]
+    Purity,
+    /// The sign of the weighted purity, with `+1` for a tie. Makes a stump an
+    /// exact edge maximizer; see [`DecisionTree`].
+    Sign,
+}
+
+impl fmt::Display for LeafConfidence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Purity => write!(f, "Purity"),
+            Self::Sign => write!(f, "Sign"),
+        }
+    }
 }
 
 impl<'a> DecisionTree<'a> {
     /// Initialize [`DecisionTree`].
     /// This method is called only via `DecisionTreeBuilder::build`.
     #[inline]
-    pub(super) fn new(bins: HashMap<&'a str, Bins>, split_by: SplitBy, max_depth: Depth) -> Self {
+    pub(super) fn new(
+        bins: HashMap<&'a str, Bins>,
+        split_by: SplitBy,
+        max_depth: Depth,
+        leaf_confidence: LeafConfidence,
+    ) -> Self {
         Self {
             bins,
             split_by,
             max_depth,
+            leaf_confidence,
         }
     }
 
@@ -169,6 +225,16 @@ impl<'a> DecisionTree<'a> {
         // Compute the best confidence that minimizes the training error
         // on this node.
         let (conf, loss) = confidence_and_loss(sample, dist, &indices[..]);
+        let conf = match self.leaf_confidence {
+            LeafConfidence::Purity => conf,
+            LeafConfidence::Sign => {
+                if conf >= 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+        };
 
         // If the node is pure (zero weighted misclassification)
         // or the depth budget is exhausted, construct a leaf node.
@@ -233,6 +299,7 @@ impl WeakLearner for DecisionTree<'_> {
             ("# of bins (max)", format!("{n_bins}")),
             ("Max depth", format!("{}", self.max_depth)),
             ("Split criterion", format!("{}", self.split_by)),
+            ("Leaf confidence", format!("{}", self.leaf_confidence)),
         ]);
         Some(info)
     }
@@ -313,9 +380,10 @@ impl fmt::Display for DecisionTree<'_> {
             # Decision Tree Weak Learner\n\n\
             - Max depth: {}\n\
             - Splitting split_by: {}\n\
+            - Leaf confidence: {}\n\
             - Bins:\
             ",
-            self.max_depth, self.split_by,
+            self.max_depth, self.split_by, self.leaf_confidence,
         )?;
 
         let width = self
@@ -344,5 +412,91 @@ impl fmt::Display for DecisionTree<'_> {
         }
 
         write!(f, "----------")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Classifier, DecisionTreeBuilder, LeafConfidence, Sample, SplitBy, WeakLearner};
+
+    // A deterministic generator for test data (xorshift64).
+    fn uniforms(seed: u64, n: usize) -> Vec<f64> {
+        let mut state = seed;
+        (0..n)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                (state >> 11) as f64 / (1u64 << 53) as f64
+            })
+            .collect()
+    }
+
+    // The largest edge over the constants ±1 and the stumps ±sign(x[f] - t),
+    // by enumerating every threshold between distinct values.
+    fn best_stump_edge(rows: &[Vec<f64>], y: &[f64], d: &[f64]) -> f64 {
+        let total: f64 = (0..y.len()).map(|i| d[i] * y[i]).sum();
+        let mut best = total.abs();
+        for f in 0..rows[0].len() {
+            let mut values: Vec<f64> = rows.iter().map(|r| r[f]).collect();
+            values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            values.dedup();
+            for pair in values.windows(2) {
+                let t = pair[0] / 2.0 + pair[1] / 2.0;
+                let edge: f64 = (0..y.len())
+                    .map(|i| d[i] * y[i] * if rows[i][f] < t { -1.0 } else { 1.0 })
+                    .sum();
+                best = best.max(edge.abs());
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn exact_sign_stump_maximizes_the_edge() {
+        let m = 40;
+        for seed in 1..=20u64 {
+            let u = uniforms(seed, 4 * m);
+            // Coarse values in the first feature create ties.
+            let rows: Vec<Vec<f64>> = (0..m)
+                .map(|i| vec![(u[i] * 5.0).floor(), u[m + i] * 100.0 - 50.0])
+                .collect();
+            let y: Vec<f64> = (0..m)
+                .map(|i| if u[2 * m + i] < 0.5 { -1.0 } else { 1.0 })
+                .collect();
+            let total: f64 = u[3 * m..].iter().sum();
+            let d: Vec<f64> = u[3 * m..].iter().map(|w| w / total).collect();
+            let sample = Sample::from_dense(&rows, Some(&y)).unwrap();
+            let stump = DecisionTreeBuilder::new(&sample)
+                .max_depth(1)
+                .split_by(SplitBy::Edge)
+                .exact_splits()
+                .leaf_confidence(LeafConfidence::Sign)
+                .build();
+            let h = stump.produce(&sample, &d);
+            let edge: f64 = (0..m).map(|i| d[i] * y[i] * h.confidence(&sample, i)).sum();
+            assert!(h.confidence_all(&sample).iter().all(|c| c.abs() == 1.0));
+            // Both sides sum the same 40 terms in different orders.
+            assert!(
+                (edge - best_stump_edge(&rows, &y, &d)).abs() < 1e-12,
+                "seed {seed}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_default_tree_is_unchanged_by_the_new_options() {
+        let rows = vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]];
+        let y = [-1.0, 1.0, -1.0, 1.0];
+        let sample = Sample::from_dense(&rows, Some(&y)).unwrap();
+        let d = [0.1, 0.2, 0.3, 0.4];
+        let default = DecisionTreeBuilder::new(&sample)
+            .build()
+            .produce(&sample, &d);
+        let purity = DecisionTreeBuilder::new(&sample)
+            .leaf_confidence(LeafConfidence::Purity)
+            .build()
+            .produce(&sample, &d);
+        assert_eq!(default, purity);
     }
 }

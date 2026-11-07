@@ -172,8 +172,23 @@ impl Bins {
     /// `a` (adjacent floats); the outer bins extend to `f64::MIN` and
     /// `f64::MAX`.
     ///
+    /// Time complexity: `O(m log m)` for `m` values.
+    ///
+    /// # Panics
     /// Panics for empty features or non-finite values.
-    pub(crate) fn per_value(feature: &Feature) -> Self {
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    /// use miniboosts::core::binning::Bins;
+    ///
+    /// let rows = vec![vec![3.0], vec![1.0], vec![3.0], vec![2.0]];
+    /// let sample = Sample::from_dense(&rows, None).unwrap();
+    /// // Distinct values 1, 2, 3: boundaries 1.5 and 2.5.
+    /// let bins = Bins::per_value(&sample["feature_0"]);
+    /// assert_eq!(bins.len(), 3);
+    /// ```
+    pub fn per_value(feature: &Feature) -> Self {
         let mut values: Vec<f64> = match feature {
             Feature::Dense { vals, .. } => vals.clone(),
             Feature::Sparse { vals, .. } => {

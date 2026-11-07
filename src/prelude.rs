@@ -8,9 +8,10 @@
 //!   [`ErlpBoost`], [`GradientBoosting`] with [`GbmLoss`],
 //!   [`GraphSeparationBoosting`], [`LogitBoost`], [`LpBoost`], [`MadaBoost`],
 //!   [`MlpBoost`], [`RobustBoost`], [`SmoothBoost`], [`SoftBoost`],
-//!   [`SparsiBoost`], [`TotalBoost`]);
+//!   [`SparsiBoost`], [`TotalBoost`]), and the sub-sample majorities
+//!   [`MajorityOfFive`] and [`LarsenRitzert`];
 //! - the weak learners' entry points: the decision tree's
-//!   [`DecisionTreeBuilder`] and [`SplitBy`], [`FiniteClass`],
+//!   [`DecisionTreeBuilder`], [`SplitBy`], and [`LeafConfidence`], [`FiniteClass`],
 //!   [`RbfClassBuilder`], [`BoundedLinear`], [`LogisticRegression`] with
 //!   [`LinearOutput`], [`NaiveBayes`], [`RegressionTreeBuilder`], and
 //!   [`WeakLearnerUnion`].
@@ -67,8 +68,9 @@ pub use crate::boosters::robustboost::RobustBoost;
 pub use crate::boosters::smoothboost::SmoothBoost;
 pub use crate::boosters::softboost::SoftBoost;
 pub use crate::boosters::sparsiboost::SparsiBoost;
+pub use crate::boosters::subsample_majority::{LarsenRitzert, MajorityOfFive};
 pub use crate::boosters::totalboost::TotalBoost;
-pub use crate::weak_learners::decision_tree::{DecisionTreeBuilder, SplitBy};
+pub use crate::weak_learners::decision_tree::{DecisionTreeBuilder, LeafConfidence, SplitBy};
 pub use crate::weak_learners::finite_class::FiniteClass;
 pub use crate::weak_learners::linear::{BoundedLinear, LinearOutput, LogisticRegression};
 pub use crate::weak_learners::naive_bayes::NaiveBayes;

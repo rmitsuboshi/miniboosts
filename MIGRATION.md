@@ -1,5 +1,25 @@
 # Unreleased
 
+`MajorityOfFive` (Høgsgaard, Larsen, and Mathiasen, 2024) and `LarsenRitzert`
+(Larsen and Ritzert, 2022) are new, in `boosters::subsample_majority` and the
+prelude. They run a booster, given as a closure, on sub-samples and return the
+`MajorityVote` of the results. `Sample::select_rows` returns a sample made of
+given rows, with repetitions allowed.
+
+`FiniteClass::weakest_with_edge(γ)` and `FiniteClass::edge_exactly(γ)` make a
+finite class return a member with barely edge `γ` instead of the largest edge,
+and `FiniteClass::assumption_violations` counts the calls in which no member
+reached `γ`. Under `edge_exactly`, `ClassMember::sign` holds the scale `±γ/γ_j`
+instead of `±1`.
+
+`DecisionTreeBuilder::exact_splits` uses every midpoint between distinct
+feature values as a threshold (`Bins::per_value` is now public), and
+`DecisionTreeBuilder::leaf_confidence(LeafConfidence::Sign)` makes nodes
+predict `±1`. With `max_depth(1)` and `SplitBy::Edge`, they give an exact
+edge-maximizing decision stump. `LeafConfidence` is in the prelude. The
+defaults, and thus existing trees, are unchanged; `DecisionTree`'s `Display`
+and `info` now also report the leaf confidence.
+
 `WeakLearnerUnion` is a new weak learner, also in the prelude. It holds other
 weak learners, possibly with different hypothesis types, and returns the
 candidate with the largest edge, as a `DynClassifier`. Members run in parallel

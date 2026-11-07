@@ -172,10 +172,19 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 | `GraphSeparationBoosting` | [Alon, Gonen, Hazan, and Moran][graphsepboost] |
 | `GradientBoosting` | [Friedman][gbm] |
 | `LogitBoost` | [Friedman, Hastie, and Tibshirani][logitboost] |
+| `MajorityOfFive` | [Høgsgaard, Larsen, and Mathiasen][majorityoffive] |
+| `LarsenRitzert` | [Larsen and Ritzert][larsenritzert] |
 
-The built-in weak learners are a [decision tree][decisiontree], `FiniteClass`
-(an exact edge maximizer over a finite hypothesis class, including one given as
-a table of confidences), `RbfClassBuilder` (Gaussian bumps centered at training
+`MajorityOfFive` and `LarsenRitzert` are sample-optimal weak-to-strong learners
+that take a majority vote of boosters run on sub-samples. They take the booster
+as a closure, so any booster above can be used inside them.
+
+The built-in weak learners are a [decision tree][decisiontree] (an exact
+edge-maximizing decision stump with `exact_splits`, `SplitBy::Edge`, and
+`LeafConfidence::Sign`), `FiniteClass` (an exact edge maximizer over a finite
+hypothesis class, including one given as a table of confidences, or an
+adversarial learner that returns barely edge `γ` with `weakest_with_edge` or
+`edge_exactly`), `RbfClassBuilder` (Gaussian bumps centered at training
 examples, as a `FiniteClass`), `BoundedLinear` (exact edge maximization over
 bounded linear functions; boosting it yields a linear classifier),
 `LogisticRegression` (weighted logistic regression returning halfspaces or
@@ -183,10 +192,8 @@ bounded linear functions; boosting it yields a linear classifier),
 Bayes), and `RegressionTreeBuilder` (a weighted least-squares regression tree for
 `GradientBoosting` and `LogitBoost`, which fit real-valued responses and return
 an `AdditiveModel`). `WeakLearnerUnion` runs several of these learners and returns
-the candidate with the largest edge in each round. Implement `WeakLearner` to use your own
-learner. The gradient boosting machine (GBM) and
-regression tree are not included; see the migration notes.
-See the [migration notes](MIGRATION.md) for removed APIs.
+the candidate with the largest edge in each round. Implement `WeakLearner` to use
+your own learner. See the [migration notes](MIGRATION.md) for removed APIs.
 
 Custom hypotheses must return consistent predictions for a fixed sample.
 CorrectiveERLPBoost and MLPBoost cache training margins instead of repeatedly
@@ -295,6 +302,8 @@ MiniBoosts is licensed under [MIT](https://github.com/rmitsuboshi/miniboosts/blo
 [robustboost]: https://arxiv.org/abs/0905.2138
 [gbm]: https://doi.org/10.1214/aos/1013203451
 [logitboost]: https://doi.org/10.1214/aos/1016218223
+[majorityoffive]: https://arxiv.org/abs/2408.17148
+[larsenritzert]: https://arxiv.org/abs/2206.01563
 [cerlpboost]: https://link.springer.com/article/10.1007/s10994-010-5173-z
 [decisiontree]: https://www.amazon.co.jp/-/en/Leo-Breiman/dp/0412048418
 [erlpboost]: https://www.stat.purdue.edu/~vishy/papers/WarGloVis08.pdf

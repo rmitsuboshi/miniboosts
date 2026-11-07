@@ -567,6 +567,67 @@ impl Sample {
         }
     }
 
+    /// Returns the sample made of the rows `rows`, in that order. A row may
+    /// appear several times (e.g. when drawing with replacement) or not at
+    /// all. Feature names, storage (dense or sparse), and targets are kept.
+    ///
+    /// Time complexity: `O(n k)` for `n = rows.len()` and `k` features, with
+    /// an extra `O(log m)` factor for sparse features.
+    ///
+    /// # Panics
+    /// Panics if a row is out of range.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// let rows = vec![vec![0.0], vec![1.0], vec![2.0]];
+    /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// let sub = sample.select_rows(&[2, 0, 2]);
+    /// assert_eq!(sub.shape(), (3, 1));
+    /// assert_eq!(sub["feature_0"][0], 2.0);
+    /// assert_eq!(sub.target(), &[1.0, -1.0, 1.0]);
+    /// ```
+    pub fn select_rows(&self, rows: &[usize]) -> Self {
+        assert!(
+            rows.iter().all(|&i| i < self.n_sample),
+            "row index out of range for a sample of {} rows",
+            self.n_sample
+        );
+        let features = self
+            .features
+            .iter()
+            .map(|feature| match feature {
+                Feature::Dense { name, vals } => Feature::Dense {
+                    name: name.clone(),
+                    vals: rows.iter().map(|&i| vals[i]).collect(),
+                },
+                Feature::Sparse { name, .. } => Feature::Sparse {
+                    name: name.clone(),
+                    vals: rows
+                        .iter()
+                        .enumerate()
+                        .map(|(new, &i)| (new, feature[i]))
+                        .filter(|&(_, v)| v != 0.0)
+                        .collect(),
+                    size: rows.len(),
+                },
+            })
+            .collect();
+        let target = if self.target.is_empty() {
+            Vec::new()
+        } else {
+            rows.iter().map(|&i| self.target[i]).collect()
+        };
+        Self {
+            name_to_index: self.name_to_index.clone(),
+            features,
+            target,
+            n_sample: rows.len(),
+            n_feature: self.n_feature,
+        }
+    }
+
     /// Returns `(number of examples, number of features)`.
     /// The label column is not counted as a feature.
     ///
@@ -1034,6 +1095,38 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn select_rows_keeps_sparse_features_sparse() {
+        let mut sparse = Feature::sparse("s", 4);
+        sparse.append((1, 2.0));
+        sparse.append((3, -1.0));
+        let mut dense = Feature::dense("d");
+        for v in [0.5, 1.5, 2.5, 3.5] {
+            dense.append((0, v));
+        }
+        let sample = Sample {
+            name_to_index: HashMap::from([("s".to_string(), 0), ("d".to_string(), 1)]),
+            features: vec![sparse, dense],
+            target: vec![1.0, -1.0, 1.0, -1.0],
+            n_sample: 4,
+            n_feature: 2,
+        };
+        let sub = sample.select_rows(&[3, 3, 0, 1]);
+        assert!(sub["s"].is_sparse() && sub["d"].is_dense());
+        assert_eq!(
+            (0..4).map(|i| sub["s"][i]).collect::<Vec<_>>(),
+            vec![-1.0, -1.0, 0.0, 2.0]
+        );
+        assert_eq!(
+            (0..4).map(|i| sub["d"][i]).collect::<Vec<_>>(),
+            vec![3.5, 3.5, 0.5, 1.5]
+        );
+        assert_eq!(sub.target(), &[-1.0, -1.0, 1.0, -1.0]);
+        assert_eq!(sub.shape(), (4, 2));
+        let result = std::panic::catch_unwind(|| sample.select_rows(&[4]));
+        assert!(result.is_err());
+    }
+
     use super::*;
 
     fn training_examples(bytes: &[u8], has_header: bool) -> Sample {
