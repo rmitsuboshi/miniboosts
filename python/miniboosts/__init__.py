@@ -7,7 +7,7 @@ from ._estimators import (
     SparsiBoostClassifier, TotalBoostClassifier, GraphSeparationBoostingClassifier,
     DecisionTreeClassifier, BoundedLinearClassifier, LogisticRegressionClassifier,
     NaiveBayesClassifier, RBFClassifier, FiniteClassClassifier, RegressionTreeRegressor,
-    PredictionAdapter,
+    PredictionAdapter, MajorityOfFiveClassifier, LarsenRitzertClassifier,
 )
 
 __version__ = '0.5.2'
@@ -19,5 +19,5 @@ __all__ = [
     'SparsiBoostClassifier', 'TotalBoostClassifier', 'GraphSeparationBoostingClassifier',
     'DecisionTreeClassifier', 'BoundedLinearClassifier', 'LogisticRegressionClassifier',
     'NaiveBayesClassifier', 'RBFClassifier', 'FiniteClassClassifier', 'RegressionTreeRegressor',
-    'PredictionAdapter',
+    'PredictionAdapter', 'MajorityOfFiveClassifier', 'LarsenRitzertClassifier',
 ]

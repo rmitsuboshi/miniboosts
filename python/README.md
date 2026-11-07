@@ -134,12 +134,12 @@ as for the boosters. Rust failures (e.g. non-convergence) raise `RuntimeError`.
 
 | Python class | Parameters (defaults) | Hypothesis |
 | --- | --- | --- |
-| `DecisionTreeClassifier` | `max_depth=1` | Entropy-split tree with bounded leaf confidence |
+| `DecisionTreeClassifier` | `max_depth=1`, `split_by="entropy"`, `exact_splits=False`, `leaf_confidence="purity"` | Weighted tree with bounded leaf confidence |
 | `BoundedLinearClassifier` | none | Edge-maximizing `(w·x + b) / S`, `‖(w, b)‖₂ ≤ 1`, `S = √(R² + 1)` |
 | `LogisticRegressionClassifier` | `regularization=1e-4`, `output="sign"` | Weighted L2-regularized logistic regression |
 | `NaiveBayesClassifier` | `var_smoothing=1e-9` | Weighted Gaussian naive Bayes, `P(+1∣x) − P(−1∣x)` |
-| `RBFClassifier` | `bandwidth` (required), `centers=None` | Edge-maximizing Gaussian bump `±exp(−‖x − c‖² / (2σ²))` |
-| `FiniteClassClassifier` | `hypotheses` (required), `with_negations=False` | Edge-maximizing member of a fixed list |
+| `RBFClassifier` | `bandwidth` (required), `centers=None`, `selection="largest"`, `gamma=None` | Edge-maximizing Gaussian bump `±exp(−‖x − c‖² / (2σ²))` |
+| `FiniteClassClassifier` | `hypotheses` (required), `with_negations=False`, `selection="largest"`, `gamma=None` | Edge-maximizing (or adversarial) member of a fixed list |
 | `RegressionTreeRegressor` | `max_depth=3`, `n_bins=None` | Weighted least-squares regression tree (for regression boosters) |
 
 `RegressionTreeRegressor` considers every split between consecutive distinct
@@ -147,6 +147,11 @@ values of a feature (threshold at the midpoint) when the feature has at most
 `n_bins` distinct values (default cap 255); above the cap it uses `n_bins`
 equal-width bins, and the best split may be missed.
 
+- `DecisionTreeClassifier` splits by `"entropy"`, `"edge"`, `"gini"`, or
+  `"twoing"`. `exact_splits=True` tries every midpoint between distinct values
+  instead of equal-width bins, and `leaf_confidence="sign"` makes leaves
+  predict `±1`. With `max_depth=1`, `split_by="edge"`, `exact_splits=True`,
+  and `leaf_confidence="sign"`, it is an exact edge-maximizing decision stump.
 - `BoundedLinearClassifier` exactly maximizes the edge over its class; `R` is
   the largest training-row norm, and confidences outside that radius are
   clamped to [-1, +1]. Boosting it yields a single linear function. The class
@@ -167,6 +172,12 @@ equal-width bins, and the best split may be missed.
   index, then to `+h`). `index_`, `sign_`, and `hypothesis_` describe the
   choice. `clone` keeps the same hypothesis objects instead of refitting
   copies; do not mutate them.
+- `selection` makes `FiniteClassClassifier` and `RBFClassifier` an adversarial
+  weak learner for testing boosters under the weak-learning assumption with
+  edge `gamma`: `"weakest"` returns the member with the smallest edge that is
+  at least `gamma`, and `"exactly"` scales it so that its edge is exactly
+  `gamma` (`sign_` holds the signed scale). If no member reaches `gamma`, the
+  largest edge is used and `assumption_violated_` is `True`.
 
 ## Algorithms and parameters
 
@@ -194,6 +205,19 @@ step; the algorithm may stop earlier.
 | `SparsiBoostClassifier` | `n_hypotheses=None`, `tolerance=None`, `seed=0`, `max_iterations=None` |
 | `TotalBoostClassifier` | `tolerance=0.01` |
 | `GraphSeparationBoostingClassifier` | none |
+
+### Majorities of boosters on sub-samples
+
+`MajorityOfFiveClassifier(estimator=None, n_parts=5, seed=0)` (Høgsgaard,
+Larsen, and Mathiasen, NeurIPS 2024) splits the shuffled rows into `n_parts`
+disjoint parts, and `LarsenRitzertClassifier(estimator=None, seed=0,
+max_subsamples=None)` (Larsen and Ritzert, NeurIPS 2022) uses Hanneke's about
+`m^0.79` overlapping sub-samples. Both fit a clone of `estimator` (a booster,
+by default `AdaBoostClassifier()`) on each and predict by unweighted majority;
+`estimators_` holds the fitted voters. Their sample-optimality guarantees need
+voters that reach large margins (`Ω(γ)` for Majority-of-5, `γ/2` for
+Larsen–Ritzert); `max_subsamples` is an approximation without the guarantee.
+A part with a single label makes the voter's fit fail.
 
 `tolerance` has the original algorithm-specific meaning: an iteration-budget
 parameter for AdaBoost/MadaBoost, a margin-update and budget parameter for

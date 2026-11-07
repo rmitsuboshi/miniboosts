@@ -567,7 +567,9 @@ fn check_distribution(weights: &[f64], n: usize) -> PyResult<()> {
 }
 
 /// A fitted native weak hypothesis. `index` and `sign` identify the chosen
-/// member `sign · h_index` for learners over a finite class.
+/// member `sign · h_index` for learners over a finite class, and
+/// `assumption_violated` says whether no member reached the requested edge
+/// under an adversarial selection rule.
 #[pyclass]
 struct NativeClassifier {
     model: BoxedClassifier,
@@ -576,6 +578,8 @@ struct NativeClassifier {
     index: Option<usize>,
     #[pyo3(get)]
     sign: Option<f64>,
+    #[pyo3(get)]
+    assumption_violated: Option<bool>,
 }
 #[pymethods]
 impl NativeClassifier {
@@ -613,26 +617,95 @@ fn native(model: impl Classifier + Send + Sync + 'static, n_features: usize) -> 
         n_features,
         index: None,
         sign: None,
+        assumption_violated: None,
+    }
+}
+
+/// A finite class's selection rule: `"largest"` (the default rule),
+/// `"weakest"` (`FiniteClass::weakest_with_edge`), or `"exactly"`
+/// (`FiniteClass::edge_exactly`), the last two with edge `gamma`.
+#[derive(Clone, Copy)]
+enum Selection {
+    Largest,
+    Weakest(f64),
+    Exactly(f64),
+}
+
+impl Selection {
+    fn parse(selection: &str, gamma: Option<f64>) -> PyResult<Self> {
+        let gamma = || match gamma {
+            Some(g) if g > 0.0 && g <= 1.0 => Ok(g),
+            _ => Err(PyValueError::new_err(
+                "gamma must satisfy 0 < gamma <= 1 for this selection",
+            )),
+        };
+        match selection {
+            "largest" => Ok(Self::Largest),
+            "weakest" => Ok(Self::Weakest(gamma()?)),
+            "exactly" => Ok(Self::Exactly(gamma()?)),
+            _ => Err(PyValueError::new_err(
+                "selection must be largest, weakest, or exactly",
+            )),
+        }
+    }
+
+    fn apply<H>(self, class: FiniteClass<H>) -> FiniteClass<H> {
+        match self {
+            Self::Largest => class,
+            Self::Weakest(gamma) => class.weakest_with_edge(gamma),
+            Self::Exactly(gamma) => class.edge_exactly(gamma),
+        }
     }
 }
 
 #[pyfunction]
+#[pyo3(signature = (x, y, weights, max_depth, split_by="entropy", exact_splits=false, leaf_confidence="purity"))]
+#[allow(clippy::too_many_arguments)]
 fn fit_tree(
     py: Python<'_>,
     x: Vec<Vec<f64>>,
     y: Vec<f64>,
     weights: Vec<f64>,
     max_depth: usize,
+    split_by: &str,
+    exact_splits: bool,
+    leaf_confidence: &str,
 ) -> PyResult<NativeClassifier> {
     if max_depth == 0 {
         return Err(PyValueError::new_err("tree needs positive depth"));
     }
+    let split_by = match split_by {
+        "entropy" => SplitBy::Entropy,
+        "edge" => SplitBy::Edge,
+        "gini" => SplitBy::Gini,
+        "twoing" => SplitBy::Twoing,
+        _ => {
+            return Err(PyValueError::new_err(
+                "split_by must be entropy, edge, gini, or twoing",
+            ));
+        }
+    };
+    let leaf_confidence = match leaf_confidence {
+        "purity" => LeafConfidence::Purity,
+        "sign" => LeafConfidence::Sign,
+        _ => {
+            return Err(PyValueError::new_err(
+                "leaf_confidence must be purity or sign",
+            ));
+        }
+    };
     let (h, d) = fit_native(py, x, y, weights, |s, w| {
-        DecisionTreeBuilder::new(s)
+        let builder = DecisionTreeBuilder::new(s)
             .max_depth(max_depth)
-            .split_by(SplitBy::Entropy)
-            .build()
-            .produce(s, w)
+            .split_by(split_by)
+            .leaf_confidence(leaf_confidence);
+        if exact_splits {
+            builder.exact_splits()
+        } else {
+            builder
+        }
+        .build()
+        .produce(s, w)
     })?;
     Ok(native(h, d))
 }
@@ -686,7 +759,8 @@ fn fit_naive_bayes(
 }
 
 #[pyfunction]
-#[pyo3(signature = (x, y, weights, bandwidth, centers=None))]
+#[pyo3(signature = (x, y, weights, bandwidth, centers=None, selection="largest", gamma=None))]
+#[allow(clippy::too_many_arguments)]
 fn fit_rbf(
     py: Python<'_>,
     x: Vec<Vec<f64>>,
@@ -694,33 +768,45 @@ fn fit_rbf(
     weights: Vec<f64>,
     bandwidth: f64,
     centers: Option<Vec<usize>>,
+    selection: &str,
+    gamma: Option<f64>,
 ) -> PyResult<NativeClassifier> {
-    let (h, d) = fit_native(py, x, y, weights, |s, w| {
+    let selection = Selection::parse(selection, gamma)?;
+    let (result, d) = fit_native(py, x, y, weights, |s, w| {
         let builder = RbfClassBuilder::new(s).bandwidth(bandwidth);
-        match centers {
+        let class = match centers {
             Some(rows) => builder.centers(rows),
             None => builder,
         }
-        .build()
-        .produce(s, w)
+        .build();
+        let class = selection.apply(class);
+        let h = class.produce(s, w);
+        (h, class.assumption_violations() > 0)
     })?;
+    let (h, violated) = result;
     let (index, sign) = (h.index, h.sign);
     Ok(NativeClassifier {
         index: Some(index),
         sign: Some(sign),
+        assumption_violated: Some(violated),
         ..native(h, d)
     })
 }
 
-/// Returns `(j, sign)` maximizing the edge of `sign · columns[j]` under
-/// `weights`, as `FiniteClass::produce` does.
+/// Returns `(j, sign, violated)` for the member `sign · columns[j]` that
+/// `FiniteClass::produce` chooses under `weights` with the given selection
+/// rule (see `Selection`); `violated` is true if no member reached
+/// `gamma`.
 #[pyfunction]
+#[pyo3(signature = (columns, y, weights, with_negations, selection="largest", gamma=None))]
 fn select_finite_class(
     columns: Vec<Vec<f64>>,
     y: Vec<f64>,
     weights: Vec<f64>,
     with_negations: bool,
-) -> PyResult<(usize, f64)> {
+    selection: &str,
+    gamma: Option<f64>,
+) -> PyResult<(usize, f64, bool)> {
     // The table ignores features; one constant column gives the sample shape.
     let rows = vec![vec![0.0]; y.len()];
     let sample = Sample::from_dense(&rows, Some(&y)).map_err(PyValueError::new_err)?;
@@ -734,17 +820,63 @@ fn select_finite_class(
     for column in &columns {
         validate_scores(column, y.len())?;
     }
-    catch_unwind(AssertUnwindSafe(|| {
+    let class = catch_unwind(AssertUnwindSafe(|| {
         let class = FiniteClass::from_table(&sample, columns);
-        let class = if with_negations {
+        if with_negations {
             class.with_negations()
         } else {
             class
-        };
+        }
+    }))
+    .map_err(panic_error)?;
+    let class = Selection::parse(selection, gamma)?.apply(class);
+    catch_unwind(AssertUnwindSafe(|| {
         let member = class.produce(&sample, &weights);
-        (member.index, member.sign)
+        (member.index, member.sign, class.assumption_violations() > 0)
     }))
     .map_err(panic_error)
+}
+
+/// Row indices of the parts used by `MajorityOfFive` on `n_samples` rows.
+#[pyfunction]
+fn majority_of_five_parts(
+    n_samples: usize,
+    n_parts: usize,
+    seed: u64,
+) -> PyResult<Vec<Vec<usize>>> {
+    if n_parts == 0 || n_parts > n_samples {
+        return Err(PyValueError::new_err(
+            "n_parts must lie between 1 and the number of training examples",
+        ));
+    }
+    let sample = Sample::dummy(n_samples);
+    Ok(MajorityOfFive::init(&sample)
+        .n_parts(n_parts)
+        .seed(seed)
+        .parts())
+}
+
+/// Row indices of the sub-samples used by `LarsenRitzert` on `n_samples`
+/// rows.
+#[pyfunction]
+#[pyo3(signature = (n_samples, seed, max_subsamples=None))]
+fn larsen_ritzert_subsamples(
+    n_samples: usize,
+    seed: u64,
+    max_subsamples: Option<usize>,
+) -> PyResult<Vec<Vec<usize>>> {
+    let sample = Sample::dummy(n_samples);
+    let learner = LarsenRitzert::init(&sample).seed(seed);
+    let learner = match max_subsamples {
+        Some(0) => {
+            return Err(PyValueError::new_err(
+                "max_subsamples must be a positive integer",
+            ));
+        }
+        Some(count) => learner.max_subsamples(count),
+        None => learner,
+    };
+    Ok(learner.subsamples())
 }
 
 #[pyclass]
@@ -806,6 +938,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit_rbf, m)?)?;
     m.add_function(wrap_pyfunction!(select_finite_class, m)?)?;
     m.add_function(wrap_pyfunction!(fit_regression_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(majority_of_five_parts, m)?)?;
+    m.add_function(wrap_pyfunction!(larsen_ritzert_subsamples, m)?)?;
     m.add_class::<Model>()?;
     m.add_class::<NativeClassifier>()?;
     m.add_class::<NativeRegressor>()?;

@@ -182,10 +182,14 @@ pub fn start() {
 /// `nu` (capping, `1 ≤ nu ≤ n`), `gamma` and `kappa` (SmoothBoost),
 /// `nHypotheses` (`T`, `0` for none) and `gap` (`v`, NaN for none) for
 /// SparsiBoost, and `brownTolerance` (`ε`) and `edgeThreshold` (`ν`) for
-/// BrownBoost. `weak` holds the learner parameters: `maxDepth` and `splitBy`
-/// (decision tree), `regularization` and `output` (logistic regression),
-/// `varSmoothing` (naive Bayes), and `bandwidth` (RBF). Only the parameters
-/// of the chosen booster and learner are read.
+/// BrownBoost, and `nParts` (Majority-of-5), `maxSubsamples` (Larsen–Ritzert,
+/// `0` for all), and `subsampleSeed` for the sub-sample majorities, which run
+/// AdaBoost with `maxIterations` and `tolerance` on every sub-sample. `weak`
+/// holds the learner parameters: `maxDepth`, `splitBy`, `exactSplits`, and
+/// `leafConfidence` (decision tree), `regularization` and `output` (logistic
+/// regression), `varSmoothing` (naive Bayes), and `bandwidth`, `selection`,
+/// and `gamma` (RBF). Only the parameters of the chosen booster and learner
+/// are read.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn train(
@@ -263,46 +267,12 @@ pub fn train(
                 "regression trees are only used by gradient boosting and LogitBoost",
             ));
         }
-        let learner = match learner {
-            "decision_tree" => {
-                let split = match w.text("splitBy")?.as_str() {
-                    "entropy" => SplitBy::Entropy,
-                    "edge" => SplitBy::Edge,
-                    "gini" => SplitBy::Gini,
-                    "twoing" => SplitBy::Twoing,
-                    _ => return Err(JsError::new("unknown split criterion")),
-                };
-                Learner::Tree(
-                    DecisionTreeBuilder::new(&sample)
-                        .max_depth(w.count("maxDepth", 1)?)
-                        .split_by(split)
-                        .build(),
-                )
-            }
-            "logistic_regression" => {
-                let output = match w.text("output")?.as_str() {
-                    "sign" => LinearOutput::Sign,
-                    "tanh" => LinearOutput::Tanh,
-                    _ => return Err(JsError::new("unknown logistic-regression output")),
-                };
-                Learner::Logistic(
-                    LogisticRegression::new()
-                        .regularization(w.positive("regularization")?)
-                        .output(output),
-                )
-            }
-            "bounded_linear" => Learner::Linear(BoundedLinear::new()),
-            "naive_bayes" => {
-                Learner::Bayes(NaiveBayes::new().var_smoothing(w.positive("varSmoothing")?))
-            }
-            "rbf" => Learner::Rbf(
-                RbfClassBuilder::new(&sample)
-                    .bandwidth(w.positive("bandwidth")?)
-                    .build(),
-            ),
-            _ => return Err(JsError::new("unknown weak learner")),
-        };
-        fit(algorithm, &ctx, &learner, &p)?
+        let spec = LearnerSpec::parse(learner, &w)?;
+        if matches!(algorithm, "majority_of_five" | "larsen_ritzert") {
+            fit_subsample_majority(algorithm, &sample, &spec, &p)?
+        } else {
+            fit(algorithm, &ctx, &spec.build(&sample), &p)?
+        }
     };
     let Outcome {
         model,
@@ -351,6 +321,211 @@ fn square_grid(resolution: usize) -> Result<Sample, JsError> {
         })
         .collect::<Vec<_>>();
     Sample::from_dense(&rows, None).map_err(|e| JsError::new(&e))
+}
+
+/// The weak learner and its parameters, read once from JavaScript, so that
+/// the learner can be built for any sample (e.g. the sub-samples of the
+/// sub-sample majorities).
+#[derive(Clone, Copy)]
+enum LearnerSpec {
+    Tree {
+        depth: usize,
+        split: SplitBy,
+        exact: bool,
+        leaf: LeafConfidence,
+    },
+    Logistic {
+        regularization: f64,
+        output: LinearOutput,
+    },
+    Linear,
+    Bayes {
+        var_smoothing: f64,
+    },
+    Rbf {
+        bandwidth: f64,
+        selection: RbfSelection,
+    },
+}
+
+/// The RBF class's selection rule; see `FiniteClass`.
+#[derive(Clone, Copy)]
+enum RbfSelection {
+    Largest,
+    Weakest(f64),
+    Exactly(f64),
+}
+
+impl LearnerSpec {
+    fn parse(learner: &str, w: &Params) -> Result<Self, JsError> {
+        Ok(match learner {
+            "decision_tree" => Self::Tree {
+                depth: w.count("maxDepth", 1)?,
+                split: match w.text("splitBy")?.as_str() {
+                    "entropy" => SplitBy::Entropy,
+                    "edge" => SplitBy::Edge,
+                    "gini" => SplitBy::Gini,
+                    "twoing" => SplitBy::Twoing,
+                    _ => return Err(JsError::new("unknown split criterion")),
+                },
+                exact: w.flag("exactSplits"),
+                leaf: match w.text("leafConfidence").as_deref().unwrap_or("purity") {
+                    "purity" => LeafConfidence::Purity,
+                    "sign" => LeafConfidence::Sign,
+                    _ => return Err(JsError::new("unknown leaf confidence")),
+                },
+            },
+            "logistic_regression" => Self::Logistic {
+                regularization: w.positive("regularization")?,
+                output: match w.text("output")?.as_str() {
+                    "sign" => LinearOutput::Sign,
+                    "tanh" => LinearOutput::Tanh,
+                    _ => return Err(JsError::new("unknown logistic-regression output")),
+                },
+            },
+            "bounded_linear" => Self::Linear,
+            "naive_bayes" => Self::Bayes {
+                var_smoothing: w.positive("varSmoothing")?,
+            },
+            "rbf" => {
+                let gamma = || {
+                    let g = w.num("gamma");
+                    if g > 0.0 && g <= 1.0 {
+                        Ok(g)
+                    } else {
+                        Err(JsError::new("the edge γ must lie in (0, 1]"))
+                    }
+                };
+                Self::Rbf {
+                    bandwidth: w.positive("bandwidth")?,
+                    selection: match w.text("selection").as_deref().unwrap_or("largest") {
+                        "largest" => RbfSelection::Largest,
+                        "weakest" => RbfSelection::Weakest(gamma()?),
+                        "exactly" => RbfSelection::Exactly(gamma()?),
+                        _ => return Err(JsError::new("unknown RBF selection rule")),
+                    },
+                }
+            }
+            _ => return Err(JsError::new("unknown weak learner")),
+        })
+    }
+
+    fn build(self, sample: &Sample) -> Learner<'_> {
+        match self {
+            Self::Tree {
+                depth,
+                split,
+                exact,
+                leaf,
+            } => {
+                let builder = DecisionTreeBuilder::new(sample)
+                    .max_depth(depth)
+                    .split_by(split)
+                    .leaf_confidence(leaf);
+                Learner::Tree(
+                    if exact {
+                        builder.exact_splits()
+                    } else {
+                        builder
+                    }
+                    .build(),
+                )
+            }
+            Self::Logistic {
+                regularization,
+                output,
+            } => Learner::Logistic(
+                LogisticRegression::new()
+                    .regularization(regularization)
+                    .output(output),
+            ),
+            Self::Linear => Learner::Linear(BoundedLinear::new()),
+            Self::Bayes { var_smoothing } => {
+                Learner::Bayes(NaiveBayes::new().var_smoothing(var_smoothing))
+            }
+            Self::Rbf {
+                bandwidth,
+                selection,
+            } => {
+                let class = RbfClassBuilder::new(sample).bandwidth(bandwidth).build();
+                Learner::Rbf(match selection {
+                    RbfSelection::Largest => class,
+                    RbfSelection::Weakest(gamma) => class.weakest_with_edge(gamma),
+                    RbfSelection::Exactly(gamma) => class.edge_exactly(gamma),
+                })
+            }
+        }
+    }
+}
+
+/// Runs Majority-of-5 or Larsen–Ritzert with AdaBoost (`maxIterations`,
+/// `tolerance`) and `spec` on every sub-sample. There are no rounds, so the
+/// timeline is empty.
+fn fit_subsample_majority(
+    algorithm: &str,
+    sample: &Sample,
+    spec: &LearnerSpec,
+    p: &Params,
+) -> Result<Outcome, JsError> {
+    let limit = p.count("maxIterations", 1)?;
+    let tolerance = p.positive("tolerance")?;
+    let seed = p.count("subsampleSeed", 0)? as u64;
+    let n = sample.shape().0;
+    let (subsets, what) = if algorithm == "majority_of_five" {
+        let parts = p.count("nParts", 1)?;
+        if parts > n {
+            return Err(JsError::new(
+                "the number of parts exceeds the number of points",
+            ));
+        }
+        let learner = MajorityOfFive::init(sample).n_parts(parts).seed(seed);
+        (learner.parts(), "disjoint parts")
+    } else {
+        let learner = LarsenRitzert::init(sample).seed(seed);
+        let learner = match p.count("maxSubsamples", 0)? {
+            0 => learner,
+            count => learner.max_subsamples(count),
+        };
+        (learner.subsamples(), "overlapping sub-samples")
+    };
+    // AdaBoost needs both labels; report a bad sub-sample instead of
+    // aborting the wasm instance with a panic.
+    let labels = sample.target();
+    if let Some(k) = subsets.iter().position(|rows| {
+        !(rows.iter().any(|&i| labels[i] > 0.0) && rows.iter().any(|&i| labels[i] < 0.0))
+    }) {
+        return Err(JsError::new(&format!(
+            "sub-sample {} has points of one class only; add points or use fewer parts",
+            k + 1
+        )));
+    }
+    let k = subsets.len();
+    let spec = *spec;
+    let model = MajorityVote::new(
+        subsets
+            .iter()
+            .map(|rows| {
+                let sub = sample.select_rows(rows);
+                AdaBoost::init(&sub)
+                    .tolerance(tolerance)
+                    .force_quit_at(limit)
+                    .run(&spec.build(&sub))
+            })
+            .collect::<Vec<_>>(),
+    );
+    Ok(Outcome {
+        model: Box::new(model),
+        rounds: k,
+        stop: "algorithm_stop",
+        note: format!(
+            "Unweighted majority of {k} AdaBoost runs (up to {limit} rounds each) on {what}."
+        ),
+        timeline: Timeline {
+            curve: Thinned::new(CURVE_CAP),
+            frames: Thinned::new(FRAME_CAP),
+            final_step: "",
+        },
+    })
 }
 
 /// One of the demo's weak learners. Dispatching through an enum compiles
@@ -407,6 +582,14 @@ impl Params<'_> {
             .ok()
             .and_then(|v| v.as_f64())
             .unwrap_or(f64::NAN)
+    }
+
+    /// Returns the boolean under `key`, or `false` if it is missing.
+    fn flag(&self, key: &str) -> bool {
+        Reflect::get(self.0, &JsValue::from_str(key))
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     fn text(&self, key: &str) -> Result<String, JsError> {
@@ -1405,6 +1588,34 @@ fn finite(values: Vec<f64>) -> Result<Vec<f64>, JsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn learner_specs_build_the_configured_learners() {
+        let s = sample();
+        let dist = vec![1.0 / 24.0; 24];
+        let stump = LearnerSpec::Tree {
+            depth: 1,
+            split: SplitBy::Edge,
+            exact: true,
+            leaf: LeafConfidence::Sign,
+        }
+        .build(&s)
+        .produce(&s, &dist);
+        assert!(stump.confidence_all(&s).iter().all(|c| c.abs() == 1.0));
+
+        let gamma = 0.125;
+        let h = LearnerSpec::Rbf {
+            bandwidth: 0.2,
+            selection: RbfSelection::Exactly(gamma),
+        }
+        .build(&s)
+        .produce(&s, &dist);
+        let edge: f64 = (0..24)
+            .map(|i| dist[i] * s.target()[i] * h.confidence(&s, i))
+            .sum();
+        // 24 terms with one rounding each in the scale γ / γ_j.
+        assert!((edge - gamma).abs() < 1e-14, "{edge}");
+    }
 
     /// 24 points on two interleaved arcs, labels alternating.
     fn sample() -> Sample {

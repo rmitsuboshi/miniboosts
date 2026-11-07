@@ -560,15 +560,46 @@ class _NativeWeakClassifier(ClassifierMixin, BaseEstimator):
 
 
 class DecisionTreeClassifier(_NativeWeakClassifier):
-    """Rust decision tree with entropy splits and bounded confidence."""
-    def __init__(self, *, max_depth=1):
+    """Rust decision tree with bounded confidence.
+
+    ``split_by`` is ``"entropy"`` (default), ``"edge"``, ``"gini"``, or
+    ``"twoing"``. Thresholds lie on equal-width bins unless
+    ``exact_splits=True``, which tries every midpoint between distinct values.
+    ``leaf_confidence="sign"`` makes nodes predict +-1 instead of the weighted
+    purity. With ``max_depth=1``, ``split_by="edge"``, ``exact_splits=True``,
+    and ``leaf_confidence="sign"``, the tree is an exact edge-maximizing stump.
+    """
+    def __init__(self, *, max_depth=1, split_by='entropy', exact_splits=False,
+                 leaf_confidence='purity'):
         self.max_depth = max_depth
+        self.split_by = split_by
+        self.exact_splits = exact_splits
+        self.leaf_confidence = leaf_confidence
 
     def _check_parameters(self):
         _positive_integer('max_depth', self.max_depth)
+        if self.split_by not in ('entropy', 'edge', 'gini', 'twoing'):
+            raise ValueError('split_by must be entropy, edge, gini, or twoing')
+        if not isinstance(self.exact_splits, (bool, np.bool_)):
+            raise ValueError('exact_splits must be a boolean')
+        if self.leaf_confidence not in ('purity', 'sign'):
+            raise ValueError('leaf_confidence must be purity or sign')
 
     def _fit_native(self, X, encoded, weights):
-        return _native.fit_tree(X.tolist(), encoded.tolist(), weights.tolist(), int(self.max_depth))
+        return _native.fit_tree(X.tolist(), encoded.tolist(), weights.tolist(), int(self.max_depth),
+                                self.split_by, bool(self.exact_splits), self.leaf_confidence)
+
+
+def _check_selection(selection, gamma):
+    """Validate a finite-class selection rule and return gamma as a float or None."""
+    if selection not in ('largest', 'weakest', 'exactly'):
+        raise ValueError('selection must be largest, weakest, or exactly')
+    if selection == 'largest':
+        return None
+    if (isinstance(gamma, (bool, np.bool_)) or not isinstance(gamma, numbers.Real)
+            or not 0 < gamma <= 1):
+        raise ValueError('gamma must satisfy 0 < gamma <= 1 for this selection')
+    return float(gamma)
 
 
 class BoundedLinearClassifier(_NativeWeakClassifier):
@@ -622,13 +653,17 @@ class RBFClassifier(_NativeWeakClassifier):
     Candidate centers are the training rows indexed by ``centers`` (all rows by
     default). After fitting, ``center_index_``, ``center_``, and ``sign_``
     describe the chosen bump. Each fit evaluates every bump on every row.
+    ``selection`` chooses the bump as ``FiniteClassClassifier`` does.
     """
-    def __init__(self, *, bandwidth, centers=None):
+    def __init__(self, *, bandwidth, centers=None, selection='largest', gamma=None):
         self.bandwidth = bandwidth
         self.centers = centers
+        self.selection = selection
+        self.gamma = gamma
 
     def _check_parameters(self):
         _positive_finite('bandwidth', self.bandwidth)
+        _check_selection(self.selection, self.gamma)
 
     def _fit_native(self, X, encoded, weights):
         centers = None
@@ -640,10 +675,12 @@ class RBFClassifier(_NativeWeakClassifier):
                 raise ValueError('centers must be a nonempty list of training row indices')
             centers = raw.astype(np.int64).tolist()
         model = _native.fit_rbf(X.tolist(), encoded.tolist(), weights.tolist(),
-                                float(self.bandwidth), centers)
+                                float(self.bandwidth), centers, self.selection,
+                                _check_selection(self.selection, self.gamma))
         self.center_index_ = model.index if centers is None else centers[model.index]
         self.center_ = X[self.center_index_].copy()
         self.sign_ = model.sign
+        self.assumption_violated_ = model.assumption_violated
         return model
 
 
@@ -682,20 +719,30 @@ class RegressionTreeRegressor(RegressorMixin, BaseEstimator):
 
 
 class FiniteClassClassifier(ClassifierMixin, BaseEstimator):
-    """Selects the member of a fixed list of hypotheses with the largest edge.
+    """Selects a member of a fixed list of hypotheses by its edge.
 
     ``hypotheses`` are already fitted objects with ``decision_function``
     returning values in [-1, 1]. With ``with_negations=True``, ``-h`` is also a
     candidate. Cloning keeps the same hypothesis objects (they are not
     refitted); do not mutate them. Ties go to the smaller index, then to +h.
+
+    ``selection="largest"`` (default) picks the largest edge. The adversarial
+    rules need ``gamma``: ``"weakest"`` picks the smallest edge that is at
+    least ``gamma``, and ``"exactly"`` also scales that member by
+    ``gamma / edge`` so its edge is exactly ``gamma`` (``sign_`` holds the
+    signed scale). If no member reaches ``gamma``, the largest edge is used
+    and ``assumption_violated_`` is True.
     """
-    def __init__(self, hypotheses, *, with_negations=False):
+    def __init__(self, hypotheses, *, with_negations=False, selection='largest', gamma=None):
         self.hypotheses = hypotheses
         self.with_negations = with_negations
+        self.selection = selection
+        self.gamma = gamma
 
     def __sklearn_clone__(self):
         # sklearn's default clone would refit-construct unfitted copies.
-        return type(self)(list(self.hypotheses), with_negations=self.with_negations)
+        return type(self)(list(self.hypotheses), with_negations=self.with_negations,
+                          selection=self.selection, gamma=self.gamma)
 
     def fit(self, X, y, sample_weight=None):
         _reset(self)
@@ -707,14 +754,17 @@ class FiniteClassClassifier(ClassifierMixin, BaseEstimator):
                     raise TypeError('every hypothesis needs decision_function(X)')
             if not isinstance(self.with_negations, (bool, np.bool_)):
                 raise ValueError('with_negations must be a boolean')
+            gamma = _check_selection(self.selection, self.gamma)
             X, encoded, classes = _training_data(self, X, y)
             weights = _distribution(sample_weight, len(X))
             columns = [_confidence(h, X.copy(), f'{type(h).__name__}, hypothesis {j}').tolist()
                        for j, h in enumerate(self.hypotheses)]
-            index, sign = _native.select_finite_class(columns, encoded.tolist(), weights.tolist(),
-                                                      bool(self.with_negations))
+            index, sign, violated = _native.select_finite_class(
+                columns, encoded.tolist(), weights.tolist(), bool(self.with_negations),
+                self.selection, gamma)
             self.index_ = index
             self.sign_ = sign
+            self.assumption_violated_ = violated
             self.hypothesis_ = self.hypotheses[index]
             self.classes_ = classes
             return self
@@ -731,6 +781,109 @@ class FiniteClassClassifier(ClassifierMixin, BaseEstimator):
     def predict(self, X):
         scores = self.decision_function(X)
         return self.classes_[(scores >= 0).astype(np.intp)]
+
+
+class _SubsampleMajority(ClassifierMixin, BaseEstimator):
+    """Unweighted majority vote of a booster fitted on sub-samples (Rust picks the rows)."""
+
+    def _check_parameters(self):
+        _nonnegative_integer('seed', self.seed)
+
+    def _subsamples(self, n_samples):
+        raise NotImplementedError
+
+    def fit(self, X, y):
+        """Fit a clone of ``estimator`` on every sub-sample, discarding any previous fit."""
+        _reset(self)
+        try:
+            self._check_parameters()
+            X, encoded, classes = _training_data(self, X, y)
+            template = self.estimator if self.estimator is not None else AdaBoostClassifier()
+            if not callable(getattr(template, 'fit', None)) or not callable(getattr(template, 'predict', None)):
+                raise TypeError('estimator needs fit(X, y) and predict(X)')
+            fitted = []
+            for k, rows in enumerate(self._subsamples(len(X))):
+                rows = np.asarray(rows, dtype=np.intp)
+                learner = clone(template)
+                try:
+                    # Labels are already -1/+1, so the voters do not re-encode them.
+                    learner.fit(X[rows].copy(), encoded[rows].copy())
+                except Exception as error:
+                    if hasattr(error, 'add_note'):
+                        error.add_note(f'{type(self).__name__}, sub-sample {k} ({len(rows)} rows): '
+                                       'estimator fit failed')
+                    raise
+                fitted.append(learner)
+            self.classes_ = classes
+            self.estimators_ = fitted
+            return self
+        except BaseException:
+            _reset(self)
+            raise
+
+    def decision_function(self, X):
+        """Mean of the voters' -1/+1 predictions; its sign is the majority."""
+        check_is_fitted(self, 'estimators_')
+        X = validate_data(self, X, reset=False, dtype=np.float64)
+        votes = []
+        for k, learner in enumerate(self.estimators_):
+            raw = np.asarray(learner.predict(np.array(X, copy=True)))
+            if raw.shape != (len(X),) or not np.isin(raw, [-1, 1]).all():
+                raise ValueError(f'{type(self).__name__}, voter {k}: predictions must be -1/+1')
+            votes.append(raw.astype(np.float64))
+        return np.mean(votes, axis=0)
+
+    def predict(self, X):
+        scores = self.decision_function(X)
+        return self.classes_[(scores >= 0).astype(np.intp)]
+
+
+class MajorityOfFiveClassifier(_SubsampleMajority):
+    """Majority-of-5 (Hoegsgaard, Larsen, and Mathiasen, NeurIPS 2024).
+
+    Shuffles the rows with ``seed``, splits them into ``n_parts`` disjoint
+    parts of almost equal size, fits a clone of ``estimator`` (default
+    ``AdaBoostClassifier()``) on each, and predicts by unweighted majority.
+    The paper's guarantee is for five parts with AdaBoost reaching margins
+    Omega(gamma); other part counts follow its Majority-of-X experiments.
+    """
+    def __init__(self, *, estimator=None, n_parts=5, seed=0):
+        self.estimator = estimator
+        self.n_parts = n_parts
+        self.seed = seed
+
+    def _check_parameters(self):
+        super()._check_parameters()
+        _positive_integer('n_parts', self.n_parts)
+
+    def _subsamples(self, n_samples):
+        if self.n_parts > n_samples:
+            raise ValueError('n_parts must not exceed the number of training examples')
+        return _native.majority_of_five_parts(n_samples, int(self.n_parts), int(self.seed))
+
+
+class LarsenRitzertClassifier(_SubsampleMajority):
+    """Optimal weak-to-strong learner of Larsen and Ritzert (NeurIPS 2022).
+
+    Fits a clone of ``estimator`` (default ``AdaBoostClassifier()``) on each of
+    Hanneke's overlapping sub-samples of the shuffled rows (about m^0.79 of
+    them) and predicts by unweighted majority. The guarantee needs voters with
+    margins at least gamma/2 on their sub-samples. ``max_subsamples`` uses a
+    random subset of the sub-samples, an approximation without the guarantee.
+    """
+    def __init__(self, *, estimator=None, seed=0, max_subsamples=None):
+        self.estimator = estimator
+        self.seed = seed
+        self.max_subsamples = max_subsamples
+
+    def _check_parameters(self):
+        super()._check_parameters()
+        if self.max_subsamples is not None:
+            _positive_integer('max_subsamples', self.max_subsamples)
+
+    def _subsamples(self, n_samples):
+        count = None if self.max_subsamples is None else int(self.max_subsamples)
+        return _native.larsen_ritzert_subsamples(n_samples, int(self.seed), count)
 
 
 class PredictionAdapter(ClassifierMixin, BaseEstimator):
