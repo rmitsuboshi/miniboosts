@@ -4,14 +4,18 @@ MiniBoosts is a Rust library for implementing and comparing boosting algorithms.
 Its algorithms share the `Booster`, `WeakLearner`, and `Classifier` traits, so you
 can use the same data and weak learner across experiments.
 
+[![AdaBoost with decision trees on noisy spirals: the decision boundary and the 0-1 error by round](https://raw.githubusercontent.com/rmitsuboshi/miniboosts/main/img/demo.gif)](https://rmitsuboshi.github.io/miniboosts/)
+
+**[Try it in your browser](https://rmitsuboshi.github.io/miniboosts/)**, with no
+installation: draw points, pick a booster and a weak learner, and replay training.
+
 Since version 0.5.0, MiniBoosts ships as one `miniboosts` crate; algorithms and utilities are
 internal modules, not separate registry packages. Earlier releases have a
 different API; see the [migration notes](MIGRATION.md) when upgrading.
 Rust 1.85 or newer is required (edition 2024).
 
-Try the algorithms in the browser with the
-[interactive demo](https://rmitsuboshi.github.io/miniboosts/), or use them
-from Python with `pip install miniboosts` (see [Python bindings](#python-bindings)).
+You can also use the algorithms from Python with `pip install miniboosts` (see
+[Python bindings](#python-bindings)).
 
 ## Getting started
 
