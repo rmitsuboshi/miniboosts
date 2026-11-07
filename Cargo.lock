@@ -244,6 +244,7 @@ dependencies = [
  "libm",
  "rayon",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -6,6 +6,13 @@ candidate with the largest edge, as a `DynClassifier`. Members run in parallel
 and must be `Send + Sync`. `Classifier` is now
 implemented for `Arc<H>`. No existing API changed.
 
+`NaiveAggregation` now implements `Serialize` and `Deserialize`. A
+`NaiveBayesClassifier` whose training distribution gave one label no weight now
+loads from JSON, where saving its infinite log odds used to produce a file that
+could not be read. Its serialized form has a new `only_label` field: JSON files
+from 0.5.2 still load, but files in formats that are not self-describing, such
+as postcard, do not.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

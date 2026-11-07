@@ -54,6 +54,36 @@ labels must be `-1` and `1`, with both classes present in the training sample.
 The assertion checks predictions on this training sample; use a separate test
 set to evaluate performance on unseen data.
 
+## Saving and loading hypotheses
+
+Combined hypotheses implement serde's `Serialize` and `Deserialize`, so a trained
+model can be stored in any serde format. MiniBoosts does not depend on a format;
+this example uses `serde_json`:
+
+```rust
+use miniboosts::{DecisionTreeClassifier, Sample, WeightedMajority, prelude::*};
+
+let rows = vec![vec![-2.0], vec![-1.0], vec![1.0], vec![2.0]];
+let sample = Sample::from_dense(&rows, Some(&[-1.0, -1.0, 1.0, 1.0])).unwrap();
+let tree = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+let f = AdaBoost::init(&sample).force_quit_at(5).run(&tree);
+
+// Use `serde_json::to_writer` and `from_reader` for files.
+let json = serde_json::to_string(&f).unwrap();
+let loaded: WeightedMajority<DecisionTreeClassifier> = serde_json::from_str(&json).unwrap();
+assert_eq!(loaded.predict_all(&sample), f.predict_all(&sample));
+```
+
+- Enable `serde_json`'s `float_roundtrip` feature. Without it, a loaded number
+  may differ from the saved one in its last bits.
+- Only the final hypothesis is saved, not the booster's state, so training cannot
+  continue from a file.
+- The hypothesis type must be known when loading. Hypotheses from a
+  `WeakLearnerUnion` are type-erased and cannot be saved.
+- Features are read by name, so a sample must use the training sample's names.
+- A file may not load in another MiniBoosts version; keep the version or commit
+  with the file. The Python bindings do not support saving yet.
+
 ## Python bindings
 
 The optional [Python package](python/README.md) exposes the same Rust algorithms

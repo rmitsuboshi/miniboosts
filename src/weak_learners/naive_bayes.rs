@@ -178,14 +178,10 @@ impl WeakLearner for NaiveBayes {
         };
         let (prior_pos, prior_neg) = (prior(1.0), prior(-1.0));
         if prior_pos == 0.0 || prior_neg == 0.0 {
-            let log_prior_ratio = if prior_neg == 0.0 {
-                f64::INFINITY
-            } else {
-                f64::NEG_INFINITY
-            };
             return NaiveBayesClassifier {
                 feature_names: Vec::new(),
-                log_prior_ratio,
+                only_label: Some(if prior_neg == 0.0 { 1.0 } else { -1.0 }),
+                log_prior_ratio: 0.0,
                 positive: Vec::new(),
                 negative: Vec::new(),
             };
@@ -210,6 +206,7 @@ impl WeakLearner for NaiveBayes {
         };
         NaiveBayesClassifier {
             feature_names,
+            only_label: None,
             log_prior_ratio: prior_pos.ln() - prior_neg.ln(),
             positive: gaussians(1.0),
             negative: gaussians(-1.0),
@@ -228,7 +225,11 @@ impl WeakLearner for NaiveBayes {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NaiveBayesClassifier {
     feature_names: Vec<String>,
-    // ln(π_{+1} / π_{-1}); ±∞ when one label has zero weight.
+    // The label holding all the weight, if the other one has none. The
+    // infinite log odds are not stored because JSON has no infinity.
+    #[serde(default)]
+    only_label: Option<f64>,
+    // ln(π_{+1} / π_{-1}); 0 if `only_label` is set.
     log_prior_ratio: f64,
     // (mean, variance) per feature for label +1 and -1.
     positive: Vec<(f64, f64)>,
@@ -256,8 +257,8 @@ impl NaiveBayesClassifier {
     /// assert_eq!(h.log_odds(&midpoint, 0), 0.0);
     /// ```
     pub fn log_odds(&self, sample: &Sample, row: usize) -> f64 {
-        if !self.log_prior_ratio.is_finite() {
-            return self.log_prior_ratio;
+        if let Some(label) = self.only_label {
+            return label * f64::INFINITY;
         }
         let log_density = |x: f64, (mean, var): (f64, f64)| {
             -0.5 * (std::f64::consts::TAU * var).ln() - (x - mean).powi(2) / (2.0 * var)

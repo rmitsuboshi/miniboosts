@@ -2,6 +2,7 @@
 
 use crate::core::{Classifier, Sample};
 use fixedbitset::FixedBitSet;
+use serde::{Deserialize, Serialize};
 
 /// A lookup-table aggregation of binary hypotheses that is consistent with
 /// the training sample whenever the hypotheses separate it.
@@ -73,13 +74,54 @@ use fixedbitset::FixedBitSet;
 /// // Confidences are exactly ±1.
 /// assert!(f.confidence_all(&sample).iter().all(|c| c.abs() == 1.0));
 /// ```
+#[derive(Serialize, Deserialize)]
 pub struct NaiveAggregation<H> {
     /// `hypotheses` stores the functions from `X` to `{-1, +1}`
     /// collected by the boosting algorithm.
     hypotheses: Vec<H>,
     /// `prediction` stores the bit sequence `h1(xk) h2(xk) ... hT(xk)`
     /// (bit `t` set iff `ht(xk) = +1`) of each example with `yk = +1`.
+    #[serde(with = "bit_sequences")]
     prediction: Vec<FixedBitSet>,
+}
+
+// Stores each bit sequence as its length and the indices of its set bits.
+// `FixedBitSet`'s own serde support cannot be read back from JSON.
+mod bit_sequences {
+    use fixedbitset::FixedBitSet;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+
+    pub(super) fn serialize<S>(sequences: &[FixedBitSet], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        sequences
+            .iter()
+            .map(|bits| (bits.len(), bits.ones().collect::<Vec<_>>()))
+            .collect::<Vec<_>>()
+            .serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<Vec<FixedBitSet>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Vec::<(usize, Vec<usize>)>::deserialize(deserializer)?
+            .into_iter()
+            .map(|(len, ones)| {
+                let mut bits = FixedBitSet::with_capacity(len);
+                for one in ones {
+                    if one >= len {
+                        return Err(D::Error::custom(format!(
+                            "bit {one} is out of range for a sequence of length {len}"
+                        )));
+                    }
+                    bits.put(one);
+                }
+                Ok(bits)
+            })
+            .collect()
+    }
 }
 
 impl<H> NaiveAggregation<H>

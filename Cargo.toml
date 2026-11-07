@@ -29,3 +29,6 @@ fixedbitset = "0.5.7"
 colored = "3.1.1"
 clarabel = "0.11.1"
 libm = "0.2.16"
+
+[dev-dependencies]
+serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
