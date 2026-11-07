@@ -33,6 +33,23 @@ Write rustdoc for docs.rs users. Each booster documents at least:
 
 Document every public method and function.
 
+## Adding a booster or weak learner
+An algorithm is added only when each of these is done, or ruled out with a
+reason given to the user:
+- the library: exports in `src/lib.rs` and `src/prelude.rs`, the list in
+  `src/boosters/mod.rs` or `src/weak_learners/mod.rs`, and `MIGRATION.md`;
+- the Python bindings in `python/`: native function, estimator, export,
+  tests (passing on Python 3.10, the oldest version in CI), and
+  `python/README.md`;
+- `README.md`: the Algorithms table with a link to the paper, or the
+  weak-learner paragraph;
+- the web demo, if it can run the algorithm (two features, binary labels,
+  a few hundred points, seconds in single-threaded wasm): `web/src/lib.rs`,
+  and in the homepage repository (`../rmitsuboshi.github.io/miniboosts/`) the
+  option, its parameters, and the Algorithms list in `index.html`, the
+  wiring in `main.js`, the wasm built with `web/build.sh`, and a bumped `v=`
+  in `index.html`. Check it in a browser.
+
 ## Experiments
 - Match data splits, preprocessing, weak learners, and evaluation conditions.
 - Record seeds, parameters, stopping rules, commit, dependencies, and hardware.
