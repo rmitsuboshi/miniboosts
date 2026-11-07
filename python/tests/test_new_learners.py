@@ -119,9 +119,10 @@ def test_larsen_ritzert():
 
 def test_failed_voter_fit_names_the_subsample():
     # One part gets only one class: the booster's fit fails, and the error
-    # says which sub-sample it was.
+    # says which sub-sample it was (exception notes exist from Python 3.11).
     X = np.arange(10, dtype=float)[:, None]
     y = np.r_[np.full(9, -1), 1]
     with pytest.raises(ValueError) as error:
         mb.MajorityOfFiveClassifier().fit(X, y)
-    assert any('sub-sample' in note for note in getattr(error.value, '__notes__', []))
+    if hasattr(error.value, 'add_note'):
+        assert any('sub-sample' in note for note in error.value.__notes__)
