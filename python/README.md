@@ -202,7 +202,7 @@ step; the algorithm may stop earlier.
 | `RobustBoostClassifier` | `tolerance=0.1`, `theta=0.0`, `sigma_f=0.1` |
 | `SmoothBoostClassifier` | `gamma=0.25`, `kappa=0.1` |
 | `SoftBoostClassifier` | `nu=1.0`, `tolerance=0.01` |
-| `SparsiBoostClassifier` | `n_hypotheses=None`, `tolerance=None`, `seed=0`, `max_iterations=None` |
+| `SparsiBoostClassifier` | `n_hypotheses=None`, `tolerance=None`, `seed=0`, `max_iterations=None`, `first_stage="adaboostv"`, `first_stage_tolerance=0.01` |
 | `TotalBoostClassifier` | `tolerance=0.01` |
 | `GraphSeparationBoostingClassifier` | none |
 

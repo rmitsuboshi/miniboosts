@@ -16,7 +16,8 @@ use crate::core::{Classifier, Sample};
 ///    prediction `±1`.
 ///
 /// Here the booster of step 2 is the closure passed to
-/// [`MajorityOfFive::run`]. The paper leaves the partition open; this
+/// [`MajorityOfFive::run`]; the paper notes that AdaBoost*_ν
+/// ([`AdaBoostV`](crate::AdaBoostV)) can be used instead of AdaBoost. The paper leaves the partition open; this
 /// implementation shuffles the rows with [`MajorityOfFive::seed`] and cuts
 /// the shuffled order into contiguous parts whose sizes differ by at most
 /// one. [`MajorityOfFive::n_parts`] changes the number of parts, as in the

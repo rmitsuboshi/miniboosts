@@ -6,6 +6,13 @@ prelude. They run a booster, given as a closure, on sub-samples and return the
 `MajorityVote` of the results. `Sample::select_rows` returns a sample made of
 given rows, with repetitions allowed.
 
+`SparsiBoost::first_stage(booster)` replaces AdaBoostV by another booster whose
+`WeightedMajority` is then sparsified, e.g. TotalBoost. `SparsiBoost` gained a
+third type parameter for it, defaulting to `AdaBoostV`, so existing code still
+compiles; `max_loop` and `adaboostv_tolerance` exist only with the default.
+The Python `SparsiBoostClassifier` has matching `first_stage` and
+`first_stage_tolerance` parameters.
+
 `FiniteClass::weakest_with_edge(γ)` and `FiniteClass::edge_exactly(γ)` make a
 finite class return a member with barely edge `γ` instead of the largest edge,
 and `FiniteClass::assumption_violations` counts the calls in which no member

@@ -2,7 +2,8 @@
 //! independently fitted weak hypotheses as batches of confidence values (or,
 //! for boosters with regression weak learners, of real-valued predictions).
 use miniboosts::{
-    Classifier, FwUpdateRule, RegressionTreeRegressor, Regressor, Sample, prelude::*,
+    Classifier, FwUpdateRule, RegressionTreeRegressor, Regressor, Sample, WeightedMajority,
+    prelude::*,
 };
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
@@ -262,11 +263,33 @@ where
     ))
 }
 
+/// Runs SparsiBoost with a first stage other than AdaBoostV for at most
+/// `limit` rounds.
+fn sparsify_first_stage<B>(
+    mut booster: SparsiBoost<'_, Hypothesis, B>,
+    learner: &CallbackLearner,
+    limit: usize,
+) -> PyResult<Fitted>
+where
+    B: Booster<Hypothesis, Output = WeightedMajority<Hypothesis>>,
+{
+    let stop = stop_name(boost_loop(&mut booster, learner, limit));
+    let f = booster.postprocess();
+    let diagnostics = Diagnostics {
+        sparsification_error: booster.sparsification_error(),
+        sparsification_within_tolerance: booster.sparsification_within_tolerance(),
+        n_selected: Some(f.hypotheses.len()),
+        ..Diagnostics::default()
+    };
+    Ok((Box::new(f), stop, diagnostics))
+}
+
 #[pyfunction]
 #[pyo3(signature = (
     algorithm, x, y, callback, max_iterations, tolerance=None, nu=1.0, gamma=0.25,
     kappa=0.1, update_rule="default", edge_threshold=1e-3, n_hypotheses=None, seed=0,
     theta=0.0, sigma_f=0.1, loss="logistic", shrinkage=1.0, max_response=4.0,
+    first_stage="adaboostv", first_stage_tolerance=0.01,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn train(
@@ -288,6 +311,8 @@ fn train(
     loss: &str,
     shrinkage: f64,
     max_response: f64,
+    first_stage: &str,
+    first_stage_tolerance: f64,
 ) -> PyResult<Model> {
     let sample = Sample::from_dense(&x, Some(&y)).map_err(PyValueError::new_err)?;
     if max_iterations == Some(0) {
@@ -298,6 +323,26 @@ fn train(
         return Err(PyValueError::new_err("max_iterations is required"));
     }
     check_labels(&y)?;
+    if algorithm == "sparsiboost" && first_stage != "adaboostv" {
+        if !matches!(
+            first_stage,
+            "totalboost" | "lpboost" | "erlpboost" | "softboost"
+        ) {
+            return Err(PyValueError::new_err(
+                "first_stage must be adaboostv, totalboost, lpboost, erlpboost, or softboost",
+            ));
+        }
+        if max_iterations.is_none() {
+            return Err(PyValueError::new_err(
+                "max_iterations is required unless first_stage is adaboostv",
+            ));
+        }
+        if !(first_stage_tolerance.is_finite() && first_stage_tolerance > 0.0) {
+            return Err(PyValueError::new_err(
+                "first_stage_tolerance must be finite and positive",
+            ));
+        }
+    }
     let rule = match update_rule {
         "default" => None,
         "classic" => Some(FwUpdateRule::Classic),
@@ -411,6 +456,39 @@ fn train(
                 }
                 if let Some(v) = tolerance {
                     b = b.tolerance(v);
+                }
+                // Hard-margin first stages (ν = 1), checked above.
+                let ft = first_stage_tolerance;
+                match first_stage {
+                    "totalboost" => {
+                        return sparsify_first_stage(
+                            b.first_stage(TotalBoost::init(s).tolerance(ft)),
+                            l,
+                            n,
+                        );
+                    }
+                    "lpboost" => {
+                        return sparsify_first_stage(
+                            b.first_stage(LpBoost::init(s).nu(1.0).tolerance(ft)),
+                            l,
+                            n,
+                        );
+                    }
+                    "erlpboost" => {
+                        return sparsify_first_stage(
+                            b.first_stage(ErlpBoost::init(s).nu(1.0).tolerance(ft)),
+                            l,
+                            n,
+                        );
+                    }
+                    "softboost" => {
+                        return sparsify_first_stage(
+                            b.first_stage(SoftBoost::init(s).nu(1.0).tolerance(ft)),
+                            l,
+                            n,
+                        );
+                    }
+                    _ => {}
                 }
                 let rounds = b.max_loop();
                 let nu = b.adaboostv_tolerance();

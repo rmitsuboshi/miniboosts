@@ -476,16 +476,25 @@ class SparsiBoostClassifier(_BoostClassifier):
     Set ``n_hypotheses`` (at most T hypotheses), ``tolerance`` (target gap v),
     or both. ``max_iterations=None`` runs the AdaBoostV round count the
     algorithm derives from its target; a smaller cap voids its guarantee.
+
+    ``first_stage`` replaces AdaBoostV by a hard-margin booster
+    (``"totalboost"``, or ``"lpboost"``, ``"erlpboost"``, ``"softboost"``
+    with nu = 1) run with ``first_stage_tolerance``; it then needs
+    ``max_iterations``. The paper's bounds assume AdaBoostV; otherwise the
+    output's gap is at most the first stage's gap plus
+    ``sparsification_error_``.
     """
     _algorithm = 'sparsiboost'
 
     def __init__(self, *, estimator=None, n_hypotheses=None, tolerance=None, seed=0,
-                 max_iterations=None):
+                 max_iterations=None, first_stage='adaboostv', first_stage_tolerance=0.01):
         self.estimator = estimator
         self.n_hypotheses = n_hypotheses
         self.tolerance = tolerance
         self.seed = seed
         self.max_iterations = max_iterations
+        self.first_stage = first_stage
+        self.first_stage_tolerance = first_stage_tolerance
 
     def _max_iterations(self):
         return None if self.max_iterations is None else super()._max_iterations()
@@ -496,7 +505,14 @@ class SparsiBoostClassifier(_BoostClassifier):
         if (isinstance(self.seed, (bool, np.bool_)) or not isinstance(self.seed, numbers.Integral)
                 or not 0 <= self.seed < 2**64):
             raise ValueError('seed must be an integer in [0, 2**64)')
-        options = {'seed': int(self.seed)}
+        if self.first_stage not in ('adaboostv', 'totalboost', 'lpboost', 'erlpboost', 'softboost'):
+            raise ValueError('first_stage must be adaboostv, totalboost, lpboost, erlpboost, or softboost')
+        options = {'seed': int(self.seed), 'first_stage': self.first_stage}
+        if self.first_stage != 'adaboostv':
+            if self.max_iterations is None:
+                raise ValueError('max_iterations is required unless first_stage is adaboostv')
+            _positive_finite('first_stage_tolerance', self.first_stage_tolerance)
+            options['first_stage_tolerance'] = float(self.first_stage_tolerance)
         if self.n_hypotheses is not None:
             _positive_integer('n_hypotheses', self.n_hypotheses)
             options['n_hypotheses'] = int(self.n_hypotheses)

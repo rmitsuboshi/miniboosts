@@ -458,9 +458,9 @@ impl LearnerSpec {
     }
 }
 
-/// Runs Majority-of-5 or Larsen–Ritzert with AdaBoost (`maxIterations`,
-/// `tolerance`) and `spec` on every sub-sample. There are no rounds, so the
-/// timeline is empty.
+/// Runs Majority-of-5 or Larsen–Ritzert with the booster `innerBooster`
+/// (`maxIterations`, `tolerance`) and `spec` on every sub-sample. There are
+/// no rounds, so the timeline is empty.
 fn fit_subsample_majority(
     algorithm: &str,
     sample: &Sample,
@@ -470,6 +470,10 @@ fn fit_subsample_majority(
     let limit = p.count("maxIterations", 1)?;
     let tolerance = p.positive("tolerance")?;
     let seed = p.count("subsampleSeed", 0)? as u64;
+    let inner = HardMarginStage::parse(
+        &p.text("innerBooster")
+            .unwrap_or_else(|_| "adaboost".to_string()),
+    )?;
     let n = sample.shape().0;
     let (subsets, what) = if algorithm == "majority_of_five" {
         let parts = p.count("nParts", 1)?;
@@ -488,7 +492,7 @@ fn fit_subsample_majority(
         };
         (learner.subsamples(), "overlapping sub-samples")
     };
-    // AdaBoost needs both labels; report a bad sub-sample instead of
+    // The boosters need both labels; report a bad sub-sample instead of
     // aborting the wasm instance with a panic.
     let labels = sample.target();
     if let Some(k) = subsets.iter().position(|rows| {
@@ -506,10 +510,7 @@ fn fit_subsample_majority(
             .iter()
             .map(|rows| {
                 let sub = sample.select_rows(rows);
-                AdaBoost::init(&sub)
-                    .tolerance(tolerance)
-                    .force_quit_at(limit)
-                    .run(&spec.build(&sub))
+                inner.run(&sub, tolerance, &spec.build(&sub), limit)
             })
             .collect::<Vec<_>>(),
     );
@@ -518,7 +519,8 @@ fn fit_subsample_majority(
         rounds: k,
         stop: "algorithm_stop",
         note: format!(
-            "Unweighted majority of {k} AdaBoost runs (up to {limit} rounds each) on {what}."
+            "Unweighted majority of {k} {} runs (up to {limit} rounds each) on {what}.",
+            inner.name()
         ),
         timeline: Timeline {
             curve: Thinned::new(CURVE_CAP),
@@ -526,6 +528,80 @@ fn fit_subsample_majority(
             final_step: "",
         },
     })
+}
+
+/// A booster run inside another algorithm: by Majority-of-5 and Larsen–Ritzert
+/// on every sub-sample, or by SparsiBoost as its first stage. LPBoost runs
+/// with `ν = 1`, i.e. as a hard-margin optimizer like TotalBoost.
+#[derive(Clone, Copy)]
+enum HardMarginStage {
+    AdaBoost,
+    AdaBoostV,
+    TotalBoost,
+    LpBoost,
+}
+
+impl HardMarginStage {
+    fn parse(name: &str) -> Result<Self, JsError> {
+        Ok(match name {
+            "adaboost" => Self::AdaBoost,
+            "adaboostv" => Self::AdaBoostV,
+            "totalboost" => Self::TotalBoost,
+            "lpboost" => Self::LpBoost,
+            _ => return Err(JsError::new("unknown inner booster")),
+        })
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::AdaBoost => "AdaBoost",
+            Self::AdaBoostV => "AdaBoostV",
+            Self::TotalBoost => "TotalBoost",
+            Self::LpBoost => "LPBoost",
+        }
+    }
+
+    /// Trains on `sample` for at most `limit` rounds.
+    fn run(
+        self,
+        sample: &Sample,
+        tolerance: f64,
+        learner: &Learner,
+        limit: usize,
+    ) -> WeightedMajority<Hypothesis> {
+        match self {
+            Self::AdaBoost => {
+                run_capped(AdaBoost::init(sample).tolerance(tolerance), learner, limit)
+            }
+            Self::AdaBoostV => {
+                run_capped(AdaBoostV::init(sample).tolerance(tolerance), learner, limit)
+            }
+            Self::TotalBoost => run_capped(
+                TotalBoost::init(sample).tolerance(tolerance),
+                learner,
+                limit,
+            ),
+            Self::LpBoost => run_capped(
+                LpBoost::init(sample).nu(1.0).tolerance(tolerance),
+                learner,
+                limit,
+            ),
+        }
+    }
+}
+
+/// Runs `booster` until it stops or after `limit` rounds.
+fn run_capped<B>(mut booster: B, learner: &Learner, limit: usize) -> B::Output
+where
+    B: Booster<Hypothesis>,
+{
+    booster.preprocess();
+    for round in 1..=limit {
+        if booster.boost(learner, round).is_break() {
+            break;
+        }
+    }
+    booster.postprocess()
 }
 
 /// One of the demo's weak learners. Dispatching through an enum compiles
@@ -1042,51 +1118,37 @@ fn fit(algorithm: &str, ctx: &Context, learner: &Learner, p: &Params) -> Result<
             if !gap.is_nan() {
                 booster = booster.tolerance(gap);
             }
-            let planned = booster.max_loop();
-            // SparsiBoost runs AdaBoostV with these parameters and sparsifies
-            // its ensemble once, after the last round. Its own snapshots would
-            // redo that O(m R² + R³) step every round, so the timeline comes
-            // from the same AdaBoostV run, followed by the sparsified model.
-            let stage = run(
-                sparsiboost_stage(s, &booster),
-                ctx,
-                l,
-                limit,
-                true,
-                Objective::SoftMargin(1.0),
-                no_check,
-            )?;
-            let t = run(
-                booster,
-                ctx,
-                l,
-                limit,
-                false,
-                Objective::SoftMargin(1.0),
-                no_check,
-            )?;
-            let mut timeline = stage.timeline;
-            timeline.curve.items.extend(t.timeline.curve.items);
-            timeline.frames.items.extend(t.timeline.frames.items);
-            timeline.final_step = "sparsification";
-            let kept = t.model.weights.iter().filter(|w| **w != 0.0).count();
-            let change = t.booster.sparsification_error().unwrap_or(f64::NAN);
-            let within = match t.booster.sparsification_within_tolerance() {
-                Some(true) => " (within v/2)",
-                Some(false) => " (exceeds v/2: the cap T forced extra halving)",
-                None => "",
-            };
-            let note = format!(
-                "AdaBoostV: {} of {planned} planned rounds; sparsified to {kept} \
-                 hypotheses; largest training-margin change {change:.3}{within}",
-                t.rounds
-            );
-            Outcome {
-                model: Box::new(t.model),
-                rounds: t.rounds,
-                stop: t.stop,
-                note,
-                timeline,
+            match p.text("firstStage").as_deref().unwrap_or("adaboostv") {
+                "adaboostv" => {
+                    let planned = format!("of {} planned ", booster.max_loop());
+                    let stage = sparsiboost_stage(s, &booster);
+                    fit_sparsiboost(booster, stage, ctx, l, limit, planned)?
+                }
+                "totalboost" => {
+                    let tol = p.positive("firstStageTolerance")?;
+                    let make = || TotalBoost::init(s).tolerance(tol);
+                    fit_sparsiboost(
+                        booster.first_stage(make()),
+                        make(),
+                        ctx,
+                        l,
+                        limit,
+                        String::new(),
+                    )?
+                }
+                "lpboost" => {
+                    let tol = p.positive("firstStageTolerance")?;
+                    let make = || LpBoost::init(s).nu(1.0).tolerance(tol);
+                    fit_sparsiboost(
+                        booster.first_stage(make()),
+                        make(),
+                        ctx,
+                        l,
+                        limit,
+                        String::new(),
+                    )?
+                }
+                _ => return Err(JsError::new("unknown SparsiBoost first stage")),
             }
         }
         "brownboost" => {
@@ -1141,6 +1203,66 @@ fn fit(algorithm: &str, ctx: &Context, learner: &Learner, p: &Params) -> Result<
 
 /// The AdaBoostV run inside `booster` (see `SparsiBoost::preprocess`): margin
 /// accuracy `adaboostv_tolerance()` for at most `max_loop()` rounds.
+/// Trains SparsiBoost with first stage `stage`, a separate instance run
+/// alone for the timeline: SparsiBoost sparsifies its ensemble once, after
+/// the last round, and its own snapshots would redo that O(m R² + R³) step
+/// every round. `planned` describes AdaBoostV's planned rounds, if any.
+fn fit_sparsiboost<B>(
+    booster: SparsiBoost<'_, Hypothesis, B>,
+    stage: B,
+    ctx: &Context,
+    l: &Learner,
+    limit: usize,
+    planned: String,
+) -> Result<Outcome, JsError>
+where
+    B: Booster<Hypothesis, Output = WeightedMajority<Hypothesis>>
+        + CurrentHypothesis<Output = WeightedMajority<Hypothesis>>,
+{
+    let name = stage.name().to_string();
+    let stage = run(
+        stage,
+        ctx,
+        l,
+        limit,
+        true,
+        Objective::SoftMargin(1.0),
+        no_check,
+    )?;
+    let t = run(
+        booster,
+        ctx,
+        l,
+        limit,
+        false,
+        Objective::SoftMargin(1.0),
+        no_check,
+    )?;
+    let mut timeline = stage.timeline;
+    timeline.curve.items.extend(t.timeline.curve.items);
+    timeline.frames.items.extend(t.timeline.frames.items);
+    timeline.final_step = "sparsification";
+    let kept = t.model.weights.iter().filter(|w| **w != 0.0).count();
+    let change = t.booster.sparsification_error().unwrap_or(f64::NAN);
+    let within = match t.booster.sparsification_within_tolerance() {
+        Some(true) => " (within v/2)",
+        Some(false) => " (exceeds v/2: the cap T forced extra halving)",
+        None => "",
+    };
+    let note = format!(
+        "{name}: {} {planned}rounds; sparsified to {kept} hypotheses; \
+         largest training-margin change {change:.3}{within}",
+        t.rounds
+    );
+    Ok(Outcome {
+        model: Box::new(t.model),
+        rounds: t.rounds,
+        stop: t.stop,
+        note,
+        timeline,
+    })
+}
+
 fn sparsiboost_stage<'a, H>(s: &'a Sample, booster: &SparsiBoost<'a, H>) -> AdaBoostV<'a, H>
 where
     H: Classifier + Clone,
@@ -1588,6 +1710,26 @@ fn finite(values: Vec<f64>) -> Result<Vec<f64>, JsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inner_boosters_respect_the_round_limit() {
+        let s = sample();
+        let learner = LearnerSpec::Tree {
+            depth: 1,
+            split: SplitBy::Entropy,
+            exact: false,
+            leaf: LeafConfidence::Purity,
+        }
+        .build(&s);
+        for name in ["adaboost", "adaboostv", "totalboost", "lpboost"] {
+            let stage = HardMarginStage::parse(name).unwrap();
+            let f = stage.run(&s, 0.01, &learner, 3);
+            assert!(
+                !f.hypotheses.is_empty() && f.hypotheses.len() <= 3,
+                "{name}"
+            );
+        }
+    }
 
     #[test]
     fn learner_specs_build_the_configured_learners() {

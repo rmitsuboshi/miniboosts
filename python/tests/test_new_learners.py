@@ -126,3 +126,21 @@ def test_failed_voter_fit_names_the_subsample():
         mb.MajorityOfFiveClassifier().fit(X, y)
     if hasattr(error.value, 'add_note'):
         assert any('sub-sample' in note for note in error.value.__notes__)
+
+
+def test_sparsiboost_with_another_first_stage():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(40, 2))
+    y = np.where(X[:, 0] + X[:, 1] > 0, 1, -1)
+    stump = mb.DecisionTreeClassifier(max_depth=1)
+    model = mb.SparsiBoostClassifier(estimator=stump, n_hypotheses=3, first_stage='totalboost',
+                                     max_iterations=200).fit(X, y)
+    assert model.n_selected_ <= 3
+    assert model.sparsification_error_ is not None and model.adaboostv_rounds_ is None
+    default = mb.SparsiBoostClassifier(estimator=stump, n_hypotheses=3).fit(X, y)
+    assert default.adaboostv_rounds_ is not None
+    for params in [{'first_stage': 'adaboost', 'max_iterations': 10},
+                   {'first_stage': 'lpboost'},
+                   {'first_stage': 'lpboost', 'max_iterations': 10, 'first_stage_tolerance': 0}]:
+        with pytest.raises(ValueError):
+            mb.SparsiBoostClassifier(n_hypotheses=3, **params).fit(X, y)

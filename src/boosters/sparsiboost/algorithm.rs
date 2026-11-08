@@ -8,6 +8,7 @@ use crate::optimization::sparsification::{
     margin_columns, max_margin_change, sparsify, sparsify_within,
 };
 
+use std::marker::PhantomData;
 use std::ops::ControlFlow;
 
 const NO_TARGET: &str = "SparsiBoost needs a target: set n_hypotheses(T), tolerance(v), or both";
@@ -45,6 +46,14 @@ const NO_TARGET: &str = "SparsiBoost needs a target: set n_hypotheses(T), tolera
 /// more than `v/2`. [`SparsiBoost::sparsification_within_tolerance`] tells
 /// whether the `v/2` budget was kept.
 ///
+/// **Another first stage.** [`SparsiBoost::first_stage`] replaces AdaBoostV
+/// by any booster that returns a [`WeightedMajority`], e.g. a hard-margin
+/// optimizer such as [`TotalBoost`](crate::TotalBoost) or
+/// [`LpBoost`](crate::LpBoost) with `ν = 1`. The paper notes (Section 1.2)
+/// that the sparsification applies to the output of any boosting algorithm.
+/// The booster is used as configured: SparsiBoost does not set its
+/// tolerance or round limit, and the sparsification step is the same.
+///
 /// Implementation choices (not part of the original method):
 /// - For `T`, `c` is at least `1`. In both forms `ν` is capped at `1/2`:
 ///   AdaBoostV needs `ν < 1 + γ^min` (its smallest edge), so a larger `ν`
@@ -73,6 +82,11 @@ const NO_TARGET: &str = "SparsiBoost needs a target: set n_hypotheses(T), tolera
 /// number of hypotheses is not bounded by `O(lg(m v²) / v²)` unless the
 /// colorings meet Spencer's bound.
 ///
+/// With another first stage these bounds do not apply. What remains is that
+/// every training margin moves by at most
+/// [`SparsiBoost::sparsification_error`], so the gap of the output is at most
+/// the first stage's gap plus that error.
+///
 /// # Limitations
 /// - The weak-learning assumption is not checked, and the discrepancy step
 ///   does not certify Spencer's bound. [`SparsiBoost::sparsification_error`]
@@ -98,6 +112,7 @@ const NO_TARGET: &str = "SparsiBoost needs a target: set n_hypotheses(T), tolera
 /// | [`n_hypotheses`](SparsiBoost::n_hypotheses) | none | At most `T` hypotheses in the output; takes precedence over `tolerance`. |
 /// | [`tolerance`](SparsiBoost::tolerance) | none | Target gap `v`: AdaBoostV's `ν = v/2`, margin-change budget `v/2`. |
 /// | [`seed`](SparsiBoost::seed) | `0` | Seed of the randomized discrepancy minimization. |
+/// | [`first_stage`](SparsiBoost::first_stage) | AdaBoostV | The booster whose ensemble is sparsified. |
 ///
 /// # Reference
 /// Allan Grønlund, Kasper Green Larsen, and Alexander Mathiasen.
@@ -144,7 +159,7 @@ const NO_TARGET: &str = "SparsiBoost needs a target: set n_hypotheses(T), tolera
 /// assert_eq!(booster.sparsification_within_tolerance(), Some(true));
 /// println!("{} hypotheses for gap 0.5", f.hypotheses.len());
 /// ```
-pub struct SparsiBoost<'a, H> {
+pub struct SparsiBoost<'a, H, B = AdaBoostV<'a, H>> {
     // Training sample
     sample: &'a Sample,
 
@@ -157,11 +172,18 @@ pub struct SparsiBoost<'a, H> {
     // Seed of the discrepancy minimization.
     seed: u64,
 
-    // The first stage; rebuilt by `preprocess`.
-    adaboostv: AdaBoostV<'a, H>,
+    // The first stage.
+    first: B,
+
+    // Rebuilds the default first stage (AdaBoostV) from `ν` and the number
+    // of rounds in `preprocess`; `None` for a booster set by `first_stage`,
+    // which is used as configured.
+    configure: Option<fn(&'a Sample, f64, usize) -> B>,
 
     // `‖U w - U w'‖_∞` of the last `postprocess`.
     sparsification_error: Option<f64>,
+
+    _hypothesis: PhantomData<fn() -> H>,
 }
 
 impl<'a, H> SparsiBoost<'a, H> {
@@ -192,11 +214,79 @@ impl<'a, H> SparsiBoost<'a, H> {
             n_hypotheses: None,
             tolerance: None,
             seed: 0,
-            adaboostv: AdaBoostV::init(sample),
+            first: AdaBoostV::init(sample),
+            configure: Some(|sample, nu, rounds| {
+                AdaBoostV::init(sample).tolerance(nu).force_quit_at(rounds)
+            }),
             sparsification_error: None,
+            _hypothesis: PhantomData,
         }
     }
 
+    /// Returns the number of AdaBoostV rounds for `m` training examples:
+    /// `⌈2 ln m / ν²⌉` with `ν = min(v/2, 1/2)` if a tolerance `v` is set,
+    /// and otherwise `c T` with `c = max(1, ⌈lg m / lg(2 + m/T)⌉)`.
+    /// Values exceeding `usize::MAX` saturate. Only the default first stage
+    /// has this budget.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if neither [`SparsiBoost::n_hypotheses`] nor
+    /// [`SparsiBoost::tolerance`] is set.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// use miniboosts::DecisionTreeClassifier;
+    ///
+    /// // m = 6, T = 2: c = ⌈lg 6 / lg 5⌉ = ⌈1.11⌉ = 2.
+    /// let booster = SparsiBoost::<DecisionTreeClassifier>::init(&sample).n_hypotheses(2);
+    /// assert_eq!(booster.max_loop(), 4);
+    /// // With a tolerance, the AdaBoostV stage follows v instead of T.
+    /// let booster = booster.tolerance(0.5);
+    /// assert_eq!(booster.max_loop(), 58);
+    /// ```
+    pub fn max_loop(&self) -> usize {
+        self.planned_stage().1
+    }
+
+    /// Returns the margin accuracy `ν` passed to AdaBoostV:
+    /// `min(v/2, 1/2)` if a tolerance `v` is set, and otherwise
+    /// `min(√(2 ln m / (cT)), 1/2)` with `cT =` [`SparsiBoost::max_loop`].
+    /// Only the default first stage has this parameter.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Panics
+    /// Panics if neither [`SparsiBoost::n_hypotheses`] nor
+    /// [`SparsiBoost::tolerance`] is set.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// use miniboosts::DecisionTreeClassifier;
+    ///
+    /// let booster = SparsiBoost::<DecisionTreeClassifier>::init(&sample).n_hypotheses(2);
+    /// // m = 6, cT = 4: √(2 ln 6 / 4) ≈ 0.95 is capped at 1/2.
+    /// assert_eq!(booster.adaboostv_tolerance(), 0.5);
+    /// ```
+    pub fn adaboostv_tolerance(&self) -> f64 {
+        self.planned_stage().0
+    }
+}
+
+impl<'a, H, B> SparsiBoost<'a, H, B> {
     /// Caps the output at `n_hypotheses` hypotheses (the `T` of Algorithm 1).
     /// Without [`SparsiBoost::tolerance`], this also sets the AdaBoostV
     /// stage as in Algorithm 1. With it, `T` only caps the output and takes
@@ -291,8 +381,49 @@ impl<'a, H> SparsiBoost<'a, H> {
         self
     }
 
-    /// Returns AdaBoostV's margin accuracy `ν` and number of rounds.
-    fn first_stage(&self) -> (f64, usize) {
+    /// Replaces the first stage, AdaBoostV by default, by `booster`, whose
+    /// ensemble is then sparsified. `booster` must be built on the same
+    /// training sample (this is not checked) and is used as configured, so
+    /// set its own tolerance and round limit. See [`SparsiBoost`] for what
+    /// this does to the guarantee.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// TotalBoost, a hard-margin optimizer, as the first stage.
+    /// ```
+    /// # use std::io::BufReader;
+    /// # use miniboosts::{Sample, prelude::*};
+    /// # let csv = b"x,y,class\n\
+    /// #     -2,1,-1\n-1,-2,-1\n1,-3,-1\n-3,2,-1\n0,-1,-1\n-2,-1,-1\n\
+    /// #     2,1,1\n1,2,1\n-1,3,1\n3,-1,1\n0,2,1\n2,2,1\n";
+    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
+    /// #     .unwrap()
+    /// #     .set_target("class");
+    /// let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// let mut booster = SparsiBoost::init(&sample)
+    ///     .n_hypotheses(3)
+    ///     .first_stage(TotalBoost::init(&sample).tolerance(0.01));
+    /// let f = booster.run(&learner);
+    /// assert!(f.hypotheses.len() <= 3);
+    /// assert!(booster.sparsification_error().is_some());
+    /// ```
+    pub fn first_stage<B2>(self, booster: B2) -> SparsiBoost<'a, H, B2> {
+        SparsiBoost {
+            sample: self.sample,
+            n_hypotheses: self.n_hypotheses,
+            tolerance: self.tolerance,
+            seed: self.seed,
+            first: booster,
+            configure: None,
+            sparsification_error: None,
+            _hypothesis: PhantomData,
+        }
+    }
+
+    /// Returns the default first stage's (AdaBoostV's) margin accuracy `ν`
+    /// and number of rounds.
+    fn planned_stage(&self) -> (f64, usize) {
         let m = self.sample.shape().0 as f64;
         match (self.tolerance, self.n_hypotheses) {
             (Some(v), _) => {
@@ -306,66 +437,6 @@ impl<'a, H> SparsiBoost<'a, H> {
             }
             (None, None) => panic!("{NO_TARGET}"),
         }
-    }
-
-    /// Returns the number of AdaBoostV rounds for `m` training examples:
-    /// `⌈2 ln m / ν²⌉` with `ν = min(v/2, 1/2)` if a tolerance `v` is set,
-    /// and otherwise `c T` with `c = max(1, ⌈lg m / lg(2 + m/T)⌉)`.
-    /// Values exceeding `usize::MAX` saturate.
-    ///
-    /// Time complexity: `O(1)`.
-    ///
-    /// # Panics
-    /// Panics if neither [`SparsiBoost::n_hypotheses`] nor
-    /// [`SparsiBoost::tolerance`] is set.
-    ///
-    /// # Examples
-    /// ```
-    /// # use std::io::BufReader;
-    /// # use miniboosts::{Sample, prelude::*};
-    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
-    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
-    /// #     .unwrap()
-    /// #     .set_target("class");
-    /// use miniboosts::DecisionTreeClassifier;
-    ///
-    /// // m = 6, T = 2: c = ⌈lg 6 / lg 5⌉ = ⌈1.11⌉ = 2.
-    /// let booster = SparsiBoost::<DecisionTreeClassifier>::init(&sample).n_hypotheses(2);
-    /// assert_eq!(booster.max_loop(), 4);
-    /// // With a tolerance, the AdaBoostV stage follows v instead of T.
-    /// let booster = booster.tolerance(0.5);
-    /// assert_eq!(booster.max_loop(), 58);
-    /// ```
-    pub fn max_loop(&self) -> usize {
-        self.first_stage().1
-    }
-
-    /// Returns the margin accuracy `ν` passed to AdaBoostV:
-    /// `min(v/2, 1/2)` if a tolerance `v` is set, and otherwise
-    /// `min(√(2 ln m / (cT)), 1/2)` with `cT =` [`SparsiBoost::max_loop`].
-    ///
-    /// Time complexity: `O(1)`.
-    ///
-    /// # Panics
-    /// Panics if neither [`SparsiBoost::n_hypotheses`] nor
-    /// [`SparsiBoost::tolerance`] is set.
-    ///
-    /// # Examples
-    /// ```
-    /// # use std::io::BufReader;
-    /// # use miniboosts::{Sample, prelude::*};
-    /// # let csv = b"x,y,class\n-2,0,-1\n-1,1,-1\n-1,-1,-1\n1,0,1\n2,1,1\n1,-1,1\n";
-    /// # let sample = Sample::from_reader(BufReader::new(&csv[..]), true)
-    /// #     .unwrap()
-    /// #     .set_target("class");
-    /// use miniboosts::DecisionTreeClassifier;
-    ///
-    /// let booster = SparsiBoost::<DecisionTreeClassifier>::init(&sample).n_hypotheses(2);
-    /// // m = 6, cT = 4: √(2 ln 6 / 4) ≈ 0.95 is capped at 1/2.
-    /// assert_eq!(booster.adaboostv_tolerance(), 0.5);
-    /// ```
-    pub fn adaboostv_tolerance(&self) -> f64 {
-        self.first_stage().0
     }
 
     /// Returns `‖U w - U w'‖_∞` from the last call to
@@ -399,7 +470,7 @@ impl<'a, H> SparsiBoost<'a, H> {
     }
 }
 
-impl<H> SparsiBoost<'_, H>
+impl<H, B> SparsiBoost<'_, H, B>
 where
     H: Classifier + Clone,
 {
@@ -422,9 +493,10 @@ where
     }
 }
 
-impl<H> Booster<H> for SparsiBoost<'_, H>
+impl<H, B> Booster<H> for SparsiBoost<'_, H, B>
 where
     H: Classifier + Clone,
+    B: Booster<H, Output = WeightedMajority<H>>,
 {
     type Output = WeightedMajority<H>;
 
@@ -435,8 +507,10 @@ where
     fn info(&self) -> Option<Vec<(&str, String)>> {
         let (n_examples, n_feature) = self.sample.shape();
         let or_dash = |v: Option<String>| v.unwrap_or_else(|| "-".to_string());
-        let (nu, rounds) = if self.tolerance.is_some() || self.n_hypotheses.is_some() {
-            let (nu, rounds) = self.first_stage();
+        let planned =
+            self.configure.is_some() && (self.tolerance.is_some() || self.n_hypotheses.is_some());
+        let (nu, rounds) = if planned {
+            let (nu, rounds) = self.planned_stage();
             (Some(nu.to_string()), Some(rounds.to_string()))
         } else {
             (None, None)
@@ -455,29 +529,31 @@ where
             ("AdaBoostV rounds", or_dash(rounds)),
             ("AdaBoostV tolerance", or_dash(nu)),
             ("Seed", format!("{}", self.seed)),
+            ("First stage", self.first.name().to_string()),
         ]);
         Some(info)
     }
 
     fn preprocess(&mut self) {
-        let (nu, rounds) = self.first_stage();
+        // Also checks that a target is set.
+        let (nu, rounds) = self.planned_stage();
         self.sample.is_valid_binary_instance();
         self.sparsification_error = None;
-        self.adaboostv = AdaBoostV::init(self.sample)
-            .tolerance(nu)
-            .force_quit_at(rounds);
-        self.adaboostv.preprocess();
+        if let Some(configure) = self.configure {
+            self.first = configure(self.sample, nu, rounds);
+        }
+        self.first.preprocess();
     }
 
     fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
     where
         W: WeakLearner<Hypothesis = H>,
     {
-        self.adaboostv.boost(weak_learner, iteration)
+        self.first.boost(weak_learner, iteration)
     }
 
     fn postprocess(&mut self) -> Self::Output {
-        let f = self.adaboostv.postprocess();
+        let f = self.first.postprocess();
         let (f, error) = self.sparsify(&f);
         assert!(error.is_finite(), "SparsiBoost margin change is not finite");
         self.sparsification_error = Some(error);
@@ -485,15 +561,16 @@ where
     }
 }
 
-impl<H> CurrentHypothesis for SparsiBoost<'_, H>
+impl<H, B> CurrentHypothesis for SparsiBoost<'_, H, B>
 where
     H: Classifier + Clone,
+    B: CurrentHypothesis<Output = WeightedMajority<H>>,
 {
     type Output = WeightedMajority<H>;
 
-    /// Sparsifies AdaBoostV's current ensemble, as `postprocess` would.
+    /// Sparsifies the first stage's current ensemble, as `postprocess` would.
     fn current_hypothesis(&self) -> Self::Output {
-        self.sparsify(&self.adaboostv.current_hypothesis()).0
+        self.sparsify(&self.first.current_hypothesis()).0
     }
 }
 
@@ -581,6 +658,45 @@ mod tests {
         // A second run with the same seed reproduces the output.
         let g = booster.run(&tree);
         assert_eq!(margin_distance(&sample, &f, &g), 0.0);
+    }
+
+    #[test]
+    fn another_first_stage_is_sparsified_with_a_measured_margin_change() {
+        use crate::{LpBoost, TotalBoost};
+        let sample = xor_like_sample();
+        let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+        let min_margin = |f: &WeightedMajority<DecisionTreeClassifier>| {
+            margin_columns(&sample, std::slice::from_ref(f))[0]
+                .iter()
+                .fold(f64::INFINITY, |acc, &u| acc.min(u))
+        };
+        // The same first stage, run alone, gives the ensemble that SparsiBoost
+        // sparsifies (both runs are deterministic).
+        let dense = TotalBoost::init(&sample).tolerance(0.01).run(&learner);
+        let mut booster = SparsiBoost::init(&sample)
+            .n_hypotheses(2)
+            .seed(3)
+            .first_stage(TotalBoost::init(&sample).tolerance(0.01));
+        let sparse = booster.run(&learner);
+        assert!(sparse.hypotheses.len() <= 2);
+        let error = booster.sparsification_error().unwrap();
+        // Rounding in the margins: a few terms of magnitude at most 1.
+        assert!((error - margin_distance(&sample, &dense, &sparse)).abs() < 1e-12);
+        // Every margin moves by at most the error, so the minimal margin too.
+        assert!(min_margin(&sparse) >= min_margin(&dense) - error - 1e-12);
+        assert!(
+            booster
+                .info()
+                .unwrap()
+                .contains(&("First stage", "TotalBoost".to_string()))
+        );
+
+        // With a gap v, halving keeps the margins within v/2.
+        let mut booster = SparsiBoost::init(&sample)
+            .tolerance(0.5)
+            .first_stage(LpBoost::init(&sample).nu(1.0).tolerance(0.01));
+        booster.run(&learner);
+        assert_eq!(booster.sparsification_within_tolerance(), Some(true));
     }
 
     #[test]
