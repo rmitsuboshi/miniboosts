@@ -90,6 +90,25 @@ pub struct LoggerBuilder<'a, B, W, F, G> {
     round: usize,
 }
 
+/// The objective and loss functions are usually closures, which have no
+/// `Debug` output, so they are omitted.
+impl<B, W, F, G> std::fmt::Debug for LoggerBuilder<'_, B, W, F, G>
+where
+    B: std::fmt::Debug,
+    W: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoggerBuilder")
+            .field("booster", &self.booster)
+            .field("weak_learner", &self.weak_learner)
+            .field("train", &self.train)
+            .field("test", &self.test)
+            .field("time_limit", &self.time_limit)
+            .field("round", &self.round)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<B, W, F, G> Default for LoggerBuilder<'_, B, W, F, G> {
     /// Same as [`LoggerBuilder::new`].
     fn default() -> Self {
@@ -194,6 +213,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// assert!((2..=11).contains(&log.lines().count()));
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn booster(mut self, booster: B) -> Self {
         self.booster = Some(booster);
         self
@@ -241,6 +261,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn weak_learner(mut self, weak_learner: W) -> Self {
         self.weak_learner = Some(weak_learner);
         self
@@ -293,6 +314,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn objective_function(mut self, objective_func: F) -> Self {
         self.objective_func = Some(objective_func);
         self
@@ -352,6 +374,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn loss_function(mut self, loss_func: G) -> Self {
         self.loss_func = Some(loss_func);
         self
@@ -396,6 +419,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn train_sample(mut self, train: &'a Sample) -> Self {
         self.train = Some(train);
         self
@@ -444,6 +468,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn test_sample(mut self, test: &'a Sample) -> Self {
         self.test = Some(test);
         self
@@ -451,7 +476,6 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
 
     /// Set the time limit for boosting algorithm as milliseconds.
     /// Checked between steps using cumulative boosting time; see [`Logger::run`].
-    #[inline(always)]
     /// # Examples
     /// A limit of `0` ms is reached after the first step, which is still
     /// logged:
@@ -493,6 +517,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// assert_eq!(log.lines().count(), 2); // header + one step
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn time_limit_as_millis(mut self, time_limit: u128) -> Self {
         self.time_limit = time_limit;
         self
@@ -500,7 +525,6 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
 
     /// Set the time limit for boosting algorithm as seconds.
     /// Checked between steps using cumulative boosting time; see [`Logger::run`].
-    #[inline(always)]
     /// # Examples
     /// Stop once the cumulative boosting time reaches 30 seconds (this small
     /// example finishes long before that):
@@ -540,6 +564,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn time_limit_as_secs(mut self, time_limit: u64) -> Self {
         self.time_limit = u128::from(time_limit)
             .checked_mul(1_000_u128)
@@ -549,7 +574,6 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
 
     /// Set the time limit for boosting algorithm as minutes.
     /// Checked between steps using cumulative boosting time; see [`Logger::run`].
-    #[inline(always)]
     /// # Examples
     /// Long experiments are usually budgeted in minutes:
     /// ```
@@ -588,6 +612,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn time_limit_as_mins(mut self, time_limit: u64) -> Self {
         self.time_limit = u128::from(time_limit)
             .checked_mul(60_u128)
@@ -604,7 +629,6 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     ///
     /// # Panics
     /// Panics if `round == 0`.
-    #[inline(always)]
     /// # Examples
     /// Print a progress line every 10 steps, or pass `usize::MAX` to keep only
     /// the settings panel. The CSV file always gets every step.
@@ -643,6 +667,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn print_every(mut self, round: usize) -> Self {
         assert!(round > 0, "print interval must be positive");
         self.round = round;

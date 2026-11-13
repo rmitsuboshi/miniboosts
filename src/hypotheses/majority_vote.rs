@@ -52,4 +52,23 @@ impl<H: Classifier> Classifier for MajorityVote<H> {
         let votes: i64 = self.hypotheses.iter().map(|h| h.predict(sample, row)).sum();
         votes as f64 / self.hypotheses.len() as f64
     }
+
+    /// Same values as [`Classifier::confidence`] row by row, with each
+    /// hypothesis predicting all rows at once.
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        let n_sample = sample.shape().0;
+        if self.hypotheses.is_empty() {
+            return vec![0.0; n_sample];
+        }
+        let mut votes = vec![0i64; n_sample];
+        for h in &self.hypotheses {
+            for (sum, vote) in votes.iter_mut().zip(h.predict_all(sample)) {
+                *sum += vote;
+            }
+        }
+        votes
+            .into_iter()
+            .map(|v| v as f64 / self.hypotheses.len() as f64)
+            .collect()
+    }
 }

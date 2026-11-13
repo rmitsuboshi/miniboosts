@@ -112,6 +112,7 @@ impl NaiveBayes {
     /// assert!(soft.confidence(&sample, 2) < sharp.confidence(&sample, 2));
     /// assert!(soft.confidence(&sample, 2) > 0.0);
     /// ```
+    #[must_use]
     pub fn var_smoothing(mut self, var_smoothing: f64) -> Self {
         assert!(
             var_smoothing.is_finite() && var_smoothing > 0.0,
@@ -257,17 +258,24 @@ impl NaiveBayesClassifier {
     /// assert_eq!(h.log_odds(&midpoint, 0), 0.0);
     /// ```
     pub fn log_odds(&self, sample: &Sample, row: usize) -> f64 {
+        self.log_odds_from(|k| sample[&self.feature_names[k]][row])
+    }
+
+    /// The log odds, where `x(k)` is the value of the `k`-th feature. `x` is
+    /// not called when only one label had weight.
+    fn log_odds_from(&self, x: impl Fn(usize) -> f64) -> f64 {
         if let Some(label) = self.only_label {
             return label * f64::INFINITY;
         }
         let log_density = |x: f64, (mean, var): (f64, f64)| {
             -0.5 * (std::f64::consts::TAU * var).ln() - (x - mean).powi(2) / (2.0 * var)
         };
-        self.feature_names
+        self.positive
             .iter()
-            .zip(self.positive.iter().zip(&self.negative))
-            .map(|(name, (&pos, &neg))| {
-                let x = sample[name][row];
+            .zip(&self.negative)
+            .enumerate()
+            .map(|(k, (&pos, &neg))| {
+                let x = x(k);
                 log_density(x, pos) - log_density(x, neg)
             })
             .sum::<f64>()
@@ -278,6 +286,21 @@ impl NaiveBayesClassifier {
 impl Classifier for NaiveBayesClassifier {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
         (0.5 * self.log_odds(sample, row)).tanh()
+    }
+
+    /// Same values as [`Classifier::confidence`] row by row, looking each
+    /// feature up once instead of once per row.
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        let n_sample = sample.shape().0;
+        // With a single label the features are not read at all.
+        let columns = if n_sample == 0 || self.only_label.is_some() {
+            Vec::new()
+        } else {
+            sample.columns(&self.feature_names)
+        };
+        (0..n_sample)
+            .map(|row| (0.5 * self.log_odds_from(|k| columns[k][row])).tanh())
+            .collect()
     }
 }
 

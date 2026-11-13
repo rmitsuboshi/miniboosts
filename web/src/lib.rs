@@ -357,7 +357,7 @@ enum RbfSelection {
 }
 
 impl LearnerSpec {
-    fn parse(learner: &str, w: &Params) -> Result<Self, JsError> {
+    fn parse(learner: &str, w: &Params<'_>) -> Result<Self, JsError> {
         Ok(match learner {
             "decision_tree" => Self::Tree {
                 depth: w.count("maxDepth", 1)?,
@@ -465,7 +465,7 @@ fn fit_subsample_majority(
     algorithm: &str,
     sample: &Sample,
     spec: &LearnerSpec,
-    p: &Params,
+    p: &Params<'_>,
 ) -> Result<Outcome, JsError> {
     let limit = p.count("maxIterations", 1)?;
     let tolerance = p.positive("tolerance")?;
@@ -566,7 +566,7 @@ impl HardMarginStage {
         self,
         sample: &Sample,
         tolerance: f64,
-        learner: &Learner,
+        learner: &Learner<'_>,
         limit: usize,
     ) -> WeightedMajority<Hypothesis> {
         match self {
@@ -591,7 +591,7 @@ impl HardMarginStage {
 }
 
 /// Runs `booster` until it stops or after `limit` rounds.
-fn run_capped<B>(mut booster: B, learner: &Learner, limit: usize) -> B::Output
+fn run_capped<B>(mut booster: B, learner: &Learner<'_>, limit: usize) -> B::Output
 where
     B: Booster<Hypothesis>,
 {
@@ -878,7 +878,12 @@ impl Objective {
 /// Trains `algorithm` with `learner`, validating the booster parameters it
 /// uses (the library asserts the same conditions; checking here turns them
 /// into errors instead of panics).
-fn fit(algorithm: &str, ctx: &Context, learner: &Learner, p: &Params) -> Result<Outcome, JsError> {
+fn fit(
+    algorithm: &str,
+    ctx: &Context<'_>,
+    learner: &Learner<'_>,
+    p: &Params<'_>,
+) -> Result<Outcome, JsError> {
     let s = ctx.sample;
     let limit = p.count("maxIterations", 1)?;
     let n = s.shape().0;
@@ -939,7 +944,7 @@ fn fit(algorithm: &str, ctx: &Context, learner: &Learner, p: &Params) -> Result<
                 limit,
                 true,
                 Objective::Smooth { gamma },
-                |b: &SmoothBoost<_>| Ok(b.reached_round_budget().then_some("round_budget")),
+                |b: &SmoothBoost<'_, _>| Ok(b.reached_round_budget().then_some("round_budget")),
             )?
             .boxed()
         }
@@ -992,7 +997,7 @@ fn fit(algorithm: &str, ctx: &Context, learner: &Learner, p: &Params) -> Result<
             limit,
             true,
             Objective::SoftMargin(nu()?),
-            |b: &SoftBoost<_>| {
+            |b: &SoftBoost<'_, _>| {
                 b.numerical_stop_reason()
                     .map_or(Ok(None), |r| Err(r.to_owned()))
             },
@@ -1005,7 +1010,7 @@ fn fit(algorithm: &str, ctx: &Context, learner: &Learner, p: &Params) -> Result<
             limit,
             true,
             Objective::SoftMargin(1.0),
-            |b: &TotalBoost<_>| {
+            |b: &TotalBoost<'_, _>| {
                 b.numerical_stop_reason()
                     .map_or(Ok(None), |r| Err(r.to_owned()))
             },
@@ -1210,8 +1215,8 @@ fn fit(algorithm: &str, ctx: &Context, learner: &Learner, p: &Params) -> Result<
 fn fit_sparsiboost<B>(
     booster: SparsiBoost<'_, Hypothesis, B>,
     stage: B,
-    ctx: &Context,
-    l: &Learner,
+    ctx: &Context<'_>,
+    l: &Learner<'_>,
     limit: usize,
     planned: String,
 ) -> Result<Outcome, JsError>
@@ -1275,9 +1280,9 @@ where
 /// Trains gradient boosting or LogitBoost with regression trees.
 fn fit_regression(
     algorithm: &str,
-    ctx: &Context,
+    ctx: &Context<'_>,
     tree: &RegressionTree,
-    p: &Params,
+    p: &Params<'_>,
 ) -> Result<Outcome, JsError> {
     let s = ctx.sample;
     let limit = p.count("maxIterations", 1)?;
@@ -1439,7 +1444,7 @@ struct Eval {
 /// (summed in the same order as its own `confidence`); any other snapshot is
 /// evaluated directly.
 trait Snapshot<H> {
-    fn evaluate(&self, cache: &Cache<H>, ctx: &Context, grid: bool) -> Eval;
+    fn evaluate(&self, cache: &Cache<H>, ctx: &Context<'_>, grid: bool) -> Eval;
 }
 
 fn is_cached_prefix<H: PartialEq>(hypotheses: &[H], cache: &Cache<H>) -> bool {
@@ -1463,7 +1468,7 @@ fn combine<R: Copy + Into<f64>>(weights: &[f64], rows: &[Vec<R>], len: usize) ->
         .collect()
 }
 
-fn direct<F: Classifier>(f: &F, ctx: &Context, grid: bool) -> Eval {
+fn direct<F: Classifier>(f: &F, ctx: &Context<'_>, grid: bool) -> Eval {
     let conf = f.confidence_all(ctx.points);
     Eval {
         score: conf.clone(),
@@ -1474,7 +1479,7 @@ fn direct<F: Classifier>(f: &F, ctx: &Context, grid: bool) -> Eval {
 
 impl<H: Classifier + PartialEq> Snapshot<H> for WeightedMajority<H> {
     /// `Σ_j w_j h_j(x)`, as `WeightedMajority::confidence`.
-    fn evaluate(&self, cache: &Cache<H>, ctx: &Context, grid: bool) -> Eval {
+    fn evaluate(&self, cache: &Cache<H>, ctx: &Context<'_>, grid: bool) -> Eval {
         let k = self.hypotheses.len();
         if !is_cached_prefix(&self.hypotheses, cache) {
             return direct(self, ctx, grid);
@@ -1492,7 +1497,7 @@ impl<H: Classifier + PartialEq> Snapshot<H> for WeightedMajority<H> {
 impl<H: Classifier + PartialEq> Snapshot<H> for MajorityVote<H> {
     /// `(1/T) Σ_j sign(h_j(x))` with `sign(0) = +1`, as
     /// `MajorityVote::confidence`.
-    fn evaluate(&self, cache: &Cache<H>, ctx: &Context, grid: bool) -> Eval {
+    fn evaluate(&self, cache: &Cache<H>, ctx: &Context<'_>, grid: bool) -> Eval {
         let k = self.hypotheses.len();
         if k == 0 || !is_cached_prefix(&self.hypotheses, cache) {
             return direct(self, ctx, grid);
@@ -1518,7 +1523,7 @@ impl<H: Classifier + PartialEq> Snapshot<H> for MajorityVote<H> {
 }
 
 impl<H: Classifier> Snapshot<H> for NaiveAggregation<H> {
-    fn evaluate(&self, _: &Cache<H>, ctx: &Context, grid: bool) -> Eval {
+    fn evaluate(&self, _: &Cache<H>, ctx: &Context<'_>, grid: bool) -> Eval {
         direct(self, ctx, grid)
     }
 }
@@ -1526,7 +1531,7 @@ impl<H: Classifier> Snapshot<H> for NaiveAggregation<H> {
 impl<H: Regressor + PartialEq> Snapshot<H> for AdditiveModel<H> {
     /// The score `F(x) = c_0 + Σ_j c_j f_j(x)`, as `AdditiveModel`'s
     /// `Regressor::predict`, and its confidence through the model's link.
-    fn evaluate(&self, cache: &Cache<H>, ctx: &Context, grid: bool) -> Eval {
+    fn evaluate(&self, cache: &Cache<H>, ctx: &Context<'_>, grid: bool) -> Eval {
         let link = |f: f64| match self.link {
             ScoreLink::Tanh => f.tanh(),
             ScoreLink::Clamp => f.clamp(-1.0, 1.0),
@@ -1599,7 +1604,7 @@ impl<B, F: Classifier + 'static> Trained<B, F> {
 #[allow(clippy::too_many_arguments)]
 fn run<B, W, C>(
     mut booster: B,
-    ctx: &Context,
+    ctx: &Context<'_>,
     learner: &W,
     limit: usize,
     record: bool,

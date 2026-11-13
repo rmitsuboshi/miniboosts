@@ -38,6 +38,26 @@ pub struct Logger<'a, B, W, F, G> {
     pub(super) max_iterations: usize,
 }
 
+/// The objective and loss functions are usually closures, which have no
+/// `Debug` output, so they are omitted.
+impl<B, W, F, G> std::fmt::Debug for Logger<'_, B, W, F, G>
+where
+    B: std::fmt::Debug,
+    W: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Logger")
+            .field("booster", &self.booster)
+            .field("weak_learner", &self.weak_learner)
+            .field("train", &self.train)
+            .field("test", &self.test)
+            .field("time_limit", &self.time_limit)
+            .field("round", &self.round)
+            .field("max_iterations", &self.max_iterations)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'a, B, W, F, G> Logger<'a, B, W, F, G> {
     /// Creates a logger with no time limit, no iteration limit, and a print
     /// interval of `100`.
@@ -157,6 +177,7 @@ where
     /// assert!((1..=3).contains(&n_steps));
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn max_iterations(mut self, limit: usize) -> Self {
         assert!(limit > 0, "iteration limit must be positive");
         self.max_iterations = limit;
@@ -165,7 +186,6 @@ where
 
     /// Set the time limit for boosting algorithm as milliseconds.
     /// Checked after each completed boosting step and evaluation; it does not interrupt a step.
-    #[inline(always)]
     /// # Examples
     /// A limit of `0` ms is reached after the first step, which is still
     /// logged:
@@ -207,6 +227,7 @@ where
     /// assert_eq!(log.lines().count(), 2); // header + one step
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn time_limit_as_millis(mut self, time_limit: u128) -> Self {
         self.time_limit = time_limit;
         self
@@ -214,7 +235,6 @@ where
 
     /// Set the time limit for boosting algorithm as seconds.
     /// Checked after each completed boosting step and evaluation; it does not interrupt a step.
-    #[inline(always)]
     /// # Examples
     /// ```
     /// # use std::io::BufReader;
@@ -253,6 +273,7 @@ where
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn time_limit_as_secs(mut self, time_limit: u64) -> Self {
         self.time_limit = u128::from(time_limit)
             .checked_mul(1_000_u128)
@@ -262,7 +283,6 @@ where
 
     /// Set the time limit for boosting algorithm as minutes.
     /// Checked after each completed boosting step and evaluation; it does not interrupt a step.
-    #[inline(always)]
     /// # Examples
     /// ```
     /// # use std::io::BufReader;
@@ -300,6 +320,7 @@ where
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn time_limit_as_mins(mut self, time_limit: u64) -> Self {
         self.time_limit = u128::from(time_limit)
             .checked_mul(60_u128)
@@ -309,7 +330,6 @@ where
         self
     }
 
-    #[inline(always)]
     fn print_log_header(&self) {
         println!(
             "      {:>WIDTH$}\t\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}\t{:>WIDTH$}",
@@ -389,7 +409,6 @@ where
     ///
     /// # Panics
     /// Panics if `round == 0`.
-    #[inline(always)]
     /// # Examples
     /// ```
     /// # use std::io::BufReader;
@@ -428,6 +447,7 @@ where
     /// std::fs::remove_file(&path)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub fn print_every(mut self, round: usize) -> Self {
         assert!(round > 0, "print interval must be positive");
         self.round = round;
@@ -458,7 +478,6 @@ where
     /// error after training has started returns early without calling
     /// [`Booster::postprocess`]. Panics from the booster, weak learner,
     /// objective, or loss propagate.
-    #[inline(always)]
     /// # Examples
     /// Write the log under the system temporary directory, read it back, and
     /// remove it:

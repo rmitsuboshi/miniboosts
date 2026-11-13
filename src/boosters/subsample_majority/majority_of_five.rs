@@ -64,6 +64,7 @@ use crate::core::{Classifier, Sample};
 /// assert_eq!(f.hypotheses.len(), 5);
 /// assert_eq!(f.predict_all(&sample), y.iter().map(|&v| v as i64).collect::<Vec<_>>());
 /// ```
+#[derive(Debug)]
 pub struct MajorityOfFive<'a> {
     sample: &'a Sample,
     n_parts: usize,
@@ -101,6 +102,7 @@ impl<'a> MajorityOfFive<'a> {
     /// let parts = MajorityOfFive::init(&sample).n_parts(3).parts();
     /// assert_eq!(parts.iter().map(Vec::len).collect::<Vec<_>>(), vec![3, 3, 3]);
     /// ```
+    #[must_use]
     pub fn n_parts(mut self, n_parts: usize) -> Self {
         assert!(n_parts > 0, "Majority-of-X needs at least one part");
         self.n_parts = n_parts;
@@ -121,6 +123,7 @@ impl<'a> MajorityOfFive<'a> {
     /// assert_eq!(a, MajorityOfFive::init(&sample).seed(1).parts());
     /// assert_ne!(a, MajorityOfFive::init(&sample).seed(2).parts());
     /// ```
+    #[must_use]
     pub fn seed(mut self, seed: u64) -> Self {
         self.seed = seed;
         self

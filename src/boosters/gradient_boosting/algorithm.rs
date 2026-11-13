@@ -162,6 +162,7 @@ fn softplus(u: f64) -> f64 {
 /// assert_eq!(f.hypotheses.len(), 50);
 /// assert!(f.confidence_all(&sample).iter().all(|c| (-1.0..=1.0).contains(c)));
 /// ```
+#[derive(Debug)]
 pub struct GradientBoosting<'a, H> {
     sample: &'a Sample,
     loss: GbmLoss,
@@ -212,6 +213,7 @@ impl<'a, H> GradientBoosting<'a, H> {
     /// // Least squares on ±1 labels: the stump fits them exactly.
     /// assert_eq!(f.predict_all(&sample), vec![-1, -1, -1, 1, 1, 1]);
     /// ```
+    #[must_use]
     pub fn loss(mut self, loss: GbmLoss) -> Self {
         self.loss = loss;
         self
@@ -224,6 +226,7 @@ impl<'a, H> GradientBoosting<'a, H> {
     ///
     /// # Examples
     /// See [`GradientBoosting`].
+    #[must_use]
     pub fn shrinkage(mut self, shrinkage: f64) -> Self {
         assert!(
             shrinkage > 0.0 && shrinkage <= 1.0,
@@ -237,6 +240,7 @@ impl<'a, H> GradientBoosting<'a, H> {
     ///
     /// # Examples
     /// See [`GradientBoosting`].
+    #[must_use]
     pub fn force_quit_at(mut self, iteration: usize) -> Self {
         self.force_quit_at = Some(iteration);
         self

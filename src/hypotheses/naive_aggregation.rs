@@ -74,7 +74,7 @@ use serde::{Deserialize, Serialize};
 /// // Confidences are exactly ±1.
 /// assert!(f.confidence_all(&sample).iter().all(|c| c.abs() == 1.0));
 /// ```
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct NaiveAggregation<H> {
     /// `hypotheses` stores the functions from `X` to `{-1, +1}`
     /// collected by the boosting algorithm.
@@ -153,7 +153,6 @@ where
     /// let f = NaiveAggregation::new(vec![AlwaysPositive], &sample);
     /// assert_eq!(f.predict_all(&sample), vec![1, 1, 1, 1]);
     /// ```
-    #[inline(always)]
     pub fn new(hypotheses: Vec<H>, sample: &Sample) -> Self {
         let targets = sample.target();
         let n_hypotheses = hypotheses.len();
@@ -207,7 +206,6 @@ where
     /// assert_eq!(f.predict_all(&sample), vec![-1, 1]);
     /// assert_eq!(hypotheses.len(), 1); // the slice is still usable
     /// ```
-    #[inline(always)]
     pub fn from_slice(hypotheses: &[H], sample: &Sample) -> Self {
         let hypotheses = hypotheses.to_vec();
         Self::new(hypotheses, sample)

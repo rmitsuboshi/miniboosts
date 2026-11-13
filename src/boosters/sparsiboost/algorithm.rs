@@ -159,6 +159,7 @@ const NO_TARGET: &str = "SparsiBoost needs a target: set n_hypotheses(T), tolera
 /// assert_eq!(booster.sparsification_within_tolerance(), Some(true));
 /// println!("{} hypotheses for gap 0.5", f.hypotheses.len());
 /// ```
+#[derive(Debug)]
 pub struct SparsiBoost<'a, H, B = AdaBoostV<'a, H>> {
     // Training sample
     sample: &'a Sample,
@@ -316,6 +317,7 @@ impl<'a, H, B> SparsiBoost<'a, H, B> {
     /// let kept = booster.sparsification_within_tolerance().unwrap();
     /// assert_eq!(kept, booster.sparsification_error().unwrap() <= 0.125);
     /// ```
+    #[must_use]
     pub fn n_hypotheses(mut self, n_hypotheses: usize) -> Self {
         assert!(n_hypotheses > 0, "SparsiBoost needs a positive target");
         self.n_hypotheses = Some(n_hypotheses);
@@ -347,6 +349,7 @@ impl<'a, H, B> SparsiBoost<'a, H, B> {
     /// // m = 6: ⌈2 ln 6 / 0.25²⌉ = ⌈57.3⌉ = 58 rounds.
     /// assert_eq!(booster.max_loop(), 58);
     /// ```
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -376,6 +379,7 @@ impl<'a, H, B> SparsiBoost<'a, H, B> {
     /// let g = SparsiBoost::init(&sample).n_hypotheses(2).seed(7).run(&learner);
     /// assert_eq!(f.weights, g.weights);
     /// ```
+    #[must_use]
     pub fn seed(mut self, seed: u64) -> Self {
         self.seed = seed;
         self

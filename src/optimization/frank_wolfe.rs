@@ -70,7 +70,7 @@ use std::fmt;
 /// }
 /// assert_eq!(FwUpdateRule::LineSearch.to_string(), "Line-search update");
 /// ```
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum FwUpdateRule {
     /// Classic open-loop step size
     /// ```txt
@@ -192,7 +192,7 @@ impl fmt::Display for FwUpdateRule {
 ///     assert!((xi - ci).abs() < 1e-9);
 /// }
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum StepSize {
     /// An ordinary Frank-Wolfe step `x + λ (v - x)` with the given `λ`.
     Normal(f64),
@@ -259,6 +259,7 @@ pub enum StepSize {
 /// // The gap bounds the suboptimality: f(x) - 0 ≤ 1e-8.
 /// assert!(f.objective_value(&x) <= 1e-8);
 /// ```
+#[derive(Debug)]
 pub struct FrankWolfe<F> {
     objective: F,
     update_rule: FwUpdateRule,
@@ -334,6 +335,7 @@ impl<F> FrankWolfe<F> {
     /// // The counter t = 2 survives: λ = 2 / (2 + 2).
     /// assert!(matches!(fw.classic(&[], &[]), StepSize::Normal(l) if l == 0.5));
     /// ```
+    #[must_use]
     pub fn objective(self, objective: F) -> Self {
         Self {
             objective,

@@ -51,6 +51,11 @@ where
 
     let offset = 1 + 2 * n_examples;
     let y = sample.target();
+    // One pass per hypothesis: `confidence_all` evaluates all rows at once.
+    let confidences: Vec<Vec<f64>> = hypotheses
+        .iter()
+        .map(|h| h.confidence_all(sample))
+        .collect();
     for (i, yi) in y.iter().enumerate() {
         col_ptr.push(row_idx.len());
 
@@ -66,9 +71,8 @@ where
         row_idx.push(1 + n_examples + i);
         nonzero.push(1f64);
 
-        for (j, h) in hypotheses.iter().enumerate() {
-            let hx = h.confidence(sample, i);
-            let yh = yi * hx;
+        for (j, hx) in confidences.iter().enumerate() {
+            let yh = yi * hx[i];
 
             row_idx.push(offset + j);
             nonzero.push(yh);
@@ -146,6 +150,7 @@ fn build_rhs(nu: f64, gamma: f64, delta: f64, n_examples: usize, n_hypotheses: u
 /// # of
 /// cols                 m
 /// ```
+#[derive(Debug)]
 pub struct SoftBoostSolver<'a> {
     nu: f64,
     sample: &'a Sample,

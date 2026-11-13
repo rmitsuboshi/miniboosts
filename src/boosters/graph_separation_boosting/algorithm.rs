@@ -129,6 +129,7 @@ use std::ops::ControlFlow;
 ///     .count();
 /// println!("training accuracy: {}", train_correct as f64 / train.shape().0 as f64);
 /// ```
+#[derive(Debug)]
 pub struct GraphSeparationBoosting<'a, H> {
     // Training sample
     sample: &'a Sample,

@@ -156,6 +156,7 @@ use std::fmt;
 /// let h = tree.produce(&sample, &[0.2, 0.3, 0.5]);
 /// assert!(h.confidence_all(&sample).iter().all(|c| (-1.0..=1.0).contains(c)));
 /// ```
+#[derive(Debug)]
 pub struct DecisionTree<'a> {
     bins: HashMap<&'a str, Bins>,
     // The sample the bins were cut from, and the bin of each of its rows for
@@ -278,18 +279,11 @@ impl<'a> DecisionTree<'a> {
         let rule = Splitter::new(feature, threshold);
 
         // Split the train data for left/right childrens
-        let mut lindices = Vec::new();
-        let mut rindices = Vec::new();
-        for i in indices {
-            match rule.split(sample, i) {
-                LeftRight::Left => {
-                    lindices.push(i);
-                }
-                LeftRight::Right => {
-                    rindices.push(i);
-                }
-            }
-        }
+        // Same rule as `Splitter::split` (NaN goes right), with the feature
+        // looked up once instead of once per example.
+        let column = &sample[feature];
+        let (lindices, rindices): (Vec<usize>, Vec<usize>) =
+            indices.into_iter().partition(|&i| column[i] < threshold);
 
         // If the split has no meaning, construct a leaf node.
         if lindices.is_empty() || rindices.is_empty() {

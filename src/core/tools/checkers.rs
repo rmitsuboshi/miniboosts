@@ -26,7 +26,6 @@ use crate::core::constants::{NUMERIC_TOLERANCE, SIMPLEX_TOLERANCE};
 /// let empty = Sample::from_reader(BufReader::new(&b"x,class\n"[..]), true).unwrap();
 /// assert!(std::panic::catch_unwind(|| checkers::sample(&empty)).is_err());
 /// ```
-#[inline(always)]
 pub fn sample(sample: &Sample) {
     let (n_examples, n_feature) = sample.shape();
 
@@ -54,7 +53,6 @@ pub fn sample(sample: &Sample) {
 /// assert!(std::panic::catch_unwind(|| capping_parameter(11.0, 10)).is_err());
 /// assert!(std::panic::catch_unwind(|| capping_parameter(0.5, 10)).is_err());
 /// ```
-#[inline(always)]
 pub fn capping_parameter(nu: f64, n_examples: usize) {
     let n_examples = n_examples as f64;
     assert!((1f64..=n_examples).contains(&nu));
@@ -73,7 +71,6 @@ pub fn capping_parameter(nu: f64, n_examples: usize) {
 /// stepsize(1.0);
 /// assert!(std::panic::catch_unwind(|| stepsize(f64::NAN)).is_err());
 /// ```
-#[inline(always)]
 pub fn stepsize(size: f64) {
     assert!(
         (0f64..=1f64).contains(&size),
@@ -108,7 +105,6 @@ pub fn stepsize(size: f64) {
 /// let not_a_distribution = std::panic::catch_unwind(|| capped_simplex_condition(&[0.5, 0.4], 1.0));
 /// assert!(not_a_distribution.is_err());
 /// ```
-#[inline(always)]
 pub fn capped_simplex_condition(slice: &[f64], nu: f64) {
     let length = slice.len();
     capping_parameter(nu, length);

@@ -90,6 +90,7 @@ use std::ops::ControlFlow;
 /// assert!(f.hypotheses.len() <= 29);
 /// assert!(f.confidence_all(&sample).iter().all(|c| (-1.0..=1.0).contains(c)));
 /// ```
+#[derive(Debug)]
 pub struct BoostByMajority<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -141,6 +142,7 @@ impl<'a, F> BoostByMajority<'a, F> {
     ///
     /// # Examples
     /// See [`BoostByMajority`].
+    #[must_use]
     pub fn gamma(mut self, gamma: f64) -> Self {
         assert!(
             gamma > 0.0 && gamma < 0.5,
@@ -158,6 +160,7 @@ impl<'a, F> BoostByMajority<'a, F> {
     ///
     /// # Examples
     /// See [`BoostByMajority`].
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance > 0.0 && tolerance < 1.0,

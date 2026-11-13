@@ -53,6 +53,7 @@ use super::sample_struct::Sample;
 /// assert_eq!(sample.target(), &[-1.0, -1.0, 1.0, 1.0]);
 /// assert_eq!(sample["y"][1], 1.0);
 /// ```
+#[derive(Debug)]
 pub struct SampleReader<P, S> {
     file: Option<P>,
     has_header: bool,
@@ -98,6 +99,7 @@ impl<P, S> SampleReader<P, S> {
     /// assert_eq!(sample.target(), &[-1.0, 1.0]);
     /// assert_eq!(sample["Feat. [2]"][1], 0.5);
     /// ```
+    #[must_use]
     pub fn has_header(mut self, flag: bool) -> Self {
         self.has_header = flag;
         self
@@ -134,6 +136,7 @@ where
     /// assert_eq!(sample["Feat. [4]"][0], 2.0);
     /// assert_eq!(sample["Feat. [3]"][0], 0.0); // omitted entries are zero
     /// ```
+    #[must_use]
     pub fn file(mut self, file: P) -> Self {
         self.file = Some(file);
         self
@@ -169,6 +172,7 @@ where
     /// assert_eq!(sample.target(), &[1.0, -1.0]);
     /// assert_eq!(sample.features()[0].name(), "x");
     /// ```
+    #[must_use]
     pub fn target_feature(mut self, column: S) -> Self {
         self.target = Some(column);
         self

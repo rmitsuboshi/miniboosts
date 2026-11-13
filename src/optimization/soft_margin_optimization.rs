@@ -385,6 +385,7 @@ fn build_solver(
 /// assert!(close(&solver.weights_on_hypotheses(), &[third; 3]));
 /// assert!(close(&solver.distribution_on_examples(), &[0.0, third, third, third]));
 /// ```
+#[derive(Debug)]
 pub struct ColumnGeneration<'a> {
     nu: f64,
     sample: &'a Sample,

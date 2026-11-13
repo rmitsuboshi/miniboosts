@@ -99,6 +99,7 @@ use std::ops::ControlFlow;
 /// assert!((-1.0..=1.0).contains(&rho));
 /// assert!(f.weights.iter().all(|w| *w > 0.0));
 /// ```
+#[derive(Debug)]
 pub struct ArcGv<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -149,6 +150,7 @@ impl<'a, F> ArcGv<'a, F> {
     ///
     /// # Examples
     /// See [`ArcGv`].
+    #[must_use]
     pub fn force_quit_at(mut self, iteration: usize) -> Self {
         self.force_quit_at = Some(iteration);
         self

@@ -1,7 +1,6 @@
 //! Implementation of [`MadaBoost`] (Domingo and Watanabe, 2000).
 //!
 //! See the [`MadaBoost`] struct for the update rule, guarantees, and an example.
-use rayon::prelude::*;
 
 use crate::core::CurrentHypothesis;
 use crate::core::{
@@ -146,6 +145,7 @@ use std::ops::ControlFlow;
 /// assert!(f.weights.iter().all(|w| w.is_finite()));
 /// assert!(f.confidence_all(&test).iter().all(|c| (-1.0..=1.0).contains(c)));
 /// ```
+#[derive(Debug)]
 pub struct MadaBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -265,6 +265,7 @@ impl<'a, F> MadaBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(f.hypotheses.len() <= 3);
     /// ```
+    #[must_use]
     pub fn force_quit_at(mut self, it: usize) -> Self {
         self.force_quit_at = Some(it);
         self
@@ -294,6 +295,7 @@ impl<'a, F> MadaBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(f.hypotheses.len() <= 20);
     /// ```
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -313,9 +315,9 @@ impl<'a, F> MadaBoost<'a, F> {
         assert!(alpha.is_finite());
         // log(beta) = -alpha; retain the uncapped product history.
         assert_eq!(self.betas.len(), margins.len());
-        self.betas.par_iter_mut().zip(margins).for_each(|(b, yh)| {
+        for (b, yh) in self.betas.iter_mut().zip(margins) {
             *b -= yh * alpha;
-        });
+        }
 
         self.alphas.push(alpha);
         self.hypotheses.push(h);
@@ -555,7 +557,7 @@ mod parameter_tests {
         for value in [0.0, -0.0, -0.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert!(
                 std::panic::catch_unwind(|| {
-                    MadaBoost::<()>::init(&sample).tolerance(value);
+                    let _ = MadaBoost::<()>::init(&sample).tolerance(value);
                 })
                 .is_err(),
                 "accepted invalid tolerance {value}"

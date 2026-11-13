@@ -122,6 +122,7 @@ pub trait LoggingObjective {
 /// let soft = LoggingSoftMarginObjective::new(2.0);
 /// assert!((soft.objective_value(&sample, &f) - (-0.1)).abs() < 1e-12);
 /// ```
+#[derive(Debug)]
 pub struct LoggingSoftMarginObjective(SoftMarginObjective);
 
 impl LoggingSoftMarginObjective {

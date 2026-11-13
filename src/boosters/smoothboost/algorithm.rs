@@ -1,7 +1,6 @@
 //! Implementation of [`SmoothBoost`] (Servedio, 2001/2003).
 //!
 //! See the [`SmoothBoost`] struct for the update rule, guarantees, and an example.
-use rayon::prelude::*;
 
 use crate::core::CurrentHypothesis;
 use crate::core::{Booster, Classifier, Sample, WeakLearner};
@@ -132,6 +131,7 @@ use std::ops::ControlFlow;
 /// let w0 = f.weights[0];
 /// assert!(f.weights.iter().all(|&w| (w - w0).abs() < 1e-12));
 /// ```
+#[derive(Debug)]
 pub struct SmoothBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -247,7 +247,7 @@ impl<'a, F> SmoothBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn kappa(mut self, kappa: f64) -> Self {
         self.kappa = kappa;
 
@@ -282,7 +282,7 @@ impl<'a, F> SmoothBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn gamma(mut self, gamma: f64) -> Self {
         // A positive advantage is needed for a finite iteration bound.
         assert!(gamma > 0.0 && gamma < 0.5);
@@ -423,8 +423,8 @@ where
         let target = self.sample.target();
         let margins = target
             .iter()
-            .enumerate()
-            .map(|(i, y)| y * h.confidence(self.sample, i));
+            .zip(h.confidence_all(self.sample))
+            .map(|(y, c)| y * c);
 
         // Update `n`. A non-finite confidence would make `N`, `M`, and the
         // next distribution NaN while the stopping test silently stays false.
@@ -437,7 +437,7 @@ where
         });
 
         // Update `m`
-        self.m.par_iter_mut().zip(&self.n[..]).for_each(|(mj, nj)| {
+        self.m.iter_mut().zip(&self.n[..]).for_each(|(mj, nj)| {
             if *nj <= 0.0 {
                 *mj = 1.0;
             } else {

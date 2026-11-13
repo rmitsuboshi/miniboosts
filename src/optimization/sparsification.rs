@@ -392,8 +392,8 @@ pub(crate) fn margin_columns<H: Classifier>(sample: &Sample, hypotheses: &[H]) -
         .map(|h| {
             targets
                 .iter()
-                .enumerate()
-                .map(|(i, y)| y * h.confidence(sample, i))
+                .zip(h.confidence_all(sample))
+                .map(|(y, c)| y * c)
                 .collect()
         })
         .collect()

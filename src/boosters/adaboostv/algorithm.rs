@@ -3,7 +3,6 @@
 //! `*` cannot appear in a Rust identifier, so the algorithm is named
 //! `AdaBoostV`, a name also used in the SparsiBoost paper.
 //! See the [`AdaBoostV`] struct for details and an example.
-use rayon::prelude::*;
 
 use crate::core::CurrentHypothesis;
 use crate::core::{Booster, Classifier, Sample, WeakLearner, tools::helpers};
@@ -135,6 +134,7 @@ use std::ops::ControlFlow;
 /// assert!(f.weights.iter().all(|w| w.is_finite()));
 /// assert!(f.confidence_all(&test).iter().all(|c| (-1.0..=1.0).contains(c)));
 /// ```
+#[derive(Debug)]
 pub struct AdaBoostV<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -244,6 +244,7 @@ impl<'a, F> AdaBoostV<'a, F> {
     /// assert!(f.hypotheses.len() <= 14);
     /// ```
     #[inline]
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -312,6 +313,7 @@ impl<'a, F> AdaBoostV<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(f.hypotheses.len() <= 3);
     /// ```
+    #[must_use]
     pub fn force_quit_at(mut self, iteration: usize) -> Self {
         self.force_quit_at = Some(iteration);
         self
@@ -365,10 +367,9 @@ impl<'a, F> AdaBoostV<'a, F> {
         // This is the original exponential update in log space. Never recover
         // logs from rounded probabilities: an underflowed mass can grow later.
         assert_eq!(margins.len(), self.log_dist.len());
-        self.log_dist
-            .par_iter_mut()
-            .zip(margins)
-            .for_each(|(log_d, margin)| *log_d -= weight * margin);
+        for (log_d, margin) in self.log_dist.iter_mut().zip(margins) {
+            *log_d -= weight * margin;
+        }
         self.dist = helpers::normalize_log_weights(&mut self.log_dist);
 
         weight

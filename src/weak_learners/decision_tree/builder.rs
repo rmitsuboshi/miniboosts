@@ -47,7 +47,7 @@ pub const DEFAULT_MAX_DEPTH: usize = 2;
 /// let f = AdaBoost::init(&sample).run(&weak_learner);
 /// assert_eq!(f.predict_all(&sample), vec![-1, -1, -1, 1, 1, 1]);
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DecisionTreeBuilder<'a> {
     sample: &'a Sample,
     n_bins: HashMap<&'a str, usize>,
@@ -132,6 +132,7 @@ impl<'a> DecisionTreeBuilder<'a> {
     /// let h = tree.produce(&sample, &uniform);
     /// assert_eq!(h.predict_all(&sample), vec![-1, -1, 1, 1, -1, -1]);
     /// ```
+    #[must_use]
     pub fn max_depth(mut self, depth: usize) -> Self {
         assert!(depth > 0, "Tree must have positive depth");
         self.max_depth = Depth::from(depth);
@@ -160,6 +161,7 @@ impl<'a> DecisionTreeBuilder<'a> {
     /// assert!(info.contains(&("Split criterion", "Twoing Rule".to_string())));
     /// ```
     #[inline]
+    #[must_use]
     pub fn split_by(mut self, split_by: SplitBy) -> Self {
         self.split_by = split_by;
         self
@@ -244,6 +246,7 @@ impl<'a> DecisionTreeBuilder<'a> {
     /// let exact = DecisionTreeBuilder::new(&sample).max_depth(1).exact_splits().build();
     /// assert_eq!(exact.produce(&sample, &uniform).predict_all(&sample), vec![-1, 1, 1]);
     /// ```
+    #[must_use]
     pub fn exact_splits(mut self) -> Self {
         self.exact_splits = true;
         self
@@ -267,6 +270,7 @@ impl<'a> DecisionTreeBuilder<'a> {
     ///     .build();
     /// assert!(stump.to_string().contains("Leaf confidence: Sign"));
     /// ```
+    #[must_use]
     pub fn leaf_confidence(mut self, leaf_confidence: LeafConfidence) -> Self {
         self.leaf_confidence = leaf_confidence;
         self

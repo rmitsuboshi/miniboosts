@@ -75,6 +75,15 @@ pub struct WeakLearnerUnion<'a> {
     members: Vec<Box<dyn WeakLearner<Hypothesis = DynClassifier> + Send + Sync + 'a>>,
 }
 
+/// The members are type-erased, so only their number is shown.
+impl std::fmt::Debug for WeakLearnerUnion<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WeakLearnerUnion")
+            .field("n_members", &self.members.len())
+            .finish()
+    }
+}
+
 impl<'a> WeakLearnerUnion<'a> {
     /// Constructs a union without members. Add them with
     /// [`WeakLearnerUnion::with`].
@@ -93,6 +102,7 @@ impl<'a> WeakLearnerUnion<'a> {
     ///
     /// # Examples
     /// See [`WeakLearnerUnion`].
+    #[must_use]
     pub fn with<W>(mut self, learner: W) -> Self
     where
         W: WeakLearner + Send + Sync + 'a,

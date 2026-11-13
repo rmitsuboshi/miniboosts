@@ -119,12 +119,32 @@ impl LinearClassifier {
     /// # Examples
     /// See [`LinearClassifier`].
     pub fn score(&self, sample: &Sample, row: usize) -> f64 {
-        self.feature_names
+        self.score_from(|k| sample[&self.feature_names[k]][row])
+    }
+
+    /// `w·x + b`, where `x(k)` is the value of the `k`-th feature.
+    fn score_from(&self, x: impl Fn(usize) -> f64) -> f64 {
+        self.weights
             .iter()
-            .zip(&self.weights)
-            .map(|(name, w)| w * sample[name][row])
+            .enumerate()
+            .map(|(k, w)| w * x(k))
             .sum::<f64>()
             + self.bias
+    }
+
+    /// The output map `φ` applied to the score `z`.
+    fn link(&self, z: f64) -> f64 {
+        match self.output {
+            LinearOutput::Sign => {
+                if z >= 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+            LinearOutput::Tanh => (0.5 * z).tanh(),
+            LinearOutput::Clamp => z.clamp(-1.0, 1.0),
+        }
     }
 
     /// Returns the weights `w`, in the order of
@@ -151,18 +171,20 @@ impl LinearClassifier {
 
 impl Classifier for LinearClassifier {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
-        let z = self.score(sample, row);
-        match self.output {
-            LinearOutput::Sign => {
-                if z >= 0.0 {
-                    1.0
-                } else {
-                    -1.0
-                }
-            }
-            LinearOutput::Tanh => (0.5 * z).tanh(),
-            LinearOutput::Clamp => z.clamp(-1.0, 1.0),
+        self.link(self.score(sample, row))
+    }
+
+    /// Same values as [`Classifier::confidence`] row by row, looking each
+    /// feature up once instead of once per row.
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        let n_sample = sample.shape().0;
+        if n_sample == 0 {
+            return Vec::new();
         }
+        let columns = sample.columns(&self.feature_names);
+        (0..n_sample)
+            .map(|row| self.link(self.score_from(|k| columns[k][row])))
+            .collect()
     }
 }
 
@@ -379,6 +401,7 @@ impl LogisticRegression {
     ///     .produce(&sample, &[0.5, 0.5]);
     /// assert!(h.confidence(&sample, 1) > 0.0 && h.confidence(&sample, 1) < 0.1);
     /// ```
+    #[must_use]
     pub fn regularization(mut self, regularization: f64) -> Self {
         assert!(
             regularization.is_finite() && regularization > 0.0,
@@ -397,6 +420,7 @@ impl LogisticRegression {
     ///
     /// # Examples
     /// See [`LogisticRegression::regularization`].
+    #[must_use]
     pub fn output(mut self, output: LinearOutput) -> Self {
         assert!(
             output != LinearOutput::Clamp,

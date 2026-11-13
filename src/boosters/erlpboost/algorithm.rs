@@ -150,6 +150,7 @@ use std::ops::ControlFlow;
 /// assert!(f.weights.iter().all(|&w| w > 0.0));
 /// assert!((f.weights.iter().sum::<f64>() - 1.0).abs() < 1e-9);
 /// ```
+#[derive(Debug)]
 pub struct ErlpBoost<'a, H> {
     // Training sample
     sample: &'a Sample,
@@ -275,6 +276,7 @@ impl<'a, H> ErlpBoost<'a, H> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
+    #[must_use]
     pub fn nu(mut self, nu: f64) -> Self {
         checkers::capping_parameter(nu, self.n_sample);
         self.nu = nu;
@@ -304,7 +306,6 @@ impl<'a, H> ErlpBoost<'a, H> {
     /// let _f = booster.run(&learner);
     /// assert!(booster.terminated() >= 1 && booster.terminated() != usize::MAX);
     /// ```
-    #[inline(always)]
     pub fn terminated(&self) -> usize {
         self.terminated
     }
@@ -337,7 +338,7 @@ impl<'a, H> ErlpBoost<'a, H> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -354,7 +355,6 @@ impl<'a, H> ErlpBoost<'a, H> {
     /// Sets `self.eta = max(1/2, ln(m/ν) / (ε/2))`.
     ///
     /// Time complexity: `O(1)`.
-    #[inline(always)]
     fn regularization_param(&mut self) {
         let ln_m = (self.n_sample as f64 / self.nu).ln();
         self.eta = 0.5f64.max(ln_m / self.half_tolerance);

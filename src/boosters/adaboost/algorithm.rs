@@ -1,7 +1,6 @@
 //! Implementation of [`AdaBoost`] (Freund and Schapire, 1997).
 //!
 //! See the [`AdaBoost`] struct for the update rule, guarantees, and an example.
-use rayon::prelude::*;
 
 use crate::core::CurrentHypothesis;
 use crate::core::{
@@ -238,6 +237,7 @@ use std::ops::ControlFlow;
 /// assert_eq!(predictions.len(), 12);
 /// assert!(f.hypotheses.len() <= 10);
 /// ```
+#[derive(Debug)]
 pub struct AdaBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -373,6 +373,7 @@ impl<'a, F> AdaBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(f.hypotheses.len() <= 3);
     /// ```
+    #[must_use]
     pub fn force_quit_at(mut self, it: usize) -> Self {
         self.force_quit_at = Some(it);
         self
@@ -402,6 +403,7 @@ impl<'a, F> AdaBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(f.hypotheses.len() <= 45);
     /// ```
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -427,10 +429,9 @@ impl<'a, F> AdaBoost<'a, F> {
         // This is the original exponential update in log space. Never recover
         // logs from rounded probabilities: an underflowed mass can grow later.
         assert_eq!(margins.len(), self.log_dist.len());
-        self.log_dist
-            .par_iter_mut()
-            .zip(margins)
-            .for_each(|(log_d, margin)| *log_d -= weight * margin);
+        for (log_d, margin) in self.log_dist.iter_mut().zip(margins) {
+            *log_d -= weight * margin;
+        }
         self.dist = helpers::normalize_log_weights(&mut self.log_dist);
 
         weight
@@ -716,7 +717,7 @@ mod parameter_tests {
         for value in [0.0, -0.0, -0.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert!(
                 std::panic::catch_unwind(|| {
-                    AdaBoost::<()>::init(&sample).tolerance(value);
+                    let _ = AdaBoost::<()>::init(&sample).tolerance(value);
                 })
                 .is_err(),
                 "accepted invalid tolerance {value}"

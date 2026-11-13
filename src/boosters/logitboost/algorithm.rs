@@ -87,6 +87,7 @@ use std::ops::ControlFlow;
 /// println!("{correct} of 12 training examples correct");
 /// assert!(f.confidence_all(&sample).iter().all(|c| (-1.0..=1.0).contains(c)));
 /// ```
+#[derive(Debug)]
 pub struct LogitBoost<'a, H> {
     sample: &'a Sample,
     max_response: f64,
@@ -132,6 +133,7 @@ impl<'a, H> LogitBoost<'a, H> {
     /// let f = LogitBoost::init(&sample).max_response(2.0).force_quit_at(5).run(&tree);
     /// assert_eq!(f.predict_all(&sample), vec![-1, -1, -1, 1, 1, 1]);
     /// ```
+    #[must_use]
     pub fn max_response(mut self, z_max: f64) -> Self {
         assert!(
             z_max.is_finite() && z_max >= 1.0,
@@ -145,6 +147,7 @@ impl<'a, H> LogitBoost<'a, H> {
     ///
     /// # Examples
     /// See [`LogitBoost`].
+    #[must_use]
     pub fn force_quit_at(mut self, iteration: usize) -> Self {
         self.force_quit_at = Some(iteration);
         self

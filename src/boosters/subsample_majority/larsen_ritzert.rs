@@ -76,6 +76,7 @@ use crate::core::{Classifier, Sample};
 /// assert_eq!(f.hypotheses.len(), 9);
 /// assert_eq!(f.predict_all(&sample), y.iter().map(|&v| v as i64).collect::<Vec<_>>());
 /// ```
+#[derive(Debug)]
 pub struct LarsenRitzert<'a> {
     sample: &'a Sample,
     seed: u64,
@@ -112,6 +113,7 @@ impl<'a> LarsenRitzert<'a> {
     /// assert_eq!(a, LarsenRitzert::init(&sample).seed(1).subsamples());
     /// assert_ne!(a, LarsenRitzert::init(&sample).seed(2).subsamples());
     /// ```
+    #[must_use]
     pub fn seed(mut self, seed: u64) -> Self {
         self.seed = seed;
         self
@@ -134,6 +136,7 @@ impl<'a> LarsenRitzert<'a> {
     /// let learner = LarsenRitzert::init(&sample).max_subsamples(5);
     /// assert_eq!(learner.subsamples().len(), 5);
     /// ```
+    #[must_use]
     pub fn max_subsamples(mut self, count: usize) -> Self {
         assert!(count > 0, "at least one sub-sample is needed");
         self.max_subsamples = Some(count);

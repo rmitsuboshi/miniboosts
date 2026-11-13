@@ -222,6 +222,11 @@ where
 
     let offset = 1 + 2 * n_examples;
     let y = sample.target();
+    // One pass per hypothesis: `confidence_all` evaluates all rows at once.
+    let confidences: Vec<Vec<f64>> = hypotheses
+        .iter()
+        .map(|h| h.confidence_all(sample))
+        .collect();
     for (i, yi) in y.iter().enumerate() {
         col_ptr.push(row_idx.len());
 
@@ -237,9 +242,8 @@ where
         row_idx.push(1 + n_examples + i);
         nonzero.push(1f64);
 
-        for (j, h) in hypotheses.iter().enumerate() {
-            let hx = h.confidence(sample, i);
-            let yh = yi * hx;
+        for (j, hx) in confidences.iter().enumerate() {
+            let yh = yi * hx[i];
 
             row_idx.push(offset + j);
             nonzero.push(yh);
@@ -401,6 +405,7 @@ fn build_solver(
 /// // `objval` re-evaluates the objective at any distribution.
 /// assert!((solver.objval(&hypotheses[..1], &d) - solver.optval()).abs() < 1e-9);
 /// ```
+#[derive(Debug)]
 pub struct RowGeneration<'a, T> {
     nu: f64,
     sample: &'a Sample,
@@ -903,6 +908,7 @@ fn require_candidate_status(status: SolverStatus) {
 ///
 /// Its `objective_value` panics if `hypotheses` is empty, if `dist` does not
 /// have one entry per example, or if the entropy term is not finite.
+#[derive(Debug)]
 pub struct EntropyRegularizedMaxEdge(f64);
 
 impl EntropyRegularizedMaxEdge {

@@ -167,6 +167,7 @@ use std::ops::ControlFlow;
 /// assert!(f.weights.iter().all(|&w| w > 0.0));
 /// assert!((f.weights.iter().sum::<f64>() - 1.0).abs() < 1e-9);
 /// ```
+#[derive(Debug)]
 pub struct MlpBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -302,6 +303,7 @@ impl<'a, F> MlpBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
+    #[must_use]
     pub fn nu(mut self, nu: f64) -> Self {
         checkers::capping_parameter(nu, self.n_examples);
         self.nu = nu;
@@ -339,6 +341,7 @@ impl<'a, F> MlpBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
+    #[must_use]
     pub fn update_rule(mut self, update_rule: FwUpdateRule) -> Self {
         assert!(
             !matches!(update_rule, FwUpdateRule::BlendedPairwise),
@@ -377,7 +380,7 @@ impl<'a, F> MlpBoost<'a, F> {
     /// let f = booster.run(&learner);
     /// assert!(f.hypotheses.len() <= 1434);
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -394,7 +397,6 @@ impl<'a, F> MlpBoost<'a, F> {
     /// Sets `self.eta = ln(m/ν) / (ε/2)`, or `1` when `ν = m`.
     ///
     /// Time complexity: `O(1)`.
-    #[inline(always)]
     fn eta(&mut self) {
         let ln_m = (self.n_examples as f64 / self.nu).ln();
         // At nu=m the feasible distribution is uniform and its relative

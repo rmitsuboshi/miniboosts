@@ -50,7 +50,6 @@ use crate::core::{Classifier, Sample};
 /// // Moving all weight to the misclassified example gives edge -1.
 /// assert_eq!(helpers::edge(&sample, &[0.0, 1.0, 0.0, 0.0], &SignOfX), -1.0);
 /// ```
-#[inline(always)]
 pub fn edge<H>(sample: &Sample, dist: &[f64], h: &H) -> f64
 where
     H: Classifier,
@@ -108,7 +107,6 @@ pub fn edge_from_margins(margins: &[f64], dist: &[f64]) -> f64 {
 /// // Reuse the margins for several distributions.
 /// assert_eq!(helpers::edge_from_margins(&margins, &[0.25; 4]), 0.5);
 /// ```
-#[inline(always)]
 pub fn margins<H>(sample: &Sample, h: &H) -> impl Iterator<Item = f64>
 where
     H: Classifier,
@@ -155,7 +153,6 @@ where
 /// // -eta * margin: misclassified examples get the larger log weight.
 /// assert_eq!(logs, vec![-2.0, 2.0, -2.0, -2.0]);
 /// ```
-#[inline(always)]
 pub fn log_exp_distribution<H>(eta: f64, sample: &Sample, h: &H) -> impl Iterator<Item = f64>
 where
     H: Classifier,
@@ -210,7 +207,6 @@ where
 /// assert!(d.iter().all(|&di| di <= 0.5 + 1e-12));
 /// assert!((d.iter().sum::<f64>() - 1.0).abs() < 1e-12);
 /// ```
-#[inline(always)]
 pub fn exp_distribution<H>(eta: f64, nu: f64, sample: &Sample, h: &H) -> Vec<f64>
 where
     H: Classifier,
@@ -244,7 +240,6 @@ where
 ///     assert!((d[i] - 1.0 / 6.0).abs() < 1e-12);
 /// }
 /// ```
-#[inline(always)]
 pub fn exp_distribution_from_margins<I>(eta: f64, nu: f64, margins: I) -> Vec<f64>
 where
     I: Iterator<Item = f64>,
@@ -584,7 +579,6 @@ where
 /// let point_mass = [1.0, 0.0, 0.0, 0.0];
 /// assert!((entropy_from_uni_distribution(point_mass) - 4f64.ln()).abs() < 1e-15);
 /// ```
-#[inline(always)]
 pub fn entropy_from_uni_distribution<T: AsRef<[f64]>>(dist: T) -> f64 {
     let dist = dist.as_ref();
     let n_dim = dist.len() as f64;
@@ -609,7 +603,6 @@ pub fn entropy_from_uni_distribution<T: AsRef<[f64]>>(dist: T) -> f64 {
 /// // A point mass gives the maximum 0 (0 ln 0 counts as 0).
 /// assert_eq!(entropy([0.0, 1.0, 0.0]), 0.0);
 /// ```
-#[inline(always)]
 pub fn entropy<T: AsRef<[f64]>>(dist: T) -> f64 {
     let dist = dist.as_ref();
     dist.iter()
@@ -631,7 +624,6 @@ pub fn entropy<T: AsRef<[f64]>>(dist: T) -> f64 {
 /// // Small integers: exact in any summation order.
 /// assert_eq!(inner_product(&[1.0, 2.0, 3.0], &[4.0, -5.0, 6.0]), 12.0);
 /// ```
-#[inline(always)]
 pub fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
     v1.iter().zip(v2).map(|(a, b)| a * b).sum::<f64>()
 }
@@ -658,7 +650,6 @@ pub fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
 /// normalize(&mut w);
 /// assert_eq!(w, vec![-0.25, 0.75]);
 /// ```
-#[inline(always)]
 pub fn normalize(items: &mut [f64]) {
     let z = items.iter().map(|it| it.abs()).sum::<f64>();
 
@@ -685,7 +676,6 @@ pub fn normalize(items: &mut [f64]) {
 /// let b = vec![vec![5.0, 6.0], vec![7.0, 8.0]];
 /// assert_eq!(hadamard_product(a, b), vec![vec![5.0, 12.0], vec![21.0, 32.0]]);
 /// ```
-#[inline(always)]
 pub fn hadamard_product(mut m1: Vec<Vec<f64>>, m2: Vec<Vec<f64>>) -> Vec<Vec<f64>> {
     assert_eq!(m1.len(), m2.len());
     assert_eq!(m1[0].len(), m2[0].len());

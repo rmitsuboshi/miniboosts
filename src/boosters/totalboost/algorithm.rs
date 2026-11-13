@@ -124,6 +124,7 @@ use std::ops::ControlFlow;
 /// assert!((-1.0..=1.0).contains(&min_margin));
 /// println!("minimum training margin: {min_margin}");
 /// ```
+#[derive(Debug)]
 pub struct TotalBoost<'a, H> {
     softboost: SoftBoost<'a, H>,
 }
@@ -209,6 +210,7 @@ where
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty() && f.hypotheses.len() <= 15);
     /// ```
+    #[must_use]
     pub fn tolerance(mut self, tol: f64) -> Self {
         self.softboost = self.softboost.tolerance(tol);
         self

@@ -41,14 +41,12 @@ pub struct Bin(pub Range<f64>);
 
 impl Bin {
     /// Creates the bin `[range.start, range.end)`.
-    #[inline(always)]
     pub fn new(range: Range<f64>) -> Self {
         Self(range)
     }
 
     /// Returns `true` if `start <= item < end`.
     /// A bin ending at `f64::MAX` also includes that value.
-    #[inline(always)]
     pub fn contains(&self, item: &f64) -> bool {
         self.0.contains(item) || (*item == f64::MAX && self.0.end == f64::MAX)
     }

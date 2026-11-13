@@ -133,8 +133,7 @@ fn naive_aggregation() {
 fn naive_aggregation_rejects_a_bit_out_of_range() {
     let json = r#"{"hypotheses": [], "prediction": [[1, [1]]]}"#;
     let error = serde_json::from_str::<NaiveAggregation<RbfHypothesis>>(json)
-        .err()
-        .expect("the bit is out of range");
+        .expect_err("the bit is out of range");
     assert!(error.to_string().contains("out of range"));
 }
 

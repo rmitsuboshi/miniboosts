@@ -17,7 +17,6 @@ use crate::core::{Feature, Sample, binning::*};
 struct Score(f64);
 
 impl From<f64> for Score {
-    #[inline(always)]
     fn from(score: f64) -> Self {
         Self(score)
     }
@@ -376,7 +375,6 @@ fn split_by_twoing(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
 }
 
 /// Returns the entropic-impurity of the given map.
-#[inline(always)]
 fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
     if total <= 0f64 || map.is_empty() {
@@ -392,7 +390,6 @@ fn entropic_impurity(map: &HashMap<i32, f64>) -> f64 {
 }
 
 /// Returns the gini-impurity of the given map.
-#[inline(always)]
 fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
     let total = map.values().sum::<f64>();
     if total <= 0f64 || map.is_empty() {
@@ -405,7 +402,6 @@ fn gini_impurity(map: &HashMap<i32, f64>) -> f64 {
 }
 
 /// Returns the twoing score of the given map.
-#[inline(always)]
 fn twoing_score(labels: &HashSet<i32>, left: &HashMap<i32, f64>, right: &HashMap<i32, f64>) -> f64 {
     let pl = left.values().sum::<f64>();
     let pr = right.values().sum::<f64>();

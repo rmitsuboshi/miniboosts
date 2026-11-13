@@ -42,6 +42,7 @@ use serde::{Deserialize, Serialize};
 /// let full = RefWeightedMajority::new(&weights, &hypotheses);
 /// assert!(full.confidence(&sample, 0).abs() < 1e-15);
 /// ```
+#[derive(Debug)]
 pub struct RefWeightedMajority<'a, H> {
     /// Weight of each hypothesis; `weights[t]` belongs to `hypotheses[t]`.
     pub weights: &'a [f64],

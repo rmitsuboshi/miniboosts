@@ -110,6 +110,7 @@ use std::ops::ControlFlow;
 /// }
 /// assert!(f.weights.iter().all(|w| *w > 0.0));
 /// ```
+#[derive(Debug)]
 pub struct RobustBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -177,6 +178,7 @@ impl<'a, F> RobustBoost<'a, F> {
     ///
     /// # Examples
     /// See [`RobustBoost`].
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance > 0.0 && tolerance < 1.0,
@@ -193,6 +195,7 @@ impl<'a, F> RobustBoost<'a, F> {
     ///
     /// # Examples
     /// See [`RobustBoost`].
+    #[must_use]
     pub fn theta(mut self, theta: f64) -> Self {
         assert!(
             theta.is_finite() && theta >= 0.0,
@@ -222,6 +225,7 @@ impl<'a, F> RobustBoost<'a, F> {
     /// let f = booster.run(&tree);
     /// assert!(f.hypotheses.len() <= 20);
     /// ```
+    #[must_use]
     pub fn sigma_f(mut self, sigma_f: f64) -> Self {
         assert!(
             sigma_f.is_finite() && sigma_f > 0.0,
@@ -236,6 +240,7 @@ impl<'a, F> RobustBoost<'a, F> {
     ///
     /// # Examples
     /// See [`RobustBoost`].
+    #[must_use]
     pub fn force_quit_at(mut self, iteration: usize) -> Self {
         self.force_quit_at = Some(iteration);
         self

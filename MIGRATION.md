@@ -63,6 +63,30 @@ could not be read. Its serialized form has a new `only_label` field: JSON files
 from 0.5.2 still load, but files in formats that are not self-describing, such
 as postcard, do not.
 
+Every public type now implements `Debug`. The output of `Logger` and
+`LoggerBuilder` omits the objective and loss functions, and `WeakLearnerUnion`
+shows only the number of its members. `Prediction<T>`, `Confidence<T>`, and
+`MajorityVote<H>` implement `Eq` when their type parameter does.
+
+Builder methods that take `self` and return it are marked `#[must_use]`:
+`booster.tolerance(0.1);` as a statement, which never had an effect, now gives
+an `unused_must_use` warning. Write `let booster = booster.tolerance(0.1);`.
+
+`#[inline(always)]` was removed from the functions that had it. Results are
+unchanged.
+
+Hypotheses are evaluated on all rows at once in more places, with unchanged
+results. `LinearClassifier`, `RbfHypothesis`, `NaiveBayesClassifier`,
+`ClassMember`, and `MajorityVote` override `Classifier::confidence_all` so that
+each feature name is looked up once per call instead of once per row; with
+`NaiveBayes` as the weak learner, 300 rounds of AdaBoost on 1000 examples with
+20 features took 99 ms instead of 251 ms. `SmoothBoost`, `SoftBoost`,
+`TotalBoost`, `ErlpBoost`, `SparsiBoost`, `FiniteClass::new`, and
+`edge_minimization` now call `confidence_all` rather than `confidence` row by
+row, and the tree learners look the split feature up once per node. AdaBoost,
+AdaBoostV, MadaBoost, and SmoothBoost update their weights on the calling
+thread: handing an `O(m)` loop to the thread pool cost more than the loop.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

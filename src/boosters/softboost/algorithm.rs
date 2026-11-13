@@ -157,6 +157,7 @@ use std::ops::ControlFlow;
 /// assert!(f.weights.iter().all(|&w| w > 0.0));
 /// assert!((f.weights.iter().sum::<f64>() - 1.0).abs() < 1e-9);
 /// ```
+#[derive(Debug)]
 pub struct SoftBoost<'a, H> {
     sample: &'a Sample,
 
@@ -277,7 +278,7 @@ where
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn nu(mut self, nu: f64) -> Self {
         let n_examples = self.sample.shape().0;
         checkers::capping_parameter(nu, n_examples);
@@ -313,7 +314,7 @@ where
     /// let f = booster.run(&learner);
     /// assert!(f.hypotheses.len() <= 15);
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,

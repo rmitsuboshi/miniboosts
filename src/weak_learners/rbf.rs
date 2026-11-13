@@ -117,11 +117,32 @@ impl Classifier for RbfHypothesis {
     /// # Panics
     /// Panics if `sample` lacks one of the center's features.
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
+        self.bump(|k| sample[&self.feature_names[k]][row])
+    }
+
+    /// Same values as [`Classifier::confidence`] row by row, looking each
+    /// feature up once instead of once per row.
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        let n_sample = sample.shape().0;
+        if n_sample == 0 {
+            return Vec::new();
+        }
+        let columns = sample.columns(&self.feature_names);
+        (0..n_sample)
+            .map(|row| self.bump(|k| columns[k][row]))
+            .collect()
+    }
+}
+
+impl RbfHypothesis {
+    /// `exp(-‖x - x_c‖² / (2σ²))`, where `x(k)` is the value of the `k`-th
+    /// feature.
+    fn bump(&self, x: impl Fn(usize) -> f64) -> f64 {
         let squared: f64 = self
-            .feature_names
+            .center
             .iter()
-            .zip(&self.center)
-            .map(|(name, c)| (sample[name][row] - c).powi(2))
+            .enumerate()
+            .map(|(k, c)| (x(k) - c).powi(2))
             .sum();
         (-squared / (2.0 * self.bandwidth * self.bandwidth)).exp()
     }
@@ -149,6 +170,7 @@ impl Classifier for RbfHypothesis {
 ///
 /// # Examples
 /// See the [module documentation](self).
+#[derive(Debug)]
 pub struct RbfClassBuilder<'a> {
     sample: &'a Sample,
     bandwidth: Option<f64>,
@@ -178,6 +200,7 @@ impl<'a> RbfClassBuilder<'a> {
     ///
     /// # Examples
     /// See the [module documentation](self).
+    #[must_use]
     pub fn bandwidth(mut self, bandwidth: f64) -> Self {
         assert!(
             bandwidth.is_finite() && bandwidth > 0.0,
@@ -210,6 +233,7 @@ impl<'a> RbfClassBuilder<'a> {
     /// assert_eq!(learner.hypotheses().len(), 2);
     /// assert_eq!(learner.hypotheses()[1].center(), &[1.0, 0.0]);
     /// ```
+    #[must_use]
     pub fn centers(mut self, rows: Vec<usize>) -> Self {
         let n_examples = self.sample.shape().0;
         assert!(!rows.is_empty(), "the RBF class needs at least one center");

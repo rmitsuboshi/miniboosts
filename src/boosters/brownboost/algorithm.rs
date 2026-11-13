@@ -131,6 +131,7 @@ use std::ops::ControlFlow;
 /// }
 /// assert!(f.predict_all(&test).iter().all(|&p| p == -1 || p == 1));
 /// ```
+#[derive(Debug)]
 pub struct BrownBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -224,6 +225,7 @@ impl<'a, F> BrownBoost<'a, F> {
     /// // erfc(1.1631) = 0.1, so c = 1.1631² ≈ 1.3528.
     /// assert!((booster.total_time() - 1.352_771).abs() < 1e-6);
     /// ```
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance > 0.0 && tolerance < 1.0,
@@ -261,6 +263,7 @@ impl<'a, F> BrownBoost<'a, F> {
     ///     .run(&learner);
     /// assert!(f.weights.iter().all(|w| *w > 0.0));
     /// ```
+    #[must_use]
     pub fn edge_threshold(mut self, edge_threshold: f64) -> Self {
         assert!(
             (0.0..1.0).contains(&edge_threshold),
@@ -289,6 +292,7 @@ impl<'a, F> BrownBoost<'a, F> {
     /// let f = BrownBoost::init(&sample).tolerance(0.01).force_quit_at(3).run(&learner);
     /// assert!(f.hypotheses.len() <= 3);
     /// ```
+    #[must_use]
     pub fn force_quit_at(mut self, iteration: usize) -> Self {
         self.force_quit_at = Some(iteration);
         self

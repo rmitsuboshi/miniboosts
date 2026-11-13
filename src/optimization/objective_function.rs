@@ -125,6 +125,7 @@ pub trait ObjectiveFunction {
 ///     assert!((di - expected).abs() < 1e-12);
 /// }
 /// ```
+#[derive(Debug)]
 pub struct SoftMarginObjective(f64);
 
 impl SoftMarginObjective {
@@ -249,7 +250,7 @@ impl ObjectiveFunction for SoftMarginObjective {
 /// assert!((capped.iter().sum::<f64>() - 1.0).abs() < 1e-12);
 /// assert!((capped[1] / capped[0] - exps[1] / exps[0]).abs() < 1e-9);
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ErlpSoftMarginObjective {
     nu: f64,
     eta: f64,
@@ -323,7 +324,7 @@ impl ObjectiveFunction for ErlpSoftMarginObjective {
 /// // `f64::MIN` stands in for -∞ at a zero coordinate.
 /// assert_eq!(grad[2], f64::MIN);
 /// ```
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Entropy;
 
 impl Entropy {

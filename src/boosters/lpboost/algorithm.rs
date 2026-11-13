@@ -160,6 +160,7 @@ use std::ops::ControlFlow;
 /// assert!(f.weights.iter().all(|&w| w > 0.0));
 /// assert!((f.weights.iter().sum::<f64>() - 1.0).abs() < 1e-9);
 /// ```
+#[derive(Debug)]
 pub struct LpBoost<'a, F> {
     // Training sample
     sample: &'a Sample,
@@ -259,6 +260,7 @@ where
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
+    #[must_use]
     pub fn nu(mut self, nu: f64) -> Self {
         checkers::capping_parameter(nu, self.n_examples);
         self.nu = nu;
@@ -301,7 +303,7 @@ where
     /// assert!(booster.terminated() >= 1);
     /// assert_eq!(f.predict_all(&sample).len(), 6);
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance >= LPBOOST_MIN_TOLERANCE,
@@ -333,7 +335,6 @@ where
     /// // The stopping rule held after `terminated()` rounds.
     /// assert!(f.hypotheses.len() <= booster.terminated());
     /// ```
-    #[inline(always)]
     pub fn terminated(&self) -> usize {
         self.terminated
     }
@@ -342,7 +343,6 @@ where
     /// optimal dual solution in `self.dist`, and returns the optimal value.
     ///
     /// Time complexity depends on the LP solver.
-    #[inline(always)]
     fn update_distribution_mut(&mut self, h: &F) -> f64 {
         self.solver.solve(h);
         self.dist = self.solver.distribution_on_examples();
@@ -464,7 +464,7 @@ mod parameter_tests {
         ] {
             assert!(
                 std::panic::catch_unwind(|| {
-                    LpBoost::<Hypothesis>::init(&sample).tolerance(value);
+                    let _ = LpBoost::<Hypothesis>::init(&sample).tolerance(value);
                 })
                 .is_err(),
                 "accepted invalid tolerance {value}"

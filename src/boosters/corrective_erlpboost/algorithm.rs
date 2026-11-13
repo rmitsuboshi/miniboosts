@@ -161,6 +161,7 @@ use std::ops::ControlFlow;
 /// assert!(f.weights.iter().all(|&w| w >= 0.0));
 /// assert!(f.weights.iter().sum::<f64>() <= 1.0 + 1e-9);
 /// ```
+#[derive(Debug)]
 pub struct CorrectiveErlpBoost<'a, H> {
     // Training sample
     sample: &'a Sample,
@@ -268,6 +269,7 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
+    #[must_use]
     pub fn nu(mut self, nu: f64) -> Self {
         let n_examples = self.sample.shape().0;
         checkers::capping_parameter(nu, n_examples);
@@ -304,7 +306,7 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
     /// assert_eq!(booster.max_loop(), 1434);
     /// assert!(f.hypotheses.len() <= 1434);
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
             tolerance.is_finite() && tolerance > 0.0,
@@ -349,7 +351,7 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
     /// let f = booster.run(&learner);
     /// assert!(!f.hypotheses.is_empty());
     /// ```
-    #[inline(always)]
+    #[must_use]
     pub fn update_rule(mut self, update_rule: FwUpdateRule) -> Self {
         assert!(
             !matches!(update_rule, FwUpdateRule::BlendedPairwise),
@@ -362,7 +364,6 @@ impl<'a, H> CorrectiveErlpBoost<'a, H> {
     /// Sets `self.eta = ln(m/ν) / (ε/2)`, or `1` when `ν = m`.
     ///
     /// Time complexity: `O(1)`.
-    #[inline(always)]
     fn regularization_param(&mut self) {
         let m = self.dist.len() as f64;
         let ln_part = (m / self.nu).ln();
@@ -599,6 +600,7 @@ where
 /// Minimizing `f̃*(-Aw)` is equivalent to maximizing the regularized soft
 /// margin `-f̃*(-Aw)`. Used by [`CorrectiveErlpBoost`] and
 /// [`MlpBoost`](crate::MlpBoost).
+#[derive(Debug)]
 pub struct CorrErlpFwObjective(ErlpSoftMarginObjective);
 
 impl CorrErlpFwObjective {

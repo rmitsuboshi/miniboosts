@@ -38,6 +38,7 @@ pub const DEFAULT_MAX_DEPTH: usize = 3;
 ///
 /// # Examples
 /// See the [module documentation](self).
+#[derive(Debug)]
 pub struct RegressionTreeBuilder<'a> {
     sample: &'a Sample,
     max_depth: usize,
@@ -62,6 +63,7 @@ impl<'a> RegressionTreeBuilder<'a> {
     ///
     /// # Examples
     /// See the [module documentation](self).
+    #[must_use]
     pub fn max_depth(mut self, depth: usize) -> Self {
         self.max_depth = depth;
         self
@@ -86,6 +88,7 @@ impl<'a> RegressionTreeBuilder<'a> {
     /// let tree = RegressionTreeBuilder::new(&sample).n_bins(1).build();
     /// assert_eq!(tree.produce(&sample, &[0.25; 4]).predict(&sample, 0), 0.5);
     /// ```
+    #[must_use]
     pub fn n_bins(mut self, n_bins: usize) -> Self {
         assert!(n_bins > 0, "a feature needs at least one bin");
         self.n_bins = Some(n_bins);
@@ -152,6 +155,7 @@ impl<'a> RegressionTreeBuilder<'a> {
 ///
 /// # Examples
 /// See the [module documentation](self).
+#[derive(Debug)]
 pub struct RegressionTree {
     // Bins per feature, in column order.
     bins: Vec<(String, Bins)>,
@@ -240,13 +244,11 @@ impl RegressionTree {
         };
 
         let rule = Splitter::new(name, threshold);
-        let (mut left, mut right) = (Vec::new(), Vec::new());
-        for i in indices {
-            match rule.split(sample, i) {
-                LeftRight::Left => left.push(i),
-                LeftRight::Right => right.push(i),
-            }
-        }
+        // Same rule as `Splitter::split` (NaN goes right), with the feature
+        // looked up once instead of once per example.
+        let column = &sample[name];
+        let (left, right): (Vec<usize>, Vec<usize>) =
+            indices.into_iter().partition(|&i| column[i] < threshold);
         if left.is_empty() || right.is_empty() {
             return RegNode::Leaf { value };
         }

@@ -124,6 +124,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// // Six terms of 1/6: the sum is 1 up to rounding.
 /// assert!((learner.edges(&[1.0 / 6.0; 6])[0] - 1.0).abs() < 1e-15);
 /// ```
+#[derive(Debug)]
 pub struct FiniteClass<H> {
     hypotheses: Vec<H>,
     // margins[j][i] = y_i h_j(x_i)
@@ -174,9 +175,8 @@ impl<H: Classifier> FiniteClass<H> {
             .map(|h| {
                 target
                     .iter()
-                    .enumerate()
-                    .map(|(i, y)| {
-                        let c = h.confidence(sample, i);
+                    .zip(h.confidence_all(sample))
+                    .map(|(y, c)| {
                         assert!(
                             (-1.0..=1.0).contains(&c),
                             "hypothesis confidences must be finite and in [-1, 1], got {c}"
@@ -248,6 +248,7 @@ impl<H> FiniteClass<H> {
     /// let learner = learner.with_negations();
     /// assert_eq!(learner.produce(&sample, &[0.5, 0.5]).sign, -1.0);
     /// ```
+    #[must_use]
     pub fn with_negations(mut self) -> Self {
         self.with_negations = true;
         self
@@ -279,6 +280,7 @@ impl<H> FiniteClass<H> {
     /// assert_eq!(learner.produce(&sample, &[0.25; 4]).index, 1);
     /// assert_eq!(learner.assumption_violations(), 0);
     /// ```
+    #[must_use]
     pub fn weakest_with_edge(mut self, gamma: f64) -> Self {
         check_gamma(gamma);
         self.rule = Rule::Weakest(gamma);
@@ -309,6 +311,7 @@ impl<H> FiniteClass<H> {
     /// assert_eq!(h.sign, 0.25);
     /// assert_eq!(h.confidence_all(&sample), vec![0.25, 0.25, -0.25, -0.25]);
     /// ```
+    #[must_use]
     pub fn edge_exactly(mut self, gamma: f64) -> Self {
         check_gamma(gamma);
         self.rule = Rule::Exactly(gamma);
@@ -475,6 +478,14 @@ pub struct ClassMember<H> {
 impl<H: Classifier> Classifier for ClassMember<H> {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
         self.sign * self.hypothesis.confidence(sample, row)
+    }
+
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        let mut confidences = self.hypothesis.confidence_all(sample);
+        for c in &mut confidences {
+            *c *= self.sign;
+        }
+        confidences
     }
 }
 

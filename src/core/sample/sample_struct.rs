@@ -382,6 +382,18 @@ impl Sample {
         target
     }
 
+    /// Returns the features called `names`, in that order, so that a caller
+    /// reading many rows looks each name up once.
+    ///
+    /// # Panics
+    /// Panics if the sample has no feature with one of the names.
+    pub(crate) fn columns<'a, S>(&'a self, names: &[S]) -> Vec<&'a Feature>
+    where
+        S: AsRef<str>,
+    {
+        names.iter().map(|name| &self[name]).collect()
+    }
+
     /// Returns the feature columns, in column order (the label column is not
     /// included).
     pub fn features(&self) -> &[Feature] {
@@ -412,6 +424,7 @@ impl Sample {
     /// assert_eq!(sample.target(), &[-1.0, 1.0]);
     /// assert_eq!(sample.at(0), (vec![-2.0, 0.0], -1.0));
     /// ```
+    #[must_use]
     pub fn set_target<S: AsRef<str>>(mut self, target: S) -> Self {
         let target = target.as_ref();
         let pos = self
@@ -559,6 +572,7 @@ impl Sample {
     /// assert_eq!(residuals.target(), &[0.25, -0.5]);
     /// assert_eq!(residuals["feature_0"][1], 1.0);
     /// ```
+    #[must_use]
     pub fn with_target(&self, target: Vec<f64>) -> Self {
         assert_eq!(
             target.len(),
@@ -592,6 +606,7 @@ impl Sample {
     /// assert_eq!(sub["feature_0"][0], 2.0);
     /// assert_eq!(sub.target(), &[1.0, -1.0, 1.0]);
     /// ```
+    #[must_use]
     pub fn select_rows(&self, rows: &[usize]) -> Self {
         assert!(
             rows.iter().all(|&i| i < self.n_sample),

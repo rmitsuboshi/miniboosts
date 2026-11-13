@@ -62,7 +62,7 @@ where
 }
 
 /// A loss value. Supports `+`, comparison, and equality with `f64`.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct LossValue(pub f64);
 
@@ -159,7 +159,7 @@ impl PartialOrd<usize> for Depth {
 }
 
 /// A feature value. Supports `+`, comparison, and equality with `f64`.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct FeatureValue(pub f64);
 
@@ -191,7 +191,7 @@ impl PartialOrd<Self> for FeatureValue {
 
 /// A probability mass (sum of example weights).
 /// Supports `+` and equality with `f64`.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct Mass(pub f64);
 
@@ -216,7 +216,7 @@ impl PartialEq<f64> for Mass {
 
 /// A target (label) value. Supports `+`, comparison, and equality with
 /// `f64`.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct Target(pub f64);
 
