@@ -15,6 +15,7 @@ use std::ops::Range;
 use crate::core::{
     Feature,
     constants::{PERTURBATION, PRINT_WIDTH_BINNING},
+    sample::feature::gallop,
 };
 
 /// A half-open interval `[start, end)` of feature values.
@@ -327,36 +328,58 @@ impl Bins {
 
     /// Same as [`Bins::pack`], with the bin of every row looked up in
     /// `bin_index` (the [`BinIndex`] of `feature` for these bins) instead of
-    /// searched for, and the label of row `i` given as
-    /// `labels[label_index[i]]`. Weights are added in the order of `indices`,
-    /// as in `pack`, so both return the same sums.
+    /// searched for, and the labels given as [`RowLabels`]. Weights are added
+    /// in the order of `indices`, as in `pack`, so both return the same sums.
+    ///
+    /// With `totals` (the [`LabelTotals`] of `indices`), a sparse feature
+    /// with few stored entries is packed by [`pack_stored_entries`], which
+    /// rounds the weights of the bin containing `0.0` differently.
     pub(crate) fn pack_by_index(
         &self,
         indices: &[usize],
         feature: &Feature,
         bin_index: &BinIndex,
-        label_index: &[u32],
-        labels: &[i32],
+        row_labels: RowLabels<'_>,
         dist: &[f64],
+        totals: Option<&LabelTotals>,
     ) -> Vec<(Bin, HashMap<i32, f64>)> {
+        let RowLabels {
+            index: label_index,
+            distinct: labels,
+        } = row_labels;
         let n_labels = labels.len();
         let mut weights = vec![0.0_f64; self.0.len() * n_labels];
         let mut present = vec![false; self.0.len() * n_labels];
-        let mut add = |i: usize, bin: u32| {
-            let cell = bin as usize * n_labels + label_index[i] as usize;
-            weights[cell] += dist[i];
-            present[cell] = true;
-        };
         match bin_index {
             BinIndex::Dense(bin_of_row) => {
                 for &i in indices {
-                    add(i, bin_of_row[i]);
+                    let cell = bin_of_row[i] as usize * n_labels + label_index[i] as usize;
+                    weights[cell] += dist[i];
+                    present[cell] = true;
                 }
             }
             BinIndex::Sparse { bin_of_entry, zero } => {
-                let mut entries = feature.cursor();
-                for &i in indices {
-                    add(i, entries.entry(i).map_or(*zero, |p| bin_of_entry[p]));
+                let by_difference = totals.is_some_and(|totals| {
+                    pack_stored_entries(
+                        indices,
+                        feature,
+                        (bin_of_entry, *zero),
+                        label_index,
+                        dist,
+                        totals,
+                        (&mut weights, &mut present),
+                    )
+                });
+                if !by_difference {
+                    weights.fill(0.0);
+                    present.fill(false);
+                    let mut entries = feature.cursor();
+                    for &i in indices {
+                        let bin = entries.entry(i).map_or(*zero, |p| bin_of_entry[p]);
+                        let cell = bin as usize * n_labels + label_index[i] as usize;
+                        weights[cell] += dist[i];
+                        present[cell] = true;
+                    }
                 }
             }
         }
@@ -443,6 +466,127 @@ pub(crate) enum BinIndex {
         /// The bin containing `0.0`.
         zero: u32,
     },
+}
+
+/// The labels of a sample's rows as indices into its distinct labels.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RowLabels<'a> {
+    /// The position in `distinct` of the label of each row.
+    pub(crate) index: &'a [u32],
+    /// The distinct labels, converted with `as i32`.
+    pub(crate) distinct: &'a [i32],
+}
+
+/// The total weight and the number of a node's examples, per label.
+#[derive(Debug, Clone)]
+pub(crate) struct LabelTotals {
+    weight: Vec<f64>,
+    count: Vec<usize>,
+}
+
+impl LabelTotals {
+    /// Sums `dist[i]` over `indices` for each of the `n_labels` labels;
+    /// `label_index[i]` is the label of row `i`.
+    pub(crate) fn new(
+        indices: &[usize],
+        label_index: &[u32],
+        n_labels: usize,
+        dist: &[f64],
+    ) -> Self {
+        let mut weight = vec![0.0; n_labels];
+        let mut count = vec![0; n_labels];
+        for &i in indices {
+            weight[label_index[i] as usize] += dist[i];
+            count[label_index[i] as usize] += 1;
+        }
+        Self { weight, count }
+    }
+}
+
+/// The implicit zeros of a label must hold at least this fraction of the
+/// label's weight in a node for their weight to be computed as a difference
+/// in [`pack_stored_entries`]. The difference `a - b` of two sums of `k`
+/// positive terms has an absolute error of at most about `k ε a`
+/// (`ε = 2⁻⁵³`), so its relative error is at most about `k ε / 10⁻³`: below
+/// `10⁻⁶` up to `k = 10⁷` examples.
+const MIN_ZERO_FRACTION: f64 = 1e-3;
+
+/// [`pack_stored_entries`] is used on a node with at least this many
+/// examples per stored entry of the feature in the node's row range. With
+/// fewer, visiting every example is as fast (measured: about twice as fast
+/// with 2 examples per entry, 1.6 times slower with 20) and exact.
+const MIN_ROWS_PER_ENTRY: usize = 4;
+
+/// A numerical shortcut for [`Bins::pack_by_index`] on a sparse feature: adds
+/// the weights of the stored entries among `indices` to their cells, and
+/// obtains the weight of the implicit zeros of each label as the label's
+/// total minus the weight of its stored entries, instead of adding the
+/// zeros one by one. The cost is proportional to the number of stored
+/// entries, up to a logarithmic factor, not to the number of examples.
+///
+/// The cells of bins without implicit zeros get the same sums as in
+/// `pack_by_index`; the cells of the zero bin are rounded differently.
+/// Returns `false`, leaving the cells in an unspecified state, if the
+/// feature has too many stored entries for the shortcut to pay off
+/// ([`MIN_ROWS_PER_ENTRY`]), or if the zeros of some label hold less than
+/// [`MIN_ZERO_FRACTION`] of its weight: the difference would then lose
+/// accuracy to cancellation. The caller must then add the examples one by
+/// one.
+fn pack_stored_entries(
+    indices: &[usize],
+    feature: &Feature,
+    (bin_of_entry, zero): (&[u32], u32),
+    label_index: &[u32],
+    dist: &[f64],
+    totals: &LabelTotals,
+    (weights, present): (&mut [f64], &mut [bool]),
+) -> bool {
+    let Feature::Sparse { vals, .. } = feature else {
+        return false;
+    };
+    let (Some(&first), Some(&last)) = (indices.first(), indices.last()) else {
+        return true;
+    };
+    let n_labels = totals.weight.len();
+    let mut stored_weight = vec![0.0; n_labels];
+    let mut stored_count = vec![0_usize; n_labels];
+    let mut add = |i: usize, p: usize| {
+        let label = label_index[i] as usize;
+        let cell = bin_of_entry[p] as usize * n_labels + label;
+        weights[cell] += dist[i];
+        present[cell] = true;
+        stored_weight[label] += dist[i];
+        stored_count[label] += 1;
+    };
+    // The stored entries whose rows lie between the node's first and last.
+    let start = vals.partition_point(|&(row, _)| row < first);
+    let end = vals.partition_point(|&(row, _)| row <= last);
+    // Looking an entry up among the node's rows costs more than visiting a
+    // row, so the shortcut pays off only with few entries.
+    if (end - start).saturating_mul(MIN_ROWS_PER_ENTRY) > indices.len() {
+        return false;
+    }
+    let mut pos = 0;
+    for (p, &(row, _)) in vals.iter().enumerate().take(end).skip(start) {
+        pos = gallop(indices, pos, |&i| i < row);
+        if indices.get(pos) == Some(&row) {
+            add(row, p);
+        }
+    }
+    for label in 0..n_labels {
+        if totals.count[label] == stored_count[label] {
+            continue;
+        }
+        let zeros = totals.weight[label] - stored_weight[label];
+        // Also false for NaN.
+        if !(zeros >= MIN_ZERO_FRACTION * totals.weight[label] && zeros > 0.0) {
+            return false;
+        }
+        let cell = zero as usize * n_labels + label;
+        weights[cell] += zeros;
+        present[cell] = true;
+    }
+    true
 }
 
 impl fmt::Display for Bins {
@@ -549,12 +693,77 @@ mod tests {
                     &indices,
                     feature,
                     &bins.index(feature),
-                    &label_index,
-                    &[-1, 1],
+                    RowLabels {
+                        index: &label_index,
+                        distinct: &[-1, 1],
+                    },
                     &dist,
+                    None,
                 ));
             }
         }
+    }
+
+    /// 400 rows with 20 stored entries (rows 7, 27, ...), alternating labels,
+    /// packed over all rows with and without the stored-entries shortcut.
+    fn pack_few_entries(dist: &[f64]) -> [Vec<(Bin, HashMap<i32, f64>)>; 2] {
+        let size = 400;
+        let mut sparse = Feature::sparse("x", size);
+        for row in (7..size).step_by(20) {
+            sparse.append((row, 1.0 + (row % 3) as f64));
+        }
+        let label_index: Vec<u32> = (0..size).map(|i| (i % 2) as u32).collect();
+        let indices: Vec<usize> = (0..size).collect();
+        let bins = Bins::cut(&sparse, 4);
+        let labels = RowLabels {
+            index: &label_index,
+            distinct: &[-1, 1],
+        };
+        let totals = LabelTotals::new(&indices, &label_index, 2, dist);
+        let index = bins.index(&sparse);
+        [None, Some(&totals)]
+            .map(|totals| bins.pack_by_index(&indices, &sparse, &index, labels, dist, totals))
+    }
+
+    #[test]
+    fn stored_entries_shortcut_matches_the_sums_over_all_rows() {
+        let dist: Vec<f64> = (0..400).map(|i| (1.0 + (i % 13) as f64) / 2800.0).collect();
+        let [exact, shortcut] = pack_few_entries(&dist);
+        assert_eq!(exact.len(), shortcut.len());
+        for ((bin, weights), (sbin, sweights)) in exact.iter().zip(&shortcut) {
+            assert_eq!(bin.0, sbin.0);
+            assert_eq!(weights.len(), sweights.len());
+            for (label, weight) in weights {
+                let other = sweights[label];
+                if bin.contains(&0.0) {
+                    // A difference of two sums of at most 400 terms below 1.
+                    assert!((weight - other).abs() < 400.0 * f64::EPSILON);
+                } else {
+                    assert_eq!(*weight, other);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stored_entries_shortcut_is_not_used_under_cancellation() {
+        // The implicit zeros hold 1e-18 of the weight: their sum cannot be
+        // recovered as a difference, so the rows are added one by one.
+        let dist: Vec<f64> = (0..400)
+            .map(|i| if i % 20 == 7 { 0.05 } else { 1e-20 })
+            .collect();
+        let [exact, shortcut] = pack_few_entries(&dist);
+        assert_eq!(exact.len(), shortcut.len());
+        for ((bin, weights), (sbin, sweights)) in exact.iter().zip(&shortcut) {
+            assert_eq!(bin.0, sbin.0);
+            assert_eq!(weights, sweights);
+        }
+        let zeros: f64 = exact
+            .iter()
+            .filter(|(bin, _)| bin.contains(&0.0))
+            .flat_map(|(_, weights)| weights.values())
+            .sum();
+        assert!((zeros - 380.0 * 1e-20).abs() < 1e-30);
     }
 
     #[test]

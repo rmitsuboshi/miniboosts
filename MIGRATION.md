@@ -94,6 +94,17 @@ hypotheses read sparse features at increasing rows without a search per row.
 AdaBoost with depth-3 trees on 20000 examples with 300 features, 5% of the
 entries nonzero: 88 ms per round became 13 ms.
 
+On a sparse feature with at least 4 examples per stored entry in a node, the
+tree learner adds the weights of the stored entries only and takes the weight
+of the implicit zeros of each label as the label's total minus those, which
+costs time proportional to the stored entries. This is a numerical shortcut,
+not the original sum: the weights of the bin containing `0.0` are rounded
+differently (relative error below `1e-6` up to `10⁷` examples), so a split
+between near-tied candidates can change. When the zeros of a label hold less
+than `1e-3` of its weight, the examples are added one by one as before. On the
+data above the round takes 7 ms; with 1% nonzero entries among 2000 features,
+training is 4 times faster. Dense features are unaffected.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

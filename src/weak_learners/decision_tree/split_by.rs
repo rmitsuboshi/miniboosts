@@ -172,6 +172,10 @@ impl SplitBy {
         idx: &[usize],
     ) -> (&'a str, f64) {
         let target = sample.target();
+        // Per-label totals of the node, shared by its sparse features.
+        let totals = cache
+            .filter(|_| sample.features().iter().any(Feature::is_sparse))
+            .map(|c| LabelTotals::new(idx, c.label_index, c.labels.len(), dist));
         let pack_of = |column: usize, feature: &Feature| {
             let bin = bins_map.get(feature.name()).unwrap();
             match cache {
@@ -179,9 +183,12 @@ impl SplitBy {
                     idx,
                     feature,
                     &c.bin_index[column],
-                    c.label_index,
-                    c.labels,
+                    RowLabels {
+                        index: c.label_index,
+                        distinct: c.labels,
+                    },
                     dist,
+                    totals.as_ref(),
                 ),
                 None => bin.pack(idx, feature, target, dist),
             }

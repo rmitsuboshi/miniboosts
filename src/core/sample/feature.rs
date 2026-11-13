@@ -585,18 +585,25 @@ impl Cursor<'_> {
             self.pos = 0;
         }
         self.last = row;
-        // Gallop: double the step until an entry with a row `>= row` (or the
-        // end) is reached, then search the last interval.
-        let (mut lo, mut hi, mut step) = (self.pos, self.pos, 1);
-        while hi < vals.len() && vals[hi].0 < row {
-            lo = hi + 1;
-            hi += step;
-            step *= 2;
-        }
-        let hi = hi.min(vals.len());
-        self.pos = lo + vals[lo..hi].partition_point(|&(r, _)| r < row);
+        self.pos = gallop(vals, self.pos, |&(r, _)| r < row);
         (self.pos < vals.len() && vals[self.pos].0 == row).then_some(self.pos)
     }
+}
+
+/// Returns the first position `p >= from` with `!before(&items[p])`, or
+/// `items.len()`. `before` must hold on a prefix of `items[from..]` only.
+/// The step doubles until the answer is passed and the last interval is then
+/// searched, which costs `O(log(p - from))`.
+#[inline]
+pub(crate) fn gallop<T>(items: &[T], from: usize, before: impl Fn(&T) -> bool) -> usize {
+    let (mut lo, mut hi, mut step) = (from, from, 1);
+    while hi < items.len() && before(&items[hi]) {
+        lo = hi + 1;
+        hi += step;
+        step *= 2;
+    }
+    let hi = hi.min(items.len());
+    lo + items[lo..hi].partition_point(before)
 }
 
 impl Index<usize> for Feature {
