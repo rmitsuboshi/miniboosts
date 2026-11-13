@@ -153,9 +153,8 @@ impl fmt::Display for SplitBy {
 /// need not search the bin of every example again; see
 /// [`Bins::pack_by_index`].
 pub(super) struct BinCache<'c> {
-    /// For each feature, in column order, the bin of every row. `None` for
-    /// features without a cache (sparse ones).
-    pub(super) bin_index: &'c [Option<Vec<u32>>],
+    /// For each feature, in column order, the bins of its values.
+    pub(super) bin_index: &'c [BinIndex],
     /// The position in `labels` of every row's label.
     pub(super) label_index: &'c [u32],
     /// The distinct labels, converted with `as i32`.
@@ -175,8 +174,15 @@ impl SplitBy {
         let target = sample.target();
         let pack_of = |column: usize, feature: &Feature| {
             let bin = bins_map.get(feature.name()).unwrap();
-            match cache.and_then(|c| c.bin_index[column].as_ref().map(|ix| (c, ix))) {
-                Some((c, ix)) => bin.pack_by_index(idx, ix, c.label_index, c.labels, dist),
+            match cache {
+                Some(c) => bin.pack_by_index(
+                    idx,
+                    feature,
+                    &c.bin_index[column],
+                    c.label_index,
+                    c.labels,
+                    dist,
+                ),
                 None => bin.pack(idx, feature, target, dist),
             }
         };

@@ -87,6 +87,13 @@ row, and the tree learners look the split feature up once per node. AdaBoost,
 AdaBoostV, MadaBoost, and SmoothBoost update their weights on the calling
 thread: handing an `O(m)` loop to the thread pool cost more than the loop.
 
+Decision trees train and predict faster on sparse features (SVMlight input),
+with unchanged trees. `DecisionTree` now also stores the bin of every stored
+entry of a sparse feature (4 bytes per entry), and the tree learners and tree
+hypotheses read sparse features at increasing rows without a search per row.
+AdaBoost with depth-3 trees on 20000 examples with 300 features, 5% of the
+entries nonzero: 88 ms per round became 13 ms.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

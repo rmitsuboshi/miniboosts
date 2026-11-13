@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 
-use crate::core::{Feature, Sample, WeakLearner, binning::*, tree::*};
+use crate::core::{Sample, WeakLearner, binning::*, tree::*};
 
 use crate::weak_learners::decision_tree::{
     classifier::DecisionTreeClassifier,
@@ -159,10 +159,10 @@ use std::fmt;
 #[derive(Debug)]
 pub struct DecisionTree<'a> {
     bins: HashMap<&'a str, Bins>,
-    // The sample the bins were cut from, and the bin of each of its rows for
-    // every dense feature (`None` for sparse features), in column order.
+    // The sample the bins were cut from, and the bins of the values of each
+    // of its features, in column order.
     sample: &'a Sample,
-    bin_index: Vec<Option<Vec<u32>>>,
+    bin_index: Vec<BinIndex>,
     split_by: SplitBy,
     max_depth: Depth,
     leaf_confidence: LeafConfidence,
@@ -217,14 +217,7 @@ impl<'a> DecisionTree<'a> {
         let bin_index = sample
             .features()
             .par_iter()
-            .map(|feature| match feature {
-                Feature::Dense { name, vals } => {
-                    let bins = &bins[name.as_str()];
-                    Some(vals.iter().map(|&x| bins.index_of(x) as u32).collect())
-                }
-                // One index per row would undo the sparse storage.
-                Feature::Sparse { .. } => None,
-            })
+            .map(|feature| bins[feature.name()].index(feature))
             .collect();
         Self {
             bins,
@@ -281,9 +274,7 @@ impl<'a> DecisionTree<'a> {
         // Split the train data for left/right childrens
         // Same rule as `Splitter::split` (NaN goes right), with the feature
         // looked up once instead of once per example.
-        let column = &sample[feature];
-        let (lindices, rindices): (Vec<usize>, Vec<usize>) =
-            indices.into_iter().partition(|&i| column[i] < threshold);
+        let (lindices, rindices) = sample[feature].partition_rows(indices, threshold);
 
         // If the split has no meaning, construct a leaf node.
         if lindices.is_empty() || rindices.is_empty() {

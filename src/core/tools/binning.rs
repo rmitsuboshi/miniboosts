@@ -232,6 +232,24 @@ impl Bins {
             .expect("every finite value falls into a bin")
     }
 
+    /// Returns the [`BinIndex`] of `feature`, which these bins must cover.
+    pub(crate) fn index(&self, feature: &Feature) -> BinIndex {
+        match feature {
+            Feature::Dense { vals, .. } => {
+                BinIndex::Dense(vals.iter().map(|&x| self.index_of(x) as u32).collect())
+            }
+            Feature::Sparse { vals, .. } => BinIndex::Sparse {
+                bin_of_entry: vals.iter().map(|&(_, x)| self.index_of(x) as u32).collect(),
+                // Unused when no row is an implicit zero.
+                zero: if feature.has_zero() {
+                    self.index_of(0.0) as u32
+                } else {
+                    0
+                },
+            },
+        }
+    }
+
     /// Returns the bins in increasing order.
     pub(crate) fn as_slice(&self) -> &[Bin] {
         &self.0
@@ -286,8 +304,9 @@ impl Bins {
         let n_bins = self.0.len();
         let mut packed = vec![HashMap::<i32, f64>::new(); n_bins];
 
+        let mut values = feature.cursor();
         for &i in indices {
-            let xi = feature[i];
+            let xi = values.value(i);
             let yi = labels[i] as i32;
             let di = dist[i];
 
@@ -307,14 +326,15 @@ impl Bins {
     }
 
     /// Same as [`Bins::pack`], with the bin of every row looked up in
-    /// `bin_index` (`bin_index[i]` is [`Bins::index_of`] of row `i`) instead
-    /// of searched for, and the label of row `i` given as
+    /// `bin_index` (the [`BinIndex`] of `feature` for these bins) instead of
+    /// searched for, and the label of row `i` given as
     /// `labels[label_index[i]]`. Weights are added in the order of `indices`,
     /// as in `pack`, so both return the same sums.
     pub(crate) fn pack_by_index(
         &self,
         indices: &[usize],
-        bin_index: &[u32],
+        feature: &Feature,
+        bin_index: &BinIndex,
         label_index: &[u32],
         labels: &[i32],
         dist: &[f64],
@@ -322,10 +342,23 @@ impl Bins {
         let n_labels = labels.len();
         let mut weights = vec![0.0_f64; self.0.len() * n_labels];
         let mut present = vec![false; self.0.len() * n_labels];
-        for &i in indices {
-            let cell = bin_index[i] as usize * n_labels + label_index[i] as usize;
+        let mut add = |i: usize, bin: u32| {
+            let cell = bin as usize * n_labels + label_index[i] as usize;
             weights[cell] += dist[i];
             present[cell] = true;
+        };
+        match bin_index {
+            BinIndex::Dense(bin_of_row) => {
+                for &i in indices {
+                    add(i, bin_of_row[i]);
+                }
+            }
+            BinIndex::Sparse { bin_of_entry, zero } => {
+                let mut entries = feature.cursor();
+                for &i in indices {
+                    add(i, entries.entry(i).map_or(*zero, |p| bin_of_entry[p]));
+                }
+            }
         }
         let packed = weights
             .chunks(n_labels)
@@ -395,6 +428,23 @@ impl Bins {
     }
 }
 
+/// The bin ([`Bins::index_of`]) of every value of one feature, so that the
+/// bin of a row need not be searched for again.
+#[derive(Debug, Clone)]
+pub(crate) enum BinIndex {
+    /// For a dense feature: the bin of each row.
+    Dense(Vec<u32>),
+    /// For a sparse feature: the bin of each stored entry, in the order of
+    /// the entries, and the bin of the implicit zeros. This keeps the memory
+    /// proportional to the number of stored entries.
+    Sparse {
+        /// The bin of each stored entry.
+        bin_of_entry: Vec<u32>,
+        /// The bin containing `0.0`.
+        zero: u32,
+    },
+}
+
 impl fmt::Display for Bins {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bins = &self.0;
@@ -456,6 +506,56 @@ impl fmt::Display for Bin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pack_by_index_matches_pack_for_dense_and_sparse_features() {
+        let size = 30;
+        let mut dense = Feature::dense("x");
+        let mut sparse = Feature::sparse("x", size);
+        for row in 0..size {
+            let value = if row % 4 == 1 || row % 9 == 0 {
+                row as f64 - 12.5
+            } else {
+                0.0
+            };
+            dense.append((row, value));
+            sparse.append((row, value));
+        }
+        let labels: Vec<f64> = (0..size)
+            .map(|i| if i % 3 == 0 { 1.0 } else { -1.0 })
+            .collect();
+        let label_index: Vec<u32> = labels.iter().map(|&y| u32::from(y > 0.0)).collect();
+        let total = (size * (size + 1) / 2) as f64;
+        let dist: Vec<f64> = (1..=size).map(|i| i as f64 / total).collect();
+        let bins = Bins::cut(&sparse, 4);
+
+        for indices in [
+            (0..size).collect::<Vec<usize>>(),
+            (0..size).step_by(3).collect(),
+            vec![2, 3, 27, 28, 29],
+        ] {
+            let expected = bins.pack(&indices, &dense, &labels, &dist);
+            let same = |packed: Vec<(Bin, HashMap<i32, f64>)>| {
+                assert_eq!(packed.len(), expected.len());
+                for ((bin, weights), (ebin, eweights)) in packed.iter().zip(&expected) {
+                    assert_eq!(bin.0, ebin.0);
+                    // Exact: the weights are added in the same order.
+                    assert_eq!(weights, eweights);
+                }
+            };
+            same(bins.pack(&indices, &sparse, &labels, &dist));
+            for feature in [&dense, &sparse] {
+                same(bins.pack_by_index(
+                    &indices,
+                    feature,
+                    &bins.index(feature),
+                    &label_index,
+                    &[-1, 1],
+                    &dist,
+                ));
+            }
+        }
+    }
 
     #[test]
     fn dense_sparse_binning_parity_across_scales() {

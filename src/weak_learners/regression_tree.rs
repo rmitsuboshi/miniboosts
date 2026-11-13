@@ -214,11 +214,11 @@ impl RegressionTree {
         // Best split over features (in order) and bin boundaries.
         let mut best: Option<(f64, &str, f64)> = None;
         for (name, bins) in &self.bins {
-            let feature = &sample[name];
+            let mut feature = sample[name].cursor();
             let n_bins = bins.as_slice().len();
             let mut per_bin = vec![Moments::default(); n_bins];
             for &i in &indices {
-                per_bin[bins.index_of(feature[i])].add(dist[i], target[i]);
+                per_bin[bins.index_of(feature.value(i))].add(dist[i], target[i]);
             }
             let nonempty: Vec<usize> = (0..n_bins).filter(|&b| per_bin[b].w > 0.0).collect();
             let mut left = Moments::default();
@@ -246,9 +246,7 @@ impl RegressionTree {
         let rule = Splitter::new(name, threshold);
         // Same rule as `Splitter::split` (NaN goes right), with the feature
         // looked up once instead of once per example.
-        let column = &sample[name];
-        let (left, right): (Vec<usize>, Vec<usize>) =
-            indices.into_iter().partition(|&i| column[i] < threshold);
+        let (left, right) = sample[name].partition_rows(indices, threshold);
         if left.is_empty() || right.is_empty() {
             return RegNode::Leaf { value };
         }

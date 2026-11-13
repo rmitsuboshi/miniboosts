@@ -81,11 +81,9 @@ impl Node {
                 right,
                 ..
             } => {
-                let feature = &sample[&splitter.feature];
                 // Same rule as `Splitter::split`: NaN goes right.
-                let (lrows, rrows) = rows
-                    .into_iter()
-                    .partition(|&row| feature[row] < splitter.threshold);
+                let (lrows, rrows) =
+                    sample[&splitter.feature].partition_rows(rows, splitter.threshold);
                 left.confidence_rows(sample, lrows, out);
                 right.confidence_rows(sample, rrows, out);
             }

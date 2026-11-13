@@ -515,6 +515,90 @@ impl Feature {
     }
 }
 
+impl Feature {
+    /// Returns a reader of this feature's values for rows visited in
+    /// increasing order; see [`Cursor`].
+    pub(crate) fn cursor(&self) -> Cursor<'_> {
+        Cursor {
+            feature: self,
+            pos: 0,
+            last: 0,
+        }
+    }
+
+    /// Splits `rows` into those whose value is `< threshold` and the others
+    /// (including NaN), keeping their order: the rule of
+    /// [`Splitter::split`](crate::core::tree::Splitter::split), with the
+    /// values read as by a [`Cursor`].
+    pub(crate) fn partition_rows(
+        &self,
+        rows: Vec<usize>,
+        threshold: f64,
+    ) -> (Vec<usize>, Vec<usize>) {
+        match self {
+            Self::Dense { vals, .. } => rows.into_iter().partition(|&row| vals[row] < threshold),
+            Self::Sparse { .. } => {
+                let mut values = self.cursor();
+                rows.into_iter()
+                    .partition(|&row| values.value(row) < threshold)
+            }
+        }
+    }
+}
+
+/// Reads the values of a [`Feature`] at given rows. The values equal
+/// `feature[row]`. On a sparse feature, `feature[row]` searches all nonzero
+/// entries; a cursor continues from the entry of the previous row, so that
+/// visiting `k` increasing rows costs `O(k log(nnz / k))` rather than
+/// `O(k log nnz)`, and `O(k)` when the rows are consecutive entries. Rows may
+/// also decrease, at the cost of a search from the start.
+#[derive(Debug, Clone)]
+pub(crate) struct Cursor<'a> {
+    feature: &'a Feature,
+    // Sparse features only: every entry before `pos` has a row `< last`.
+    pos: usize,
+    last: usize,
+}
+
+impl Cursor<'_> {
+    /// Returns the value at `row`, like `feature[row]`.
+    ///
+    /// # Panics
+    /// Panics if `row` is out of bounds for a dense feature.
+    #[inline]
+    pub(crate) fn value(&mut self, row: usize) -> f64 {
+        match self.feature {
+            Feature::Dense { vals, .. } => vals[row],
+            Feature::Sparse { vals, .. } => self.entry(row).map_or(0.0, |p| vals[p].1),
+        }
+    }
+
+    /// For a sparse feature, returns the position of `row` among the stored
+    /// entries, or `None` if the value at `row` is an implicit zero. Always
+    /// `None` for a dense feature.
+    #[inline]
+    pub(crate) fn entry(&mut self, row: usize) -> Option<usize> {
+        let Feature::Sparse { vals, .. } = self.feature else {
+            return None;
+        };
+        if row < self.last {
+            self.pos = 0;
+        }
+        self.last = row;
+        // Gallop: double the step until an entry with a row `>= row` (or the
+        // end) is reached, then search the last interval.
+        let (mut lo, mut hi, mut step) = (self.pos, self.pos, 1);
+        while hi < vals.len() && vals[hi].0 < row {
+            lo = hi + 1;
+            hi += step;
+            step *= 2;
+        }
+        let hi = hi.min(vals.len());
+        self.pos = lo + vals[lo..hi].partition_point(|&(r, _)| r < row);
+        (self.pos < vals.len() && vals[self.pos].0 == row).then_some(self.pos)
+    }
+}
+
 impl Index<usize> for Feature {
     type Output = f64;
     fn index(&self, idx: usize) -> &Self::Output {
@@ -534,6 +618,63 @@ impl Index<usize> for Feature {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A dense and a sparse feature with the same 40 values; 8 are nonzero.
+    fn dense_and_sparse() -> (Feature, Feature) {
+        let size = 40;
+        let mut dense = Feature::dense("x");
+        let mut sparse = Feature::sparse("x", size);
+        for row in 0..size {
+            let value = if row % 7 == 3 || row % 11 == 0 {
+                row as f64 - 20.5
+            } else {
+                0.0
+            };
+            dense.append((row, value));
+            sparse.append((row, value));
+        }
+        (dense, sparse)
+    }
+
+    #[test]
+    fn cursor_and_partition_agree_with_indexing() {
+        let (dense, sparse) = dense_and_sparse();
+        let orders: [Vec<usize>; 5] = [
+            (0..40).collect(),
+            (0..40).step_by(3).collect(),
+            vec![33, 36, 38, 39],
+            // Not increasing, with a repetition.
+            vec![39, 0, 22, 22, 3, 38, 11],
+            vec![],
+        ];
+        for rows in orders {
+            for feature in [&dense, &sparse] {
+                let mut cursor = feature.cursor();
+                for &row in &rows {
+                    assert_eq!(cursor.value(row).to_bits(), feature[row].to_bits());
+                }
+                for threshold in [-5.0, 0.0, 0.5, f64::NAN] {
+                    let expected: (Vec<usize>, Vec<usize>) =
+                        rows.iter().partition(|&&row| feature[row] < threshold);
+                    assert_eq!(feature.partition_rows(rows.clone(), threshold), expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cursor_entry_is_the_position_of_a_stored_row() {
+        let (dense, sparse) = dense_and_sparse();
+        let Feature::Sparse { vals, .. } = &sparse else {
+            unreachable!()
+        };
+        let mut cursor = sparse.cursor();
+        for row in 0..40 {
+            let expected = vals.iter().position(|&(r, _)| r == row);
+            assert_eq!(cursor.entry(row), expected, "row {row}");
+        }
+        assert_eq!(dense.cursor().entry(3), None);
+    }
 
     #[test]
     fn conditional_statistics_match_hand_calculation() {
