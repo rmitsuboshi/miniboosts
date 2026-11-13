@@ -105,6 +105,15 @@ than `1e-3` of its weight, the examples are added one by one as before. On the
 data above the round takes 7 ms; with 1% nonzero entries among 2000 features,
 training is 4 times faster. Dense features are unaffected.
 
+The linear learners no longer expand a sample into dense rows.
+`LinearClassifier::confidence_all` and `BoundedLinear` add up the features
+column by column, and `LogisticRegression` uses the stored entries of each
+example when the sample has a sparse feature. Every sum has the same terms in
+the same order as before, except that products with implicit zeros are left
+out, which can only turn a `0.0` into `-0.0` or back. On 20000 examples with
+300 sparse features (5% nonzero), 30 rounds of AdaBoost with `BoundedLinear`
+took 35 ms instead of 6.4 s; on dense samples it is about twice as fast.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

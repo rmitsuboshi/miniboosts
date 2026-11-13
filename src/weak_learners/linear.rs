@@ -42,7 +42,7 @@
 //! // Better than predicting the majority label -1 (27 of 36).
 //! assert!(correct > 27, "{correct}");
 //! ```
-use crate::core::{Classifier, Sample, WeakLearner};
+use crate::core::{Classifier, Feature, Sample, WeakLearner};
 use serde::{Deserialize, Serialize};
 
 /// How a [`LinearClassifier`] maps the score `z = w·x + b` to a confidence.
@@ -174,21 +174,42 @@ impl Classifier for LinearClassifier {
         self.link(self.score(sample, row))
     }
 
-    /// Same values as [`Classifier::confidence`] row by row, looking each
-    /// feature up once instead of once per row.
+    /// Same values as [`Classifier::confidence`] row by row. The scores are
+    /// accumulated feature by feature, in the order of the weights, so every
+    /// row adds the same terms in the same order; a sparse feature adds its
+    /// stored entries only. Leaving out the products with implicit zeros
+    /// can at most turn a score `0.0` into `-0.0` or back.
     fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
         let n_sample = sample.shape().0;
         if n_sample == 0 {
             return Vec::new();
         }
         let columns = sample.columns(&self.feature_names);
-        (0..n_sample)
-            .map(|row| self.link(self.score_from(|k| columns[k][row])))
+        // `-0.0` is where `Iterator::sum` starts in `score`.
+        let mut scores = vec![-0.0_f64; n_sample];
+        for (w, column) in self.weights.iter().zip(columns) {
+            match column {
+                Feature::Dense { vals, .. } => {
+                    for (score, x) in scores.iter_mut().zip(vals) {
+                        *score += w * x;
+                    }
+                }
+                Feature::Sparse { vals, .. } => {
+                    for &(row, x) in vals {
+                        scores[row] += w * x;
+                    }
+                }
+            }
+        }
+        scores
+            .into_iter()
+            .map(|score| self.link(score + self.bias))
             .collect()
     }
 }
 
 /// Returns the feature names and the rows `x_i` of `sample`.
+#[cfg(test)]
 fn names_and_rows(sample: &Sample) -> (Vec<String>, Vec<Vec<f64>>) {
     let features = sample.features();
     let names = features.iter().map(|f| f.name().to_string()).collect();
@@ -287,21 +308,51 @@ impl WeakLearner for BoundedLinear {
     /// or a negative or non-finite entry.
     fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis {
         check_inputs(sample, dist);
-        let (names, rows) = names_and_rows(sample);
+        let features = sample.features();
+        let names: Vec<String> = features.iter().map(|f| f.name().to_string()).collect();
         let dim = names.len();
-        let radius_squared = rows
-            .iter()
-            .map(|x| x.iter().map(|v| v * v).sum::<f64>())
-            .fold(0.0, f64::max);
+        // Both sums below run over the features (columns) and add, for each
+        // row, the terms in the order a row-wise sum would; a sparse feature
+        // contributes its stored entries only.
+        //
+        // ‖x_i‖² for every example; `-0.0` is where `Iterator::sum` starts.
+        let mut norms_squared = vec![-0.0_f64; sample.shape().0];
+        for feature in features {
+            match feature {
+                Feature::Dense { vals, .. } => {
+                    for (norm, v) in norms_squared.iter_mut().zip(vals) {
+                        *norm += v * v;
+                    }
+                }
+                Feature::Sparse { vals, .. } => {
+                    for &(row, v) in vals {
+                        norms_squared[row] += v * v;
+                    }
+                }
+            }
+        }
+        let radius_squared = norms_squared.into_iter().fold(0.0, f64::max);
         let scale = (radius_squared + 1.0).sqrt();
 
         // g = Σ_i d_i y_i (x_i, 1)
-        let mut g = vec![0.0; dim + 1];
-        for ((x, &y), &d) in rows.iter().zip(sample.target()).zip(dist) {
-            let c = d * y;
-            g.iter_mut().zip(x).for_each(|(gk, xk)| *gk += c * xk);
-            g[dim] += c;
-        }
+        let coefficients: Vec<f64> = dist
+            .iter()
+            .zip(sample.target())
+            .map(|(&d, &y)| d * y)
+            .collect();
+        let mut g: Vec<f64> = features
+            .iter()
+            .map(|feature| match feature {
+                Feature::Dense { vals, .. } => coefficients
+                    .iter()
+                    .zip(vals)
+                    .fold(0.0, |gk, (c, xk)| gk + c * xk),
+                Feature::Sparse { vals, .. } => vals
+                    .iter()
+                    .fold(0.0, |gk, &(row, xk)| gk + coefficients[row] * xk),
+            })
+            .collect();
+        g.push(coefficients.iter().fold(0.0, |sum, c| sum + c));
         let norm = g.iter().map(|v| v * v).sum::<f64>().sqrt();
         let factor = if norm > 0.0 {
             1.0 / (norm * scale)
@@ -434,17 +485,18 @@ impl LogisticRegression {
     /// vector `θ = (w, b)`.
     // Index loops mirror the symmetric Hessian's formulas.
     #[allow(clippy::needless_range_loop)]
-    fn fit(&self, rows: &[Vec<f64>], target: &[f64], dist: &[f64]) -> Vec<f64> {
-        let dim = rows.first().map_or(0, Vec::len) + 1;
+    /// Minimizes the regularized logistic loss over `θ = (w, b)` of length
+    /// `dim`. `xs[i]` is the augmented example `(x_i, 1)`.
+    fn fit<R: Row>(&self, xs: &[R], dim: usize, target: &[f64], dist: &[f64]) -> Vec<f64> {
         let lambda = self.regularization;
-        let augmented = |x: &[f64]| x.iter().copied().chain([1.0]).collect::<Vec<f64>>();
-        let xs: Vec<Vec<f64>> = rows.iter().map(|x| augmented(x)).collect();
         let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
+        // θ·x, in the order of the entries of `x`.
+        let score = |theta: &[f64], x: &R| x.entries().map(|(k, v)| theta[k] * v).sum::<f64>();
         let loss = |theta: &[f64]| {
             xs.iter()
                 .zip(target)
                 .zip(dist)
-                .map(|((x, y), d)| d * softplus(-y * dot(theta, x)))
+                .map(|((x, y), d)| d * softplus(-y * score(theta, x)))
                 .sum::<f64>()
                 + 0.5 * lambda * dot(theta, theta)
         };
@@ -459,13 +511,14 @@ impl LogisticRegression {
                 if d == 0.0 {
                     continue;
                 }
-                let z = dot(&theta, x);
+                let z = score(&theta, x);
                 let coef = -d * y * logistic(-y * z);
                 let curv = d * logistic(z) * logistic(-z);
-                for a in 0..dim {
-                    grad[a] += coef * x[a];
-                    for b in 0..=a {
-                        hess[a][b] += curv * x[a] * x[b];
+                // Lower triangle: the entries are in increasing order.
+                for (position, (a, xa)) in x.entries().enumerate() {
+                    grad[a] += coef * xa;
+                    for (b, xb) in x.entries().take(position + 1) {
+                        hess[a][b] += curv * xa * xb;
                     }
                 }
             }
@@ -531,14 +584,63 @@ impl WeakLearner for LogisticRegression {
     /// negative or non-finite entry, or the Newton iteration fails.
     fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis {
         check_inputs(sample, dist);
-        let (names, rows) = names_and_rows(sample);
-        let theta = self.fit(&rows, sample.target(), dist);
+        let features = sample.features();
+        let names: Vec<String> = features.iter().map(|f| f.name().to_string()).collect();
         let dim = names.len();
+        let theta = if features.iter().any(Feature::is_sparse) {
+            // Stored entries only: a product with an implicit zero adds
+            // nothing to the score, the gradient, or the Hessian.
+            let mut xs = vec![Vec::new(); sample.shape().0];
+            for (k, feature) in features.iter().enumerate() {
+                match feature {
+                    Feature::Dense { vals, .. } => {
+                        for (x, &v) in xs.iter_mut().zip(vals) {
+                            x.push((k, v));
+                        }
+                    }
+                    Feature::Sparse { vals, .. } => {
+                        for &(row, v) in vals {
+                            xs[row].push((k, v));
+                        }
+                    }
+                }
+            }
+            for x in &mut xs {
+                x.push((dim, 1.0));
+            }
+            self.fit(&xs, dim + 1, sample.target(), dist)
+        } else {
+            let xs: Vec<Vec<f64>> = (0..sample.shape().0)
+                .map(|i| features.iter().map(|f| f[i]).chain([1.0]).collect())
+                .collect();
+            self.fit(&xs, dim + 1, sample.target(), dist)
+        };
         LinearClassifier::new(names, theta[..dim].to_vec(), theta[dim], self.output)
     }
 }
 
 /// The logistic function `1 / (1 + e^{-z})`, without overflow.
+/// An augmented example `(x, 1)`, as the coordinates that enter a sum.
+trait Row {
+    /// The `(index, value)` pairs of the example in increasing index order.
+    /// Coordinates left out are zero.
+    fn entries(&self) -> impl Iterator<Item = (usize, f64)>;
+}
+
+/// Every coordinate.
+impl Row for Vec<f64> {
+    fn entries(&self) -> impl Iterator<Item = (usize, f64)> {
+        self.iter().copied().enumerate()
+    }
+}
+
+/// The stored coordinates.
+impl Row for Vec<(usize, f64)> {
+    fn entries(&self) -> impl Iterator<Item = (usize, f64)> {
+        self.iter().copied()
+    }
+}
+
 fn logistic(z: f64) -> f64 {
     if z >= 0.0 {
         1.0 / (1.0 + (-z).exp())
