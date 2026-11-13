@@ -323,6 +323,7 @@ impl ObjectiveFunction for ErlpSoftMarginObjective {
 /// // `f64::MIN` stands in for -∞ at a zero coordinate.
 /// assert_eq!(grad[2], f64::MIN);
 /// ```
+#[derive(Default)]
 pub struct Entropy;
 
 impl Entropy {

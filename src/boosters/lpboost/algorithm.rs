@@ -5,7 +5,7 @@
 use crate::core::CurrentHypothesis;
 use crate::core::{
     Booster, Classifier, Sample, WeakLearner,
-    constants::{DEFAULT_CAPPING, DEFAULT_TOLERANCE},
+    constants::{DEFAULT_CAPPING, DEFAULT_TOLERANCE, LPBOOST_MIN_TOLERANCE},
     tools::checkers,
     tools::helpers,
 };
@@ -76,7 +76,11 @@ use std::ops::ControlFlow;
 ///   tree, `γ̂` can underestimate the best achievable edge and the run can
 ///   stop before reaching the soft-margin optimum.
 /// - `tolerance` is an optimization gap on the soft-margin objective, not a
-///   bound on training or test error.
+///   bound on training or test error. It must be at least
+///   [`LPBOOST_MIN_TOLERANCE`] (`1e-6`), since the LP solver cannot certify
+///   a smaller gap. A per-round LP reported as `AlmostSolved` is accepted
+///   and is less accurate than that (Clarabel's reduced gap tolerance is
+///   `5e-5`).
 /// - `nu` caps every example weight at `1 / nu`; it does not guarantee a
 ///   particular number of margin errors.
 /// - Labels must be `-1` or `+1` with both classes present; preprocessing
@@ -95,7 +99,7 @@ use std::ops::ControlFlow;
 /// | Builder method | Meaning | Default |
 /// | --- | --- | --- |
 /// | [`nu`](LpBoost::nu) | capping parameter `ν ∈ [1, m]` | `1` ([`DEFAULT_CAPPING`]) |
-/// | [`tolerance`](LpBoost::tolerance) | stopping gap `γ̂ - γ*_t` | `1e-3` ([`DEFAULT_TOLERANCE`]) |
+/// | [`tolerance`](LpBoost::tolerance) | stopping gap `γ̂ - γ*_t`, at least `1e-6` | `1e-3` ([`DEFAULT_TOLERANCE`]) |
 ///
 /// # Reference
 ///
@@ -220,7 +224,7 @@ where
             tolerance: DEFAULT_TOLERANCE,
             n_examples,
             nu: DEFAULT_CAPPING,
-            solver: ColumnGeneration::new(&sample),
+            solver: ColumnGeneration::new(sample),
 
             hypotheses: Vec::new(),
             weights: Vec::new(),
@@ -270,10 +274,18 @@ where
     /// of the soft-margin problem. This is not a classification-error
     /// threshold. Default: `1e-3`.
     ///
+    /// Values below [`LPBOOST_MIN_TOLERANCE`] (`1e-6`) are rejected. The
+    /// rule compares the LP value with an edge computed from the LP's dual
+    /// solution, and both carry the LP solver's error (`1e-8` for a `Solved`
+    /// LP). A gap below that error cannot be certified, and the run might
+    /// not stop. This floor is a numerical safeguard, not part of the
+    /// original method.
+    ///
     /// Time complexity: `O(1)`.
     ///
     /// # Panics
-    /// Panics if `tolerance` is not finite and strictly positive.
+    /// Panics if `tolerance` is not finite or is below
+    /// [`LPBOOST_MIN_TOLERANCE`].
     ///
     /// # Examples
     /// ```
@@ -292,8 +304,9 @@ where
     #[inline(always)]
     pub fn tolerance(mut self, tolerance: f64) -> Self {
         assert!(
-            tolerance.is_finite() && tolerance > 0.0,
-            "tolerance must be finite and strictly positive"
+            tolerance.is_finite() && tolerance >= LPBOOST_MIN_TOLERANCE,
+            "tolerance must be finite and at least {LPBOOST_MIN_TOLERANCE} \
+             (the LP solver cannot certify a smaller gap); got {tolerance}"
         );
         self.tolerance = tolerance;
         self
@@ -435,9 +448,20 @@ mod parameter_tests {
     }
 
     #[test]
-    fn tolerance_rejects_nonpositive_and_nonfinite_values() {
+    fn tolerance_rejects_nonfinite_values_and_values_below_the_floor() {
         let sample = Sample::dummy(2);
-        for value in [0.0, -0.0, -0.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        // The largest f64 below the floor is rejected as well.
+        let below = f64::from_bits(LPBOOST_MIN_TOLERANCE.to_bits() - 1);
+        for value in [
+            0.0,
+            -0.0,
+            -0.1,
+            f64::MIN_POSITIVE,
+            below,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
             assert!(
                 std::panic::catch_unwind(|| {
                     LpBoost::<Hypothesis>::init(&sample).tolerance(value);
@@ -449,9 +473,9 @@ mod parameter_tests {
     }
 
     #[test]
-    fn tolerance_preserves_positive_finite_values() {
+    fn tolerance_preserves_finite_values_from_the_floor_up() {
         let sample = Sample::dummy(2);
-        for value in [f64::MIN_POSITIVE, 0.25, 2.0, f64::MAX] {
+        for value in [LPBOOST_MIN_TOLERANCE, 0.25, 2.0, f64::MAX] {
             let booster = LpBoost::<Hypothesis>::init(&sample).tolerance(value);
             assert_eq!(booster.tolerance, value);
         }

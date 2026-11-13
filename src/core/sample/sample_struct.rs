@@ -443,7 +443,8 @@ impl Sample {
     /// where `y` is the target label of type `f64`,
     /// `index` is the feature index, and `value` is the value
     /// at the feature. Index `k` becomes a feature named `Feat. [k+1]`;
-    /// all-zero features are removed afterwards.
+    /// all-zero features are removed afterwards. Blank lines, text after
+    /// `#`, and `qid:` fields are ignored.
     ///
     /// **Note**
     /// The SVMLight format file is basically 1-indexed,
@@ -460,19 +461,22 @@ impl Sample {
 
         // For each line of the file
         for line in lines {
-            // Split the line by white spaces
             let line = line?;
+            // Drop a trailing comment, then skip blank lines.
+            let line = line.split('#').next().unwrap_or("");
             let mut words = line.split_whitespace();
             // The first word corresponds to the target value.
-            let y = words
-                .next()
-                .unwrap()
-                .trim()
-                .parse::<f64>()
-                .expect("Failed to parse the target value.");
+            let Some(y) = words.next() else {
+                continue;
+            };
+            let y = y.parse::<f64>().expect("Failed to parse the target value.");
             target.push(y);
 
             for word in words {
+                // Query ids of ranking data are not features.
+                if word.starts_with("qid:") {
+                    continue;
+                }
                 let (i, x) = index_and_feature(word);
 
                 while features.len() <= i {
@@ -931,13 +935,6 @@ impl Sample {
             .collect()
     }
 
-    fn append(&mut self, row: usize, feat: Vec<f64>, y: f64) {
-        self.features.par_iter_mut().zip(feat).for_each(|(col, f)| {
-            col.append((row, f));
-        });
-        self.target.push(y);
-    }
-
     /// Splits `self` into `(training, test)`, preserving the order in `ix`.
     /// `ix` must be a permutation of all row indices. The half-open interval
     /// `ix[start..end]` selects test rows; the remainder selects training rows.
@@ -996,51 +993,18 @@ impl Sample {
             );
             seen[i] = true;
         }
-        let n_feature = self.features.len();
-        let test_size = end - start;
-        let train_size = self.n_sample - test_size;
-
-        let name_to_ix = self.name_to_index.clone();
-        let mut train = Self {
-            n_sample: train_size,
-            n_feature,
-            name_to_index: name_to_ix.clone(),
-            features: vec![Feature::sparse("dummy", 0); n_feature],
-            target: Vec::with_capacity(train_size),
-        };
-
-        let mut test = Self {
-            n_sample: test_size,
-            n_feature,
-            name_to_index: name_to_ix,
-            features: vec![Feature::sparse("dummy", 0); n_feature],
-            target: Vec::with_capacity(test_size),
-        };
-
-        for (name, &i) in self.name_to_index.iter() {
-            if self.features[i].is_sparse() {
-                train.features[i] = Feature::sparse(name.to_string(), train_size);
-                test.features[i] = Feature::sparse(name.to_string(), test_size);
-            } else {
-                train.features[i] = Feature::dense(name.to_string());
-                test.features[i] = Feature::dense(name.to_string());
-            }
-        }
-
-        for (i, &ii) in ix.iter().enumerate().take(start) {
-            let (x, y) = self.at(ii);
-            train.append(i, x, y);
-        }
-
-        for (i, &ii) in ix[start..end].iter().enumerate() {
-            let (x, y) = self.at(ii);
-            test.append(i, x, y);
-        }
-
-        for (i, &ii) in ix.iter().enumerate().take(self.n_sample).skip(end) {
-            let (x, y) = self.at(ii);
-            train.append(i - test_size, x, y);
-        }
+        assert_eq!(
+            self.target.len(),
+            self.n_sample,
+            "split requires labels; use `Sample::set_target`"
+        );
+        let train_rows = ix[..start]
+            .iter()
+            .chain(&ix[end..])
+            .copied()
+            .collect::<Vec<_>>();
+        let train = self.select_rows(&train_rows);
+        let test = self.select_rows(&ix[start..end]);
 
         (train, test)
     }
@@ -1175,6 +1139,25 @@ mod tests {
             }
             assert!(std::panic::catch_unwind(|| sample.split([0, 0, 2, 3], 1, 2)).is_err());
         }
+    }
+
+    #[test]
+    fn svmlight_skips_blank_lines_comments_and_query_ids() {
+        let path = std::env::temp_dir().join(format!(
+            "miniboosts_test_svmlight_lenient_{}.svm",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "# header comment\n1 0:1.5 1:2 # trailing\n\n-1 qid:3 1:4\n",
+        )
+        .unwrap();
+        let sample = Sample::from_svmlight(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(sample.shape(), (2, 2));
+        assert_eq!(sample.target(), &[1.0, -1.0]);
+        assert_eq!(sample.at(0), (vec![1.5, 2.0], 1.0));
+        assert_eq!(sample.at(1), (vec![0.0, 4.0], -1.0));
     }
 
     #[test]

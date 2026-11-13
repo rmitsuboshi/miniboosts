@@ -237,6 +237,13 @@ def test_smoothboost_reports_round_budget_separately():
     assert clf.stop_reason_ == 'algorithm_stop' and clf.n_iter_ < 74
 
 
+def test_lpboost_rejects_a_tolerance_below_the_solver_floor():
+    # The Rust booster's floor (LPBOOST_MIN_TOLERANCE) is 1e-6.
+    with pytest.raises(ValueError, match='at least 1e-6'):
+        LPBoostClassifier(estimator=ConfidenceLearner(), tolerance=9e-7).fit(X, Y)
+    LPBoostClassifier(estimator=ConfidenceLearner(), tolerance=1e-6, max_iterations=5).fit(X, Y)
+
+
 def test_rust_failure_is_an_error_and_invalidates_model():
     # ERLPBoost requires tolerance < 2; Python does not check this, so the
     # Rust assertion fires and must surface as an error.

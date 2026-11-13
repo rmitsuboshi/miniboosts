@@ -72,6 +72,36 @@ where
             .map(|(w, h)| *w * h.confidence(sample, row))
             .sum::<f64>()
     }
+
+    /// Same values as [`Classifier::confidence`] row by row, accumulated
+    /// hypothesis by hypothesis in the same order, so that each hypothesis
+    /// can evaluate all rows at once.
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        weighted_confidence_all(self.weights.iter().zip(self.hypotheses.iter()), sample)
+    }
+
+    fn predict_all(&self, sample: &Sample) -> Vec<i64> {
+        self.confidence_all(sample)
+            .into_iter()
+            .map(|conf| if conf >= 0.0 { 1 } else { -1 })
+            .collect()
+    }
+}
+
+fn weighted_confidence_all<'a, H>(
+    terms: impl Iterator<Item = (&'a f64, &'a H)>,
+    sample: &Sample,
+) -> Vec<f64>
+where
+    H: Classifier + 'a,
+{
+    let mut out = vec![0.0; sample.shape().0];
+    for (w, h) in terms {
+        for (sum, conf) in out.iter_mut().zip(h.confidence_all(sample)) {
+            *sum += *w * conf;
+        }
+    }
+    out
 }
 
 impl<H> Regressor for RefWeightedMajority<'_, H>
@@ -278,6 +308,20 @@ where
             .zip(&self.hypotheses[..])
             .map(|(w, h)| *w * h.confidence(sample, row))
             .sum::<f64>()
+    }
+
+    /// Same values as [`Classifier::confidence`] row by row, accumulated
+    /// hypothesis by hypothesis in the same order, so that each hypothesis
+    /// can evaluate all rows at once.
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        weighted_confidence_all(self.weights.iter().zip(self.hypotheses.iter()), sample)
+    }
+
+    fn predict_all(&self, sample: &Sample) -> Vec<i64> {
+        self.confidence_all(sample)
+            .into_iter()
+            .map(|conf| if conf >= 0.0 { 1 } else { -1 })
+            .collect()
     }
 }
 

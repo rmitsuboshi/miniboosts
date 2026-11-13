@@ -12,6 +12,12 @@ pub const BINARY_SEARCH_TOLERANCE: f64 = 1e-10;
 /// Its meaning is algorithm-specific: an iteration budget for some boosters,
 /// an optimization stopping criterion for others.
 pub const DEFAULT_TOLERANCE: f64 = 1e-3;
+/// Smallest `tolerance` accepted by [`crate::LpBoost`]: `100` times the
+/// duality-gap and feasibility tolerance (`1e-8`) at which Clarabel reports
+/// an LP as `Solved`. LPBoost's stopping rule compares two LP-accurate
+/// quantities, so a smaller `tolerance` could not be told apart from solver
+/// error and the run might never stop.
+pub const LPBOOST_MIN_TOLERANCE: f64 = 1e-6;
 /// Default capping parameter `nu` for soft-margin boosters. With `nu = 1`
 /// the per-example cap `1 / nu` is inactive, i.e., the hard-margin setting.
 pub const DEFAULT_CAPPING: f64 = 1f64;

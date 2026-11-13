@@ -90,6 +90,13 @@ pub struct LoggerBuilder<'a, B, W, F, G> {
     round: usize,
 }
 
+impl<B, W, F, G> Default for LoggerBuilder<'_, B, W, F, G> {
+    /// Same as [`LoggerBuilder::new`].
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// Creates a builder with no components, no time limit, and a print
     /// interval of `100`.

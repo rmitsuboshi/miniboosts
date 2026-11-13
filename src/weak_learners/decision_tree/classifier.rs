@@ -56,6 +56,14 @@ impl Classifier for DecisionTreeClassifier {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
         self.root.confidence(sample, row)
     }
+
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        self.root.confidence_all(sample)
+    }
+
+    fn predict_all(&self, sample: &Sample) -> Vec<i64> {
+        self.root.predict_all(sample)
+    }
 }
 
 impl DecisionTreeClassifier {

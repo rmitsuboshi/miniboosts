@@ -745,8 +745,8 @@ mod test {
     fn stopping_criterion(nxt: &[f64], cur: &[f64], grad: &[f64]) -> bool {
         let duality_gap = nxt
             .iter()
-            .zip(&cur[..])
-            .zip(&grad[..])
+            .zip(cur)
+            .zip(grad)
             .map(|((n, c), g)| (c - n) * g)
             .sum::<f64>();
         duality_gap < TEST_TOLERANCE

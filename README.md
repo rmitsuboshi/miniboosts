@@ -16,7 +16,7 @@ installation: draw points, pick a booster and a weak learner, and replay trainin
 
 Since version 0.5.0, MiniBoosts ships as one `miniboosts` crate; algorithms and utilities are
 internal modules, not separate registry packages. Earlier releases have a
-different API; see the [migration notes](MIGRATION.md) when upgrading.
+different API; see the [migration notes](https://github.com/rmitsuboshi/miniboosts/blob/main/MIGRATION.md) when upgrading.
 Rust 1.85 or newer is required (edition 2024).
 
 You can also use the algorithms from Python with `pip install miniboosts` (see
@@ -95,7 +95,7 @@ assert_eq!(loaded.predict_all(&sample), f.predict_all(&sample));
 
 ## Python bindings
 
-The optional [Python package](python/README.md) exposes the same Rust algorithms
+The optional [Python package](https://github.com/rmitsuboshi/miniboosts/blob/main/python/README.md) exposes the same Rust algorithms
 through classes such as `AdaBoostClassifier`, with `fit(X, y)`, `predict(X)`,
 and `decision_function(X)`. Weak learners can be native Rust learners
 (decision trees, bounded linear functions, logistic regression, Gaussian naive
@@ -117,7 +117,7 @@ algorithm parameters, the explicit sklearn `PredictionAdapter`, and limits.
 
 ## Decision boundaries from Python
 
-These figures use the Python API to run all 11 algorithms with the same data
+These figures use the Python API to run 11 of the algorithms with the same data
 and depth-2 Rust decision trees. Point colors show training labels, background
 colors show predicted classes, and black lines mark zero ensemble confidence.
 `train` and `test` report accuracy; test points are generated independently.
@@ -128,7 +128,7 @@ colors show predicted classes, and black lines mark zero ensemble confidence.
 SoftBoost failed with solver status `AlmostSolved` at `nu=5`; its panel explicitly
 shows a separate run with `nu=1`. The other capped methods use `nu=5`.
 
-![Python decision boundaries on two moons](img/python/two-moons/decision-boundaries.png)
+![Python decision boundaries on two moons](https://raw.githubusercontent.com/rmitsuboshi/miniboosts/main/img/python/two-moons/decision-boundaries.png)
 
 ### Overlapping spirals with label noise
 
@@ -137,7 +137,7 @@ are flipped and marked with rings. Test labels are not flipped. The iteration
 limit is 60, and capped methods use `nu=16`. All 11 runs completed successfully.
 Fine-grained boundaries can fit corrupted labels without improving test accuracy.
 
-![Python decision boundaries on noisy spirals](img/python/noisy-spirals/decision-boundaries.png)
+![Python decision boundaries on noisy spirals](https://raw.githubusercontent.com/rmitsuboshi/miniboosts/main/img/python/noisy-spirals/decision-boundaries.png)
 
 These are illustrative runs, not a performance ranking or a comparison at equal
 optimization accuracy. `(cap)` marks an iteration-limit stop. In particular,
@@ -146,7 +146,7 @@ CorrectiveERLP uses ShortStep and is capped at 60 in this figure; a separate
 on weak-learner assumptions and do not by themselves certify global optimality.
 
 Reproduction scripts, seeds, parameters, results, and environment records are
-available in [the figure directory](img/python/README.md).
+available in [the figure directory](https://github.com/rmitsuboshi/miniboosts/blob/main/img/python/README.md).
 
 ## Algorithms
 
@@ -193,7 +193,7 @@ Bayes), and `RegressionTreeBuilder` (a weighted least-squares regression tree fo
 `GradientBoosting` and `LogitBoost`, which fit real-valued responses and return
 an `AdditiveModel`). `WeakLearnerUnion` runs several of these learners and returns
 the candidate with the largest edge in each round. Implement `WeakLearner` to use
-your own learner. See the [migration notes](MIGRATION.md) for removed APIs.
+your own learner. See the [migration notes](https://github.com/rmitsuboshi/miniboosts/blob/main/MIGRATION.md) for removed APIs.
 
 Custom hypotheses must return consistent predictions for a fixed sample.
 CorrectiveERLPBoost and MLPBoost cache training margins instead of repeatedly
@@ -229,7 +229,7 @@ tolerances can exceed the inner solver's accuracy. Failed solves panic rather
 than count as convergence. SoftBoost and TotalBoost can instead stop early on
 an entropy-solver accuracy failure; inspect `numerical_stop_reason()` after
 training. Such a stop does not certify convergence, and final LP fitting can
-still fail. See the [migration notes](MIGRATION.md) for numerical changes.
+still fail. See the [migration notes](https://github.com/rmitsuboshi/miniboosts/blob/main/MIGRATION.md) for numerical changes.
 
 BrownBoost's `tolerance` is the target training error `ε`; it sets the total
 time `c` with `1 - erf(√c) = ε`. Its training-error guarantee applies only when
@@ -255,9 +255,10 @@ Keep test data out of training and parameter selection.
 
 ## Run experiments and plot results
 
-The example runner can run one algorithm or all 11 and save learning curves as
+The example runner supports 11 of the algorithms. It can run one or all of
+them and save learning curves as
 CSV files. The plotting script generates training-loss, test-loss, and
-soft-margin figures. See the [experiment guide](img/README.md) for input formats,
+soft-margin figures. See the [experiment guide](https://github.com/rmitsuboshi/miniboosts/blob/main/img/README.md) for input formats,
 commands, parameters, and timing details.
 
 To list the available algorithms:

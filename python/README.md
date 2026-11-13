@@ -195,7 +195,7 @@ step; the algorithm may stop earlier.
 | `GradientBoostingClassifier` | `loss="logistic"`, `shrinkage=1.0` (regression weak learner) |
 | `LogitBoostClassifier` | `max_response=4.0` (regression weak learner) |
 | `MadaBoostClassifier` | `tolerance=0.01` |
-| `LPBoostClassifier` | `nu=1.0`, `tolerance=0.01` |
+| `LPBoostClassifier` | `nu=1.0`, `tolerance=0.01` (at least `1e-6`) |
 | `ERLPBoostClassifier` | `nu=1.0`, `tolerance=0.01` |
 | `CorrectiveERLPBoostClassifier` | `nu=1.0`, `tolerance=0.01`, `update_rule="short_step"` |
 | `MLPBoostClassifier` | `nu=1.0`, `tolerance=0.01`, `update_rule="line_search"` |

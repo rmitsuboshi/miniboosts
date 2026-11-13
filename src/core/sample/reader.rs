@@ -23,6 +23,7 @@ use super::sample_struct::Sample;
 /// # SVMlight
 /// Each line has the form `y index:value index:value ...`; see
 /// [`Sample`] for details. The header flag and target column are ignored.
+/// Blank lines, text after `#`, and `qid:` fields are ignored.
 ///
 /// # Labels
 /// Boosters in this crate perform binary classification and require labels

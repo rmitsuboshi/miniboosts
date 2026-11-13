@@ -305,7 +305,44 @@ impl Bins {
             let weight = packed[pos].entry(yi).or_insert(0.0);
             *weight += di;
         }
-        self.remove_zero_weight_pack_and_normalize(packed)
+        self.drop_empty_bins(packed)
+    }
+
+    /// Same as [`Bins::pack`], with the bin of every row looked up in
+    /// `bin_index` (`bin_index[i]` is [`Bins::index_of`] of row `i`) instead
+    /// of searched for, and the label of row `i` given as
+    /// `labels[label_index[i]]`. Weights are added in the order of `indices`,
+    /// as in `pack`, so both return the same sums.
+    pub(crate) fn pack_by_index(
+        &self,
+        indices: &[usize],
+        bin_index: &[u32],
+        label_index: &[u32],
+        labels: &[i32],
+        dist: &[f64],
+    ) -> Vec<(Bin, HashMap<i32, f64>)> {
+        let n_labels = labels.len();
+        let mut weights = vec![0.0_f64; self.0.len() * n_labels];
+        let mut present = vec![false; self.0.len() * n_labels];
+        for &i in indices {
+            let cell = bin_index[i] as usize * n_labels + label_index[i] as usize;
+            weights[cell] += dist[i];
+            present[cell] = true;
+        }
+        let packed = weights
+            .chunks(n_labels)
+            .zip(present.chunks(n_labels))
+            .map(|(weights, present)| {
+                labels
+                    .iter()
+                    .zip(weights)
+                    .zip(present)
+                    .filter(|&(_, &present)| present)
+                    .map(|((&y, &w), _)| (y, w))
+                    .collect::<HashMap<i32, f64>>()
+            })
+            .collect();
+        self.drop_empty_bins(packed)
     }
 
     /// This method removes bins that received no example.
@@ -328,11 +365,8 @@ impl Bins {
     ///   midpoint of the removed gap,
     /// - sets the outermost bounds to `f64::MIN` and `f64::MAX`.
     ///
-    /// Weights are not normalized, despite the method's name.
-    fn remove_zero_weight_pack_and_normalize(
-        &self,
-        pack: Vec<HashMap<i32, f64>>,
-    ) -> Vec<(Bin, HashMap<i32, f64>)> {
+    /// Weights are not normalized.
+    fn drop_empty_bins(&self, pack: Vec<HashMap<i32, f64>>) -> Vec<(Bin, HashMap<i32, f64>)> {
         let mut pack = self
             .0
             .iter()
@@ -771,7 +805,7 @@ mod tests {
             feature
         };
         let bins = Bins::cut(&feature, 4);
-        let expect = vec![
+        let expect = [
             Bin::new(f64::MIN..2.5f64),
             Bin::new(2.5f64..5.0f64),
             Bin::new(5.0f64..7.5f64),
@@ -894,7 +928,7 @@ mod tests {
             feature
         };
         let bins = Bins::cut(&feature, 4);
-        let expect = vec![
+        let expect = [
             Bin::new(f64::MIN..2.5f64),
             Bin::new(2.5f64..5.0f64),
             Bin::new(5.0f64..7.5f64),

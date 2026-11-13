@@ -513,7 +513,7 @@ where
     }
 
     fn postprocess(&mut self) -> Self::Output {
-        let (_, weights) = soft_margin_optimization(self.nu, &self.sample, &self.hypotheses[..]);
+        let (_, weights) = soft_margin_optimization(self.nu, self.sample, &self.hypotheses[..]);
         self.weights = weights;
         WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }

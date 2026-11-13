@@ -71,6 +71,32 @@ impl Node {
         Self::Leaf { confidence }
     }
 
+    /// Writes the confidence of every row in `rows` to `out[row]`, looking
+    /// each feature up once per node instead of once per row.
+    fn confidence_rows(&self, sample: &Sample, rows: Vec<usize>, out: &mut [f64]) {
+        match self {
+            Self::Branch {
+                splitter,
+                left,
+                right,
+                ..
+            } => {
+                let feature = &sample[&splitter.feature];
+                // Same rule as `Splitter::split`: NaN goes right.
+                let (lrows, rrows) = rows
+                    .into_iter()
+                    .partition(|&row| feature[row] < splitter.threshold);
+                left.confidence_rows(sample, lrows, out);
+                right.confidence_rows(sample, rrows, out);
+            }
+            Self::Leaf { confidence } => {
+                for row in rows {
+                    out[row] = *confidence;
+                }
+            }
+        }
+    }
+
     pub(crate) fn to_dot_info(&self, id: usize) -> (Vec<String>, usize) {
         match self {
             Node::Branch {
@@ -124,6 +150,22 @@ impl Classifier for Node {
             Self::Leaf { confidence, .. } => *confidence,
         }
     }
+
+    /// Same values as [`Classifier::confidence`] row by row, computed by
+    /// passing all rows down the tree at once.
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        let n_sample = sample.shape().0;
+        let mut out = vec![0.0; n_sample];
+        self.confidence_rows(sample, (0..n_sample).collect(), &mut out);
+        out
+    }
+
+    fn predict_all(&self, sample: &Sample) -> Vec<i64> {
+        self.confidence_all(sample)
+            .into_iter()
+            .map(|conf| if conf >= 0.0 { 1 } else { -1 })
+            .collect()
+    }
 }
 
 impl Regressor for Node {
@@ -135,8 +177,8 @@ impl Regressor for Node {
                 right,
                 ..
             } => match splitter.split(sample, row) {
-                LeftRight::Left => left.confidence(sample, row),
-                LeftRight::Right => right.confidence(sample, row),
+                LeftRight::Left => Regressor::predict(&**left, sample, row),
+                LeftRight::Right => Regressor::predict(&**right, sample, row),
             },
             Self::Leaf { confidence, .. } => *confidence,
         }

@@ -394,8 +394,18 @@ class MadaBoostClassifier(_ToleranceClassifier):
 
 
 class LPBoostClassifier(_CappedClassifier):
-    """LPBoost; nu caps example weights at 1/nu."""
+    """LPBoost; nu caps example weights at 1/nu.
+
+    ``tolerance`` must be at least 1e-6: the LP solver cannot certify a
+    smaller optimization gap.
+    """
     _algorithm = 'lpboost'
+
+    def _options(self, n_samples):
+        options = super()._options(n_samples)
+        if options['tolerance'] < 1e-6:
+            raise ValueError('tolerance must be at least 1e-6 for LPBoost')
+        return options
 
 
 class ERLPBoostClassifier(_CappedClassifier):

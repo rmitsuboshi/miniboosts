@@ -10,8 +10,6 @@
 //! [`project_log_distribution_to_capped_simplex`]) share one input contract:
 //! entries must be finite or negative infinity (meaning an exact zero weight),
 //! with at least one finite entry. They panic otherwise.
-use rayon::prelude::*;
-
 use crate::core::checkers;
 use crate::core::{Classifier, Sample};
 
@@ -115,12 +113,12 @@ pub fn margins<H>(sample: &Sample, h: &H) -> impl Iterator<Item = f64>
 where
     H: Classifier,
 {
-    let targets = sample.target();
-
-    targets
-        .iter()
-        .enumerate()
-        .map(|(i, y)| y * h.confidence(sample, i))
+    // `confidence_all` lets hypotheses such as trees evaluate all rows at
+    // once; by the `Classifier` contract it equals the row-wise confidences.
+    h.confidence_all(sample)
+        .into_iter()
+        .zip(sample.target())
+        .map(|(confidence, y)| y * confidence)
 }
 
 /// Returns the unnormalized log weights of the exponential distribution
@@ -622,8 +620,9 @@ pub fn entropy<T: AsRef<[f64]>>(dist: T) -> f64 {
 
 /// Returns the inner product `Σ_i v1[i] * v2[i]`.
 ///
-/// Extra entries of the longer slice are ignored. The sum is computed in
-/// parallel, so the floating-point summation order is unspecified.
+/// Extra entries of the longer slice are ignored. The sum is accumulated
+/// sequentially in index order, so the result does not depend on the number
+/// of threads.
 ///
 /// # Examples
 /// ```
@@ -634,7 +633,7 @@ pub fn entropy<T: AsRef<[f64]>>(dist: T) -> f64 {
 /// ```
 #[inline(always)]
 pub fn inner_product(v1: &[f64], v2: &[f64]) -> f64 {
-    v1.into_par_iter().zip(v2).map(|(a, b)| a * b).sum::<f64>()
+    v1.iter().zip(v2).map(|(a, b)| a * b).sum::<f64>()
 }
 
 /// Divides every entry by the L1 norm `Σ_i |items[i]|` in place.
@@ -665,7 +664,7 @@ pub fn normalize(items: &mut [f64]) {
 
     assert_ne!(z, 0.0, "{items:?}");
 
-    items.par_iter_mut().for_each(|item| {
+    items.iter_mut().for_each(|item| {
         *item /= z;
     });
 }
@@ -1004,7 +1003,7 @@ mod tests {
     fn test_edge_01() {
         let sample = training_examples_case_01();
         let h = TestHypothesis::new(0f64);
-        let dist = vec![1f64 / 4f64; 4];
+        let dist = [1f64 / 4f64; 4];
         let edge = edge(&sample, &dist[..], &h);
         assert!(edge == 1f64, "expected `edge == 1`, got {edge}");
     }
@@ -1013,7 +1012,7 @@ mod tests {
     fn test_edge_02() {
         let sample = training_examples_case_01();
         let h = TestHypothesis::new(100f64);
-        let dist = vec![1.0, 0.0, 0.0, 0.0];
+        let dist = [1.0, 0.0, 0.0, 0.0];
         let edge = edge(&sample, &dist[..], &h);
         assert!(edge == -1f64, "expected `edge == -1`, got {edge}");
     }

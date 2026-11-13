@@ -250,7 +250,7 @@ impl<'a, F> MlpBoost<'a, F> {
         let fw_objective = CorrErlpFwObjective::new(objective.clone());
         let frank_wolfe = FrankWolfe::new(fw_objective, update_rule);
 
-        let lpboost = ColumnGeneration::new(&sample);
+        let lpboost = ColumnGeneration::new(sample);
 
         Self {
             sample,
@@ -690,7 +690,7 @@ where
     }
 
     fn postprocess(&mut self) -> Self::Output {
-        let (_, weights) = soft_margin_optimization(self.nu, &self.sample, &self.hypotheses[..]);
+        let (_, weights) = soft_margin_optimization(self.nu, self.sample, &self.hypotheses[..]);
         self.weights = weights;
         WeightedMajority::from_slices(&self.weights[..], &self.hypotheses[..])
     }

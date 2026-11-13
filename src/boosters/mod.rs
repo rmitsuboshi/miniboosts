@@ -21,7 +21,7 @@
 //! | [`BrownBoost`](crate::boosters::brownboost::BrownBoost) | adaptive boost-by-majority (noise-tolerant) | `tolerance` (target training error `ε`), `edge_threshold`, `force_quit_at` | remaining time `s` (initially `c = (erfc⁻¹(ε))²`) reaches `0`; no iteration bound otherwise |
 //! | [`RobustBoost`](crate::boosters::robustboost::RobustBoost) | BrownBoost with a non-convex, margin-goal potential | `tolerance` (`ε`), `theta`, `sigma_f`, `force_quit_at` | time `t` reaches `1`; no iteration bound otherwise |
 //! | [`MadaBoost`](crate::boosters::madaboost::MadaBoost) | adaptive (bounded weights) | `tolerance`, `force_quit_at` | budget `⌈(m - 1) / ε²⌉` rounds, or a hypothesis with weighted edge `±1` |
-//! | [`LpBoost`](crate::boosters::lpboost::LpBoost) | soft-margin, totally corrective | `nu`, `tolerance` | LP value `≥ γ̂ - ε` (min edge so far); no iteration bound |
+//! | [`LpBoost`](crate::boosters::lpboost::LpBoost) | soft-margin, totally corrective | `nu`, `tolerance` (at least `1e-6`) | LP value `≥ γ̂ - ε` (min edge so far); no iteration bound |
 //! | [`ErlpBoost`](crate::boosters::erlpboost::ErlpBoost) | soft-margin, totally corrective | `nu`, `tolerance` | entropy-regularized gap `≤ ε/2`, or a `⌈max(8/ε, 32 ln(m/ν) / ε²)⌉` budget |
 //! | [`CorrectiveErlpBoost`](crate::boosters::corrective_erlpboost::CorrectiveErlpBoost) | soft-margin, corrective (Frank–Wolfe) | `nu`, `tolerance`, `update_rule` | duality gap `≤ ε/2`, `ν = m` (after one round), or a `⌈32 ln(m/ν) / ε²⌉` budget |
 //! | [`MlpBoost`](crate::boosters::mlpboost::MlpBoost) | soft-margin, Frank–Wolfe with LP steps | `nu`, `tolerance`, `update_rule` | optimality gap `≤ ε/2`, `ν = m` (after one round), or a `⌈32 ln(m/ν) / ε²⌉` budget |

@@ -71,7 +71,8 @@ pub trait Classifier {
     }
 
     /// Returns [`Classifier::confidence`] for every example of `sample`,
-    /// in row order.
+    /// in row order. Boosters compute training margins through this method,
+    /// so an override must return the same values as `confidence`.
     fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
         let n_sample = sample.shape().0;
         (0..n_sample)
@@ -132,9 +133,11 @@ impl<H: Classifier + ?Sized> Classifier for Arc<H> {
 ///
 /// Implementors only need to provide [`Regressor::predict`].
 ///
-/// No booster in this crate trains regressors; the trait is implemented by
-/// the combined hypotheses ([`crate::WeightedMajority`]) and by tree nodes
-/// so that user-defined regression hypotheses can be combined.
+/// [`crate::GradientBoosting`] and [`crate::LogitBoost`] combine regressors
+/// returned by a regression weak learner such as [`crate::RegressionTree`]
+/// into an [`crate::AdditiveModel`]. The trait is also implemented by
+/// [`crate::WeightedMajority`] and by tree nodes, so user-defined regression
+/// hypotheses can be combined.
 ///
 /// # Examples
 /// ```

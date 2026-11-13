@@ -553,7 +553,7 @@ where
             let time_acc = elapsed.as_millis();
 
             let f = self.booster.current_hypothesis();
-            let obj = self.objective_func.objective_value(&self.train, &f);
+            let obj = self.objective_func.objective_value(self.train, &f);
 
             let train = (self.loss_func)(self.train, &f);
             let test = (self.loss_func)(self.test, &f);

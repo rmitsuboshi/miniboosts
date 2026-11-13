@@ -30,9 +30,7 @@ use crate::core::constants::{NUMERIC_TOLERANCE, SIMPLEX_TOLERANCE};
 pub fn sample(sample: &Sample) {
     let (n_examples, n_feature) = sample.shape();
 
-    // `data` and `target` must have the length greater than `0`.
-    // Since the previous assertion guarantees `n_data == n_target`,
-    // we only need to check `n_data`.
+    // The sample must contain at least one example.
     assert!(n_examples > 0);
 
     // `data` must have a feature.

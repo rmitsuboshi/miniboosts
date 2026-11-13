@@ -1,5 +1,28 @@
 # Unreleased
 
+Decision trees train and predict faster; the trees themselves are unchanged.
+`DecisionTree` stores the bin of every row of the builder's sample for each
+dense feature (4 bytes per value) and uses it when `produce` is called on that
+sample. Tree hypotheses and `WeightedMajority` override
+`Classifier::confidence_all` and `predict_all` to evaluate all rows at once, and
+boosters now compute training margins with `confidence_all`; a custom
+`Classifier` that overrides it must return the same values as `confidence`.
+
+`helpers::inner_product` and `helpers::normalize` no longer run in parallel, so
+their results do not depend on the number of threads. Sums that used
+`inner_product` (the Frank–Wolfe solvers, `CorrectiveErlpBoost`, and
+`Feature::weighted_mean` on dense features) can differ from earlier results in
+the last bits.
+
+`LpBoost::tolerance` now panics for values below `1e-6`
+(`core::constants::LPBOOST_MIN_TOLERANCE`), and the Python `LPBoostClassifier`
+raises `ValueError`. The LP solver cannot certify a smaller gap, so such a run
+might not have stopped. The default `1e-3` is unchanged.
+
+`Sample::split` is much faster and returns the same samples. The SVMlight
+reader skips blank lines, text after `#`, and `qid:` fields, which used to
+panic. `LoggerBuilder` and `Entropy` implement `Default`.
+
 `MajorityOfFive` (Høgsgaard, Larsen, and Mathiasen, 2024) and `LarsenRitzert`
 (Larsen and Ritzert, 2022) are new, in `boosters::subsample_majority` and the
 prelude. They run a booster, given as a closure, on sub-samples and return the

@@ -27,6 +27,7 @@ pub(crate) fn solve(
     let edge_start = 1 + 2 * m;
     // Retain the margin matrix for validation and a separate entropy dual bound.
     let mut margins = vec![vec![0.0; m]; n];
+    #[allow(clippy::needless_range_loop)] // `i` indexes columns, not `margins`.
     for i in 0..m {
         for k in linear.colptr[i + 1]..linear.colptr[i + 2] {
             let row = linear.rowval[k];
@@ -149,7 +150,7 @@ pub(crate) fn solve(
         + helpers::entropy_from_uni_distribution(&distribution) / eta;
     let gap = value - lower_bound;
     assert!(
-        value.is_finite() && lower_bound.is_finite() && gap >= -1e-10 && gap <= 1e-7,
+        value.is_finite() && lower_bound.is_finite() && (-1e-10..=1e-7).contains(&gap),
         "ERLPBoost entropy primal/dual gap is not acceptable: {gap}"
     );
     EntropySolution {

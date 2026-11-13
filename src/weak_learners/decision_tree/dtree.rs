@@ -1,9 +1,11 @@
 use rayon::prelude::*;
 
-use crate::core::{Sample, WeakLearner, binning::*, tree::*};
+use crate::core::{Feature, Sample, WeakLearner, binning::*, tree::*};
 
 use crate::weak_learners::decision_tree::{
-    classifier::DecisionTreeClassifier, node::*, split_by::SplitBy,
+    classifier::DecisionTreeClassifier,
+    node::*,
+    split_by::{BinCache, SplitBy},
 };
 
 use std::collections::HashMap;
@@ -85,6 +87,9 @@ use std::fmt;
 ///   best split on the raw values. Bins are fixed by the sample given to the
 ///   builder; `produce` must be called on a sample with the same feature
 ///   names. Values outside the builder's range fall into the outer bins.
+/// - The bin of every row of the builder's sample is stored for each dense
+///   feature (4 bytes per value). `produce` uses it when it is called on that
+///   same sample, as boosters do, and searches the bins again otherwise.
 /// - No pruning, minimum leaf size, or impurity-decrease threshold, unlike
 ///   the cost-complexity pruning of the original CART method.
 /// - Per-bin label weights are accumulated in hash maps whose iteration
@@ -153,6 +158,10 @@ use std::fmt;
 /// ```
 pub struct DecisionTree<'a> {
     bins: HashMap<&'a str, Bins>,
+    // The sample the bins were cut from, and the bin of each of its rows for
+    // every dense feature (`None` for sparse features), in column order.
+    sample: &'a Sample,
+    bin_index: Vec<Option<Vec<u32>>>,
     split_by: SplitBy,
     max_depth: Depth,
     leaf_confidence: LeafConfidence,
@@ -199,12 +208,27 @@ impl<'a> DecisionTree<'a> {
     #[inline]
     pub(super) fn new(
         bins: HashMap<&'a str, Bins>,
+        sample: &'a Sample,
         split_by: SplitBy,
         max_depth: Depth,
         leaf_confidence: LeafConfidence,
     ) -> Self {
+        let bin_index = sample
+            .features()
+            .par_iter()
+            .map(|feature| match feature {
+                Feature::Dense { name, vals } => {
+                    let bins = &bins[name.as_str()];
+                    Some(vals.iter().map(|&x| bins.index_of(x) as u32).collect())
+                }
+                // One index per row would undo the sparse storage.
+                Feature::Sparse { .. } => None,
+            })
+            .collect();
         Self {
             bins,
+            sample,
+            bin_index,
             split_by,
             max_depth,
             leaf_confidence,
@@ -218,6 +242,7 @@ impl<'a> DecisionTree<'a> {
     fn grow(
         &self,
         sample: &'a Sample,
+        cache: Option<&BinCache<'_>>,
         dist: &[f64],
         indices: Vec<usize>,
         depth: Depth,
@@ -244,9 +269,9 @@ impl<'a> DecisionTree<'a> {
 
         // Find the best pair of feature name and threshold
         // based on the `split_by`.
-        let (feature, threshold) = self
-            .split_by
-            .best_split(&self.bins, sample, dist, &indices[..]);
+        let (feature, threshold) =
+            self.split_by
+                .best_split(&self.bins, cache, sample, dist, &indices[..]);
 
         // Construct the splitting rule
         // from the best feature and threshold.
@@ -274,8 +299,8 @@ impl<'a> DecisionTree<'a> {
         // At this point, `depth > 0` is guaranteed so that
         // one can grow the tree.
         let depth = depth - 1;
-        let left = self.grow(sample, dist, lindices, depth);
-        let right = self.grow(sample, dist, rindices, depth);
+        let left = self.grow(sample, cache, dist, lindices, depth);
+        let right = self.grow(sample, cache, dist, rindices, depth);
 
         Box::new(Node::branch(rule, left, right, conf))
     }
@@ -319,8 +344,34 @@ impl WeakLearner for DecisionTree<'_> {
             "zero vector is given as a distribution. dist is: {dist:?}"
         );
 
+        // The cached bin indices describe the rows of the builder's sample.
+        // `self` borrows that sample, so the same address means the same,
+        // unchanged data; any other sample is binned row by row.
+        let mut labels = sample
+            .target()
+            .iter()
+            .map(|&y| y as i32)
+            .collect::<Vec<_>>();
+        let label_index;
+        let cache = if std::ptr::eq(sample, self.sample) {
+            let row_labels = labels.clone();
+            labels.sort_unstable();
+            labels.dedup();
+            label_index = row_labels
+                .iter()
+                .map(|y| labels.binary_search(y).unwrap() as u32)
+                .collect::<Vec<_>>();
+            Some(BinCache {
+                bin_index: &self.bin_index,
+                label_index: &label_index,
+                labels: &labels,
+            })
+        } else {
+            None
+        };
+
         // Construct a large binary tree
-        let root = self.grow(sample, dist, indices, self.max_depth);
+        let root = self.grow(sample, cache.as_ref(), dist, indices, self.max_depth);
 
         DecisionTreeClassifier::from(root)
     }
@@ -349,7 +400,7 @@ fn confidence_and_loss(sample: &Sample, dist: &[f64], indices: &[usize]) -> (f64
 
     // Compute the max (key, val) that has maximal p(j, t)
     let (y, p) = counter
-        .into_par_iter()
+        .into_iter()
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .unwrap();
 
@@ -450,6 +501,64 @@ mod tests {
             }
         }
         best
+    }
+
+    // Random data with ties in the first feature, labels, and a distribution.
+    fn random_instance(seed: u64, m: usize) -> (Sample, Vec<f64>) {
+        let u = uniforms(seed, 4 * m);
+        let rows: Vec<Vec<f64>> = (0..m)
+            .map(|i| vec![(u[i] * 5.0).floor(), u[m + i] * 100.0 - 50.0])
+            .collect();
+        let y: Vec<f64> = (0..m)
+            .map(|i| if u[2 * m + i] < 0.5 { -1.0 } else { 1.0 })
+            .collect();
+        let total: f64 = u[3 * m..].iter().sum();
+        let dist = u[3 * m..].iter().map(|w| w / total).collect();
+        (Sample::from_dense(&rows, Some(&y)).unwrap(), dist)
+    }
+
+    #[test]
+    fn cached_bins_grow_the_same_tree_as_searching_them() {
+        for seed in 1..=10u64 {
+            let (sample, dist) = random_instance(seed, 60);
+            // A copy lives at another address, so `produce` searches the bins.
+            let copy = sample.clone();
+            for split_by in [
+                SplitBy::Entropy,
+                SplitBy::Edge,
+                SplitBy::Gini,
+                SplitBy::Twoing,
+            ] {
+                for exact in [false, true] {
+                    let mut builder = DecisionTreeBuilder::new(&sample)
+                        .max_depth(3)
+                        .split_by(split_by);
+                    if exact {
+                        builder = builder.exact_splits();
+                    }
+                    let tree = builder.build();
+                    // Sums are added in the same order on both paths, and
+                    // with two labels the order of the per-bin maps does not
+                    // matter, so the trees are identical.
+                    assert_eq!(tree.produce(&sample, &dist), tree.produce(&copy, &dist));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn confidence_all_matches_row_wise_confidence() {
+        for seed in 1..=10u64 {
+            let (sample, dist) = random_instance(seed, 60);
+            let tree = DecisionTreeBuilder::new(&sample).max_depth(4).build();
+            let h = tree.produce(&sample, &dist);
+            let row_wise = (0..60)
+                .map(|i| h.confidence(&sample, i))
+                .collect::<Vec<_>>();
+            assert_eq!(h.confidence_all(&sample), row_wise);
+            let labels = (0..60).map(|i| h.predict(&sample, i)).collect::<Vec<_>>();
+            assert_eq!(h.predict_all(&sample), labels);
+        }
     }
 
     #[test]

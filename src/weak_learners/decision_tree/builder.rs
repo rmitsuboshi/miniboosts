@@ -311,8 +311,12 @@ impl<'a> DecisionTreeBuilder<'a> {
             })
             .collect::<HashMap<_, _>>();
 
-        let dtree = DecisionTree::new(bins, self.split_by, self.max_depth, self.leaf_confidence);
-
-        dtree
+        DecisionTree::new(
+            bins,
+            self.sample,
+            self.split_by,
+            self.max_depth,
+            self.leaf_confidence,
+        )
     }
 }

@@ -378,7 +378,7 @@ where
         {
             Ok(Some(())) => {
                 self.dist = self.solver.distribution_on_examples();
-                if self.dist.iter().any(|&d| d == 0.0) {
+                if self.dist.contains(&0.0) {
                     return None;
                 }
                 Some(())

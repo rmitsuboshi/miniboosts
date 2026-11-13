@@ -25,7 +25,7 @@ cargo run --release --locked -p miniboosts-example -- --list
 cargo run --release --locked -p miniboosts-example -- --help
 ```
 
-Run all 11 algorithms sequentially on the same inputs:
+Run the 11 algorithms the runner supports sequentially on the same inputs:
 
 ```sh
 bash img/run_all.sh train.csv test.csv

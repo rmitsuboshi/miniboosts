@@ -888,6 +888,113 @@ fn require_candidate_status(status: SolverStatus) {
     );
 }
 
+/// The ERLPBoost subproblem objective
+/// ```txt
+/// max_j Σ_i d_i y_i h_j(x_i) + KL(d ‖ u)/η,   KL(d ‖ u) = Σ_i d_i ln(m d_i).
+/// ```
+///
+/// [`RowGeneration`] solves it with the exact exponential-cone formulation
+/// (its [`entropy_parameter`](RowGenerationObjective::entropy_parameter) is
+/// `Some(η)`), so the [`gradient`](RowGenerationObjective::gradient) and
+/// [`hessian`](RowGenerationObjective::hessian) below are not used by
+/// [`RowGeneration`]. They are a perturbed model: `ln(d_i + 1e-10)/η` and
+/// `1/((d_i + 1e-10) η)`, omitting the additive constants `(1 + ln m)/η` of
+/// the exact gradient (a constant shift on the simplex).
+///
+/// Its `objective_value` panics if `hypotheses` is empty, if `dist` does not
+/// have one entry per example, or if the entropy term is not finite.
+pub struct EntropyRegularizedMaxEdge(f64);
+
+impl EntropyRegularizedMaxEdge {
+    /// Takes the regularization parameter `η` and returns `Self`.
+    ///
+    /// # Panics
+    /// Panics unless `η` is finite and positive.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::{EntropyRegularizedMaxEdge, RowGenerationObjective};
+    ///
+    /// let objective = EntropyRegularizedMaxEdge::new(10.0);
+    /// // Selects the exact exponential-cone path of `RowGeneration`.
+    /// assert_eq!(objective.entropy_parameter(), Some(10.0));
+    /// ```
+    pub fn new(eta: f64) -> Self {
+        assert!(
+            eta.is_finite() && eta > 0.0,
+            "eta must be finite and positive"
+        );
+        Self(eta)
+    }
+}
+
+impl RowGenerationObjective for EntropyRegularizedMaxEdge {
+    fn entropy_parameter(&self) -> Option<f64> {
+        Some(self.0)
+    }
+
+    fn objective_value<H: Classifier>(
+        &self,
+        sample: &Sample,
+        hypotheses: &[H],
+        dist: &[f64],
+    ) -> f64 {
+        assert_eq!(dist.len(), sample.shape().0);
+
+        let eta = self.0;
+        let max_edge = hypotheses
+            .iter()
+            .map(|h| helpers::edge(sample, dist, h))
+            .reduce(f64::max)
+            .expect("failed to compute the max-edge.");
+        let entropy = helpers::entropy_from_uni_distribution(dist);
+        assert!(entropy.is_finite(), "not a finite entropy. dist = {dist:?}",);
+        max_edge + (entropy / eta)
+    }
+
+    /// outputs the gradient vector at a given point `d`:
+    /// ```txt
+    /// ┏                                    ┓
+    /// ┃ 1 ln(d₁)/η  ln(d₂)/η  ... ln(dm)/η ┃
+    /// ┗                                    ┛
+    /// ```
+    fn gradient(&self, dist: &[f64]) -> Vec<f64> {
+        let eta = self.0;
+        iter::once(1f64)
+            .chain(dist.iter().map(|&d| (d + PERTURBATION).ln() / eta))
+            .collect()
+    }
+
+    /// outputs the hessian at a given point `d`:
+    /// ```txt
+    ///      γ   d₁   d₂  ...  dm
+    ///    ┏                       ┓
+    /// γ  ┃ 0   0    0   ...  0   ┃
+    /// d₁ ┃ 0  1/d₁  0   ...  0   ┃ * (1/η)
+    /// d₂ ┃ 0   0   1/d₂  0       ┃
+    ///  . ┃ .   .    0   1/d₃     ┃
+    ///  . ┃ .   .                 ┃
+    ///  . ┃ .   .                 ┃
+    /// dm ┃ 0   0   ...  ... 1/dm ┃
+    ///    ┗                       ┛
+    /// ```
+    fn hessian(&self, dist: &[f64]) -> CscMatrix<f64> {
+        let eta = self.0;
+        let n_rows = dist.len() + 1;
+        let n_cols = n_rows;
+
+        let n_examples = dist.len();
+
+        let col_ptr = iter::once(0).chain(0..=n_examples).collect();
+        let row_idx = (1..=n_examples).collect();
+        let nonzero = dist
+            .iter()
+            .map(|&d| 1f64 / ((d + PERTURBATION) * eta))
+            .collect();
+        CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
+    }
+}
+
 #[cfg(test)]
 mod row_generation_tests {
     use super::*;
@@ -916,7 +1023,7 @@ mod row_generation_tests {
             assert_eq!(dist.len(), sample.shape().0);
             let max_edge = hypotheses
                 .iter()
-                .map(|h| helpers::edge(sample, &dist, h))
+                .map(|h| helpers::edge(sample, dist, h))
                 .reduce(f64::max)
                 .expect("Failed to compute the max-edge");
             // sum_i d_i ln_t(d_i), with ln_t(x) = (x^{1-t} - 1) / (1-t).
@@ -1106,7 +1213,7 @@ mod row_generation_tests {
         // accuracy on a flat entropy objective. Check the certified bound.
         let gap = solver.optval - solver.objective_lower_bound().unwrap();
         let error: f64 = solver.primal.iter().map(|d| (d - 1.0 / 3.0).abs()).sum();
-        assert!(gap >= -1e-12 && gap < 1e-8);
+        assert!((-1e-12..1e-8).contains(&gap));
         assert!(error <= (4.0 * gap.max(0.0)).sqrt() + 1e-10);
         assert!(solver.dual.iter().all(|w| (w - 0.5).abs() < 1e-7));
         assert!(solver.optval.abs() < 1e-8);
@@ -1130,112 +1237,5 @@ mod row_generation_tests {
         ] {
             assert!(std::panic::catch_unwind(|| require_candidate_status(status)).is_err());
         }
-    }
-}
-
-/// The ERLPBoost subproblem objective
-/// ```txt
-/// max_j Σ_i d_i y_i h_j(x_i) + KL(d ‖ u)/η,   KL(d ‖ u) = Σ_i d_i ln(m d_i).
-/// ```
-///
-/// [`RowGeneration`] solves it with the exact exponential-cone formulation
-/// (its [`entropy_parameter`](RowGenerationObjective::entropy_parameter) is
-/// `Some(η)`), so the [`gradient`](RowGenerationObjective::gradient) and
-/// [`hessian`](RowGenerationObjective::hessian) below are not used by
-/// [`RowGeneration`]. They are a perturbed model: `ln(d_i + 1e-10)/η` and
-/// `1/((d_i + 1e-10) η)`, omitting the additive constants `(1 + ln m)/η` of
-/// the exact gradient (a constant shift on the simplex).
-///
-/// Its `objective_value` panics if `hypotheses` is empty, if `dist` does not
-/// have one entry per example, or if the entropy term is not finite.
-pub struct EntropyRegularizedMaxEdge(f64);
-
-impl EntropyRegularizedMaxEdge {
-    /// Takes the regularization parameter `η` and returns `Self`.
-    ///
-    /// # Panics
-    /// Panics unless `η` is finite and positive.
-    ///
-    /// # Examples
-    /// ```
-    /// use miniboosts::{EntropyRegularizedMaxEdge, RowGenerationObjective};
-    ///
-    /// let objective = EntropyRegularizedMaxEdge::new(10.0);
-    /// // Selects the exact exponential-cone path of `RowGeneration`.
-    /// assert_eq!(objective.entropy_parameter(), Some(10.0));
-    /// ```
-    pub fn new(eta: f64) -> Self {
-        assert!(
-            eta.is_finite() && eta > 0.0,
-            "eta must be finite and positive"
-        );
-        Self(eta)
-    }
-}
-
-impl RowGenerationObjective for EntropyRegularizedMaxEdge {
-    fn entropy_parameter(&self) -> Option<f64> {
-        Some(self.0)
-    }
-
-    fn objective_value<H: Classifier>(
-        &self,
-        sample: &Sample,
-        hypotheses: &[H],
-        dist: &[f64],
-    ) -> f64 {
-        assert_eq!(dist.len(), sample.shape().0);
-
-        let eta = self.0;
-        let max_edge = hypotheses
-            .iter()
-            .map(|h| helpers::edge(sample, dist, h))
-            .reduce(f64::max)
-            .expect("failed to compute the max-edge.");
-        let entropy = helpers::entropy_from_uni_distribution(dist);
-        assert!(entropy.is_finite(), "not a finite entropy. dist = {dist:?}",);
-        max_edge + (entropy / eta)
-    }
-
-    /// outputs the gradient vector at a given point `d`:
-    /// ```txt
-    /// ┏                                    ┓
-    /// ┃ 1 ln(d₁)/η  ln(d₂)/η  ... ln(dm)/η ┃
-    /// ┗                                    ┛
-    /// ```
-    fn gradient(&self, dist: &[f64]) -> Vec<f64> {
-        let eta = self.0;
-        iter::once(1f64)
-            .chain(dist.iter().map(|&d| (d + PERTURBATION).ln() / eta))
-            .collect()
-    }
-
-    /// outputs the hessian at a given point `d`:
-    /// ```txt
-    ///      γ   d₁   d₂  ...  dm
-    ///    ┏                       ┓
-    /// γ  ┃ 0   0    0   ...  0   ┃
-    /// d₁ ┃ 0  1/d₁  0   ...  0   ┃ * (1/η)
-    /// d₂ ┃ 0   0   1/d₂  0       ┃
-    ///  . ┃ .   .    0   1/d₃     ┃
-    ///  . ┃ .   .                 ┃
-    ///  . ┃ .   .                 ┃
-    /// dm ┃ 0   0   ...  ... 1/dm ┃
-    ///    ┗                       ┛
-    /// ```
-    fn hessian(&self, dist: &[f64]) -> CscMatrix<f64> {
-        let eta = self.0;
-        let n_rows = dist.len() + 1;
-        let n_cols = n_rows;
-
-        let n_examples = dist.len();
-
-        let col_ptr = iter::once(0).chain(0..=n_examples).collect();
-        let row_idx = (1..=n_examples).collect();
-        let nonzero = dist
-            .iter()
-            .map(|&d| 1f64 / ((d + PERTURBATION) * eta))
-            .collect();
-        CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
     }
 }
