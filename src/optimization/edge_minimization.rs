@@ -948,7 +948,7 @@ impl RowGenerationObjective for EntropyRegularizedMaxEdge {
             .reduce(f64::max)
             .expect("failed to compute the max-edge.");
         let entropy = helpers::entropy_from_uni_distribution(dist);
-        assert!(entropy.is_finite(), "not a finite entropy. dist = {dist:?}",);
+        assert!(entropy.is_finite(), "not a finite entropy. dist = {dist:?}");
         max_edge + (entropy / eta)
     }
 
@@ -1125,7 +1125,7 @@ mod row_generation_tests {
             (-0.8992805755395681, 14),
         ]
         .into_iter()
-        .flat_map(|(v, n)| std::iter::repeat_n(v, n))
+        .flat_map(|(v, n)| iter::repeat_n(v, n))
         .collect();
         let sample = Sample::dummy(455);
         let eta = 100.0_f64.ln() / 0.0005;

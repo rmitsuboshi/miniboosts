@@ -39,9 +39,9 @@ pub enum Node {
         /// The rule: examples with `x[feature] < threshold` go `left`.
         splitter: Splitter,
         /// The subtree for examples with `x[feature] < threshold`.
-        left: Box<Node>,
+        left: Box<Self>,
         /// The subtree for the other examples.
-        right: Box<Node>,
+        right: Box<Self>,
         /// The weighted-majority confidence of the training examples that
         /// reached this node (see [`crate::DecisionTree`]). Not used for
         /// prediction.
@@ -57,7 +57,7 @@ pub enum Node {
 
 impl Node {
     /// Creates a [`Node::Branch`].
-    pub fn branch(splitter: Splitter, left: Box<Node>, right: Box<Node>, confidence: f64) -> Self {
+    pub fn branch(splitter: Splitter, left: Box<Self>, right: Box<Self>, confidence: f64) -> Self {
         Self::Branch {
             splitter,
             left,
@@ -99,7 +99,7 @@ impl Node {
 
     pub(crate) fn to_dot_info(&self, id: usize) -> (Vec<String>, usize) {
         match self {
-            Node::Branch {
+            Self::Branch {
                 splitter,
                 left,
                 right,
@@ -119,15 +119,15 @@ impl Node {
                 info.push(splitter);
                 info.append(&mut right);
 
-                let left_edge = format!("\tnode_{id} -- node_{left_id} [ label = \"Yes\" ];\n",);
+                let left_edge = format!("\tnode_{id} -- node_{left_id} [ label = \"Yes\" ];\n");
                 info.push(left_edge);
-                let right_edge = format!("\tnode_{id} -- node_{right_id} [ label = \"No\" ];\n",);
+                let right_edge = format!("\tnode_{id} -- node_{right_id} [ label = \"No\" ];\n");
                 info.push(right_edge);
 
                 (info, return_id)
             }
-            Node::Leaf { confidence, .. } => {
-                let info = format!("\tnode_{id} [ label = \"{confidence}\", shape = box ];\n",);
+            Self::Leaf { confidence, .. } => {
+                let info = format!("\tnode_{id} [ label = \"{confidence}\", shape = box ];\n");
 
                 (vec![info], id + 1)
             }

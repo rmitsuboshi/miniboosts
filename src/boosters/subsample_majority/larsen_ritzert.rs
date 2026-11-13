@@ -321,7 +321,7 @@ mod tests {
             .subsamples();
         assert_eq!(some.len(), 10);
         assert!(some.iter().all(|c| all.contains(c)));
-        let mut unique = some.clone();
+        let mut unique = some;
         unique.dedup();
         assert_eq!(unique.len(), 10);
         // More than available keeps all of them.

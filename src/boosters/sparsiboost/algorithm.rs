@@ -516,8 +516,8 @@ where
             (None, None)
         };
         let info = Vec::from([
-            ("# of examples", format!("{}", n_examples)),
-            ("# of features", format!("{}", n_feature)),
+            ("# of examples", format!("{n_examples}")),
+            ("# of features", format!("{n_feature}")),
             (
                 "Max # of hypotheses",
                 or_dash(self.n_hypotheses.map(|t| t.to_string())),

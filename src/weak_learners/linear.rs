@@ -411,7 +411,7 @@ impl LogisticRegression {
     // Index loops mirror the symmetric Hessian's formulas.
     #[allow(clippy::needless_range_loop)]
     fn fit(&self, rows: &[Vec<f64>], target: &[f64], dist: &[f64]) -> Vec<f64> {
-        let dim = rows.first().map_or(0, |x| x.len()) + 1;
+        let dim = rows.first().map_or(0, Vec::len) + 1;
         let lambda = self.regularization;
         let augmented = |x: &[f64]| x.iter().copied().chain([1.0]).collect::<Vec<f64>>();
         let xs: Vec<Vec<f64>> = rows.iter().map(|x| augmented(x)).collect();
@@ -598,7 +598,7 @@ mod tests {
         let names = vec!["feature_0".to_string(), "feature_1".to_string()];
         for a in 0..24 {
             for c in 0..12 {
-                let (phi, psi) = (a as f64 * 0.2618, c as f64 * 0.2618);
+                let (phi, psi) = (f64::from(a) * 0.2618, f64::from(c) * 0.2618);
                 let v = [psi.sin() * phi.cos(), psi.sin() * phi.sin(), psi.cos()];
                 let g = LinearClassifier::new(
                     names.clone(),

@@ -457,7 +457,7 @@ where
         );
 
         while ub - lb > BINARY_SEARCH_TOLERANCE {
-            let stepsize = (lb + ub) / 2f64;
+            let stepsize = f64::midpoint(lb, ub);
             let mid = cur
                 .iter()
                 .zip(dir)
@@ -480,7 +480,7 @@ where
             }
         }
 
-        (lb + ub) / 2f64
+        f64::midpoint(lb, ub)
     }
 
     fn find_away_atom(&self, cur: &[f64], grad: &[f64]) -> (f64, Vec<f64>) {

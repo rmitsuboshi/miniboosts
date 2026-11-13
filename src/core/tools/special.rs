@@ -28,7 +28,7 @@ pub(crate) fn erfc_inverse(target: f64) -> f64 {
         hi *= 2.0;
     }
     for _ in 0..200 {
-        let mid = 0.5 * (lo + hi);
+        let mid = f64::midpoint(lo, hi);
         if mid <= lo || mid >= hi {
             break;
         }
@@ -38,5 +38,5 @@ pub(crate) fn erfc_inverse(target: f64) -> f64 {
             hi = mid;
         }
     }
-    0.5 * (lo + hi)
+    f64::midpoint(lo, hi)
 }

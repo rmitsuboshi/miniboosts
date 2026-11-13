@@ -210,7 +210,7 @@ mod tests {
     fn run_trains_once_per_part_on_its_rows() {
         // The single feature is the row index, so each voter can report the
         // rows it was trained on.
-        let rows: Vec<Vec<f64>> = (0..12).map(|i| vec![i as f64]).collect();
+        let rows: Vec<Vec<f64>> = (0..12).map(|i| vec![f64::from(i)]).collect();
         let y: Vec<f64> = (0..12)
             .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
             .collect();

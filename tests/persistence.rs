@@ -40,7 +40,7 @@ fn train() -> Sample {
 // Points that were not used for training.
 fn test() -> Sample {
     let rows = (0..25)
-        .map(|i| vec![(i % 5) as f64 - 1.875, (i / 5) as f64 - 2.125])
+        .map(|i| vec![f64::from(i % 5) - 1.875, f64::from(i / 5) - 2.125])
         .collect::<Vec<_>>();
     Sample::from_dense(&rows, None).unwrap()
 }
@@ -120,7 +120,7 @@ fn naive_aggregation() {
         .map(|t| {
             RbfHypothesis::new(
                 vec!["feature_0".to_string(), "feature_1".to_string()],
-                vec![t as f64, 1.0 - t as f64],
+                vec![f64::from(t), 1.0 - f64::from(t)],
                 1.0,
             )
         })

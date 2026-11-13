@@ -1765,7 +1765,7 @@ mod tests {
         let mut labels = Vec::new();
         for i in 0..24 {
             let label = if i % 2 == 0 { 1.0 } else { -1.0 };
-            let t = std::f64::consts::PI * (i as f64 + 0.5) / 24.0;
+            let t = std::f64::consts::PI * (f64::from(i) + 0.5) / 24.0;
             let (x, y) = (t.cos() - 0.5 * label, label * (t.sin() - 0.25));
             rows.push(vec![0.6 * x, 0.6 * y]);
             labels.push(label);

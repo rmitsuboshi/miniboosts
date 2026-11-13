@@ -304,7 +304,7 @@ fn halving_pass(columns: &[Vec<f64>], w: &mut [f64], rng: &mut SplitMix64) {
 pub fn max_margin_change(columns: &[Vec<f64>], before: &[f64], after: &[f64]) -> f64 {
     assert_eq!(columns.len(), before.len(), "one weight per column");
     assert_eq!(columns.len(), after.len(), "one weight per column");
-    let n_rows = columns.first().map_or(0, |c| c.len());
+    let n_rows = columns.first().map_or(0, Vec::len);
     assert!(
         columns.iter().all(|c| c.len() == n_rows),
         "all columns must have the same length"
@@ -448,7 +448,7 @@ pub(crate) fn margin_columns<H: Classifier>(sample: &Sample, hypotheses: &[H]) -
 /// assert_eq!(x[0], -x[1]);
 /// ```
 pub fn discrepancy_coloring(columns: &[Vec<f64>], seed: u64) -> Vec<i8> {
-    let n_rows = columns.first().map_or(0, |c| c.len());
+    let n_rows = columns.first().map_or(0, Vec::len);
     assert!(
         columns.iter().all(|c| c.len() == n_rows),
         "all columns must have the same length"
@@ -465,7 +465,7 @@ pub fn discrepancy_coloring(columns: &[Vec<f64>], seed: u64) -> Vec<i8> {
 }
 
 fn check_columns(columns: &[Vec<f64>]) {
-    let n_rows = columns.first().map_or(0, |c| c.len());
+    let n_rows = columns.first().map_or(0, Vec::len);
     assert!(n_rows > 0, "sparsification needs at least one example");
     assert!(
         columns.iter().all(|c| c.len() == n_rows),
@@ -487,7 +487,7 @@ const MAX_LOCAL_SEARCH_SWEEPS: usize = 100;
 /// The walk and local search of [`discrepancy_coloring`]; returns `±1.0`.
 fn coloring(columns: &[Vec<f64>], rng: &mut SplitMix64) -> Vec<f64> {
     let k = columns.len();
-    let n_rows = columns.first().map_or(0, |c| c.len());
+    let n_rows = columns.first().map_or(0, Vec::len);
     let mut x = vec![0.0; k];
     let mut fractional = vec![true; k];
     let mut ax: Vec<f64> = vec![0.0; n_rows];
@@ -734,7 +734,7 @@ mod tests {
         for (col, &xj) in columns.iter().zip(x) {
             ax.iter_mut()
                 .zip(col)
-                .for_each(|(v, a)| *v += a * xj as f64);
+                .for_each(|(v, a)| *v += a * f64::from(xj));
         }
         ax
     }
@@ -789,7 +789,7 @@ mod tests {
     #[test]
     fn sparsify_meets_the_sparsity_norm_and_support_contract() {
         let columns = sign_matrix(100, 200, 3);
-        let weights: Vec<f64> = (0..200).map(|j| 1.0 + (j % 7) as f64).collect();
+        let weights: Vec<f64> = (0..200).map(|j| 1.0 + f64::from(j % 7)).collect();
         for target in [1, 2, 13, 50, 199] {
             let w = sparsify(&columns, &weights, target, 11);
             let nnz = w.iter().filter(|wj| **wj != 0.0).count();
@@ -836,9 +836,9 @@ mod tests {
         // 8 are halved twice, so at most 2 of them survive, each multiplied
         // by 4.
         let columns = sign_matrix(30, 12, 6);
-        let weights: Vec<f64> = (1..=12).map(|j| j as f64).collect();
+        let weights: Vec<f64> = (1..=12).map(f64::from).collect();
         let w = sparsify(&columns, &weights, 6, 2);
-        let top: f64 = (9..=12).map(|j| j as f64).sum();
+        let top: f64 = (9..=12).map(f64::from).sum();
         let survivors: Vec<usize> = (0..8).filter(|&j| w[j] != 0.0).collect();
         assert!(survivors.len() <= 2, "{survivors:?}");
         let z = top + survivors.iter().map(|&j| 4.0 * weights[j]).sum::<f64>();
@@ -923,7 +923,7 @@ mod tests {
         let ragged = vec![vec![1.0], vec![1.0, -1.0]];
         // (columns, weights, target)
         type Case<'a> = (&'a [Vec<f64>], &'a [f64], usize);
-        let cases: [Case; 6] = [
+        let cases: [Case<'_>; 6] = [
             (&good, &[1.0; 3], 0),
             (&good, &[1.0; 2], 1),
             (&out_of_range, &[1.0; 3], 1),

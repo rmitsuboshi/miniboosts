@@ -254,7 +254,7 @@ where
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn time_limit_as_secs(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128)
+        self.time_limit = u128::from(time_limit)
             .checked_mul(1_000_u128)
             .expect("The time limit (ms) cannot be represented as u128");
         self
@@ -301,7 +301,7 @@ where
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn time_limit_as_mins(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128)
+        self.time_limit = u128::from(time_limit)
             .checked_mul(60_u128)
             .expect("The time limit (s) cannot be represented as u128")
             .checked_mul(1_000u128)
@@ -331,10 +331,10 @@ where
 
     /// Print current settings in a rounded panel.
     fn print_stats(&self) {
-        let limit = if self.time_limit != u128::MAX {
-            time_format(self.time_limit)
-        } else {
+        let limit = if self.time_limit == u128::MAX {
             "Unlimited".into()
+        } else {
+            time_format(self.time_limit)
         };
         let mut rows = vec![("Booster".to_owned(), self.booster.name().to_owned(), true)];
         if let Some(info) = self.booster.info() {
@@ -566,10 +566,10 @@ where
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}\n",
                     "[TLE]".bold().bright_red(),
-                    format!("{:>WIDTH$}", iter).bold().red(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", train).bold().green(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", test).bold().yellow(),
+                    format!("{iter:>WIDTH$}").bold().red(),
+                    format!("{obj:>WIDTH$.PREC_WIDTH$}").bold().blue(),
+                    format!("{train:>WIDTH$.PREC_WIDTH$}").bold().green(),
+                    format!("{test:>WIDTH$.PREC_WIDTH$}").bold().yellow(),
                     time_format(time_acc).bold().cyan(),
                 );
                 break;
@@ -579,10 +579,10 @@ where
                 println!(
                     "{} {}\t\t{}\t{}\t{}\t{}",
                     "[LOG]".bold().magenta(),
-                    format!("{:>WIDTH$}", iter).red(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).blue(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", train).green(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", test).yellow(),
+                    format!("{iter:>WIDTH$}").red(),
+                    format!("{obj:>WIDTH$.PREC_WIDTH$}").blue(),
+                    format!("{train:>WIDTH$.PREC_WIDTH$}").green(),
+                    format!("{test:>WIDTH$.PREC_WIDTH$}").yellow(),
                     time_format(time_acc).bold().cyan(),
                 );
             }
@@ -594,10 +594,10 @@ where
                     (if capped { "[LIMIT]" } else { "[FIN]" })
                         .bold()
                         .bright_green(),
-                    format!("{:>WIDTH$}", iter).red(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", obj).bold().blue(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", train).bold().green(),
-                    format!("{:>WIDTH$.PREC_WIDTH$}", test).bold().yellow(),
+                    format!("{iter:>WIDTH$}").red(),
+                    format!("{obj:>WIDTH$.PREC_WIDTH$}").bold().blue(),
+                    format!("{train:>WIDTH$.PREC_WIDTH$}").bold().green(),
+                    format!("{test:>WIDTH$.PREC_WIDTH$}").bold().yellow(),
                     time_format(time_acc).bold().cyan(),
                 );
             }
@@ -613,21 +613,21 @@ where
 
 fn time_format(millisec: u128) -> String {
     if millisec < 1_000 {
-        return format!("  0.{:0>3}s", millisec);
+        return format!("  0.{millisec:0>3}s");
     }
     let sec = millisec / 1_000;
     let millisec = millisec % 1_000;
     if sec < 60 {
-        return format!(" {:0>2}.{:0>3}s", sec, millisec);
+        return format!(" {sec:0>2}.{millisec:0>3}s");
     }
     let min = sec / 60;
     let sec = sec % 60;
     if min < 60 {
-        return format!(" {:0>2}m {:0>2}s", min, sec);
+        return format!(" {min:0>2}m {sec:0>2}s");
     }
     let hours = min / 60;
     let min = min % 60;
-    format!(" {:0>2}h {:0>2}m", hours, min)
+    format!(" {hours:0>2}h {min:0>2}m")
 }
 
 pub use crate::core::CurrentHypothesis;

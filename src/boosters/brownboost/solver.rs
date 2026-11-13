@@ -139,7 +139,7 @@ impl<'a> Round<'a> {
         }
 
         // Newton steps, replaced by bisection when they leave the bracket.
-        let mut t = 0.5 * (lo + hi);
+        let mut t = f64::midpoint(lo, hi);
         for _ in 0..200 {
             let value = f(t);
             if value == 0.0 {
@@ -155,7 +155,7 @@ impl<'a> Round<'a> {
             let next = if slope < 0.0 && newton > lo && newton < hi {
                 newton
             } else {
-                0.5 * (lo + hi)
+                f64::midpoint(lo, hi)
             };
             let scale = t.abs().max(1.0);
             if (next - t).abs() <= 4.0 * f64::EPSILON * scale
@@ -212,7 +212,7 @@ impl<'a> Round<'a> {
             above.ok_or("solving Equation (5): the stopping condition is never reached")?;
 
         for _ in 0..200 {
-            let mid = 0.5 * (below.0 + above.0);
+            let mid = f64::midpoint(below.0, above.0);
             if mid <= below.0 || mid >= above.0 {
                 break;
             }

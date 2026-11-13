@@ -380,8 +380,8 @@ where
             "-".to_string()
         };
         let info = Vec::from([
-            ("# of examples", format!("{}", n_examples)),
-            ("# of features", format!("{}", n_feature)),
+            ("# of examples", format!("{n_examples}")),
+            ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", self.tolerance)),
             ("Total time c", format!("{}", self.total_time())),
             ("Edge threshold", format!("{}", self.edge_threshold)),

@@ -554,12 +554,11 @@ impl<'a> ColumnGeneration<'a> {
     where
         H: Classifier,
     {
-        if !self.initialized {
-            panic!(
-                "solver is uninitialized.\
-                call `.initialize()` method before `.solve().`"
-            );
-        }
+        assert!(
+            self.initialized,
+            "solver is uninitialized.\
+            call `.initialize()` method before `.solve().`"
+        );
 
         self.n_hypotheses += 1;
         let n_examples = self.sample.shape().0;

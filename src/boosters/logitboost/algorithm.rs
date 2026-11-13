@@ -324,9 +324,9 @@ mod tests {
         // rounds on this sample they do so overall.
         assert!(deviance(&sample, &booster.scores) < start);
         let f = booster.postprocess();
-        for i in 0..12 {
+        for (i, expected) in booster.scores.iter().enumerate().take(12) {
             let score = Regressor::predict(&f, &sample, i);
-            assert!((score - booster.scores[i]).abs() < 1e-12);
+            assert!((score - expected).abs() < 1e-12);
         }
     }
 

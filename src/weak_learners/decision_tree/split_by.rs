@@ -183,7 +183,7 @@ impl SplitBy {
         };
         let features = sample.features().par_iter().enumerate();
         match self {
-            SplitBy::Entropy => features
+            Self::Entropy => features
                 .map(|(column, feature)| {
                     let (threshold, score) = split_by_entropy(pack_of(column, feature));
                     (score, feature.name(), threshold)
@@ -191,7 +191,7 @@ impl SplitBy {
                 .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                 .map(|(_, name, threshold)| (name, threshold))
                 .expect("No feature minimizes entropic impurity"),
-            SplitBy::Edge => features
+            Self::Edge => features
                 .map(|(column, feature)| {
                     let (threshold, score) = split_by_edge(pack_of(column, feature));
                     (score, feature.name(), threshold)
@@ -199,7 +199,7 @@ impl SplitBy {
                 .max_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                 .map(|(_, name, threshold)| (name, threshold))
                 .expect("No feature maximizes edge"),
-            SplitBy::Gini => features
+            Self::Gini => features
                 .map(|(column, feature)| {
                     let (threshold, score) = split_by_gini(pack_of(column, feature));
                     (score, feature.name(), threshold)
@@ -207,7 +207,7 @@ impl SplitBy {
                 .min_by(|x, y| x.0.partial_cmp(&y.0).unwrap())
                 .map(|(_, name, threshold)| (name, threshold))
                 .expect("No feature minimizes Gini impurity"),
-            SplitBy::Twoing => features
+            Self::Twoing => features
                 .map(|(column, feature)| {
                     let (threshold, score) = split_by_twoing(pack_of(column, feature));
                     (score, feature.name(), threshold)
@@ -229,8 +229,8 @@ fn split_by_entropy(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
     let mut left_weight_sum = 0f64;
     let mut right_weight = HashMap::<i32, f64>::new();
 
-    for (_, mp) in pack.iter() {
-        for (y, w) in mp.iter() {
+    for (_, mp) in &pack {
+        for (y, w) in mp {
             let entry = right_weight.entry(*y).or_insert(0f64);
             *entry += w;
         }
@@ -268,14 +268,14 @@ fn split_by_edge(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
     // for all instances.
     let mut edge = pack
         .iter()
-        .map(|(_, map)| map.iter().map(|(y, d)| *y as f64 * d).sum::<f64>())
+        .map(|(_, map)| map.iter().map(|(y, d)| f64::from(*y) * d).sum::<f64>())
         .sum::<f64>();
 
     let mut best_edge = edge.abs();
     let mut best_threshold = f64::MIN;
 
     for (bin, map) in pack {
-        edge -= 2f64 * map.into_iter().map(|(y, d)| y as f64 * d).sum::<f64>();
+        edge -= 2f64 * map.into_iter().map(|(y, d)| f64::from(y) * d).sum::<f64>();
 
         if best_edge < edge.abs() {
             best_edge = edge.abs();
@@ -296,8 +296,8 @@ fn split_by_gini(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
     let mut left_weight_sum = 0f64;
     let mut right_weight = HashMap::<i32, f64>::new();
 
-    for (_, mp) in pack.iter() {
-        for (y, w) in mp.iter() {
+    for (_, mp) in &pack {
+        for (y, w) in mp {
             let entry = right_weight.entry(*y).or_insert(0f64);
             *entry += w;
         }
@@ -339,8 +339,8 @@ fn split_by_twoing(pack: Vec<(Bin, HashMap<i32, f64>)>) -> (f64, Score) {
     let mut right_weight = HashMap::<i32, f64>::new();
 
     let mut labels = HashSet::new();
-    for (_, mp) in pack.iter() {
-        for (y, w) in mp.iter() {
+    for (_, mp) in &pack {
+        for (y, w) in mp {
             let entry = right_weight.entry(*y).or_insert(0f64);
             *entry += w;
 

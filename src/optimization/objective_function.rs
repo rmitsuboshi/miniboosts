@@ -362,7 +362,7 @@ impl ObjectiveFunction for Entropy {
     fn gradient(&self, point: &[f64]) -> Vec<f64> {
         point
             .iter()
-            .map(|&p| if p != 0f64 { 1f64 + p.ln() } else { f64::MIN })
+            .map(|&p| if p == 0f64 { f64::MIN } else { 1f64 + p.ln() })
             .collect()
     }
 }

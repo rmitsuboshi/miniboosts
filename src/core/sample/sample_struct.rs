@@ -335,7 +335,7 @@ impl Sample {
         }
 
         let n_feature = features.len();
-        let target = Vec::with_capacity(0);
+        let target = Vec::new();
 
         let name_to_index = features
             .iter()
@@ -719,12 +719,11 @@ impl Sample {
     fn target_is_specified(&self) {
         let n_sample = self.shape().0;
 
-        if n_sample != self.target.len() {
-            panic!(
-                "The target class is not specified.\n\
-                 Use `Sample::set_target(\"Column Name\")`."
-            );
-        }
+        assert!(
+            n_sample == self.target.len(),
+            "The target class is not specified.\n\
+             Use `Sample::set_target(\"Column Name\")`."
+        );
     }
 
     /// Checks that `self` is a valid training set for binary classification.
@@ -767,7 +766,7 @@ impl Sample {
             let line = non_integers
                 .iter()
                 .take(5)
-                .map(|yi| yi.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(", ");
             panic!(
@@ -805,7 +804,7 @@ impl Sample {
         if !is_pm {
             let line = set
                 .iter()
-                .map(|y| y.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(", ");
             println!(
@@ -975,7 +974,7 @@ impl Sample {
     /// let (train, test) = sample.split(ix, 0, 0);
     /// assert_eq!((train.shape().0, test.shape().0), (6, 0));
     /// ```
-    pub fn split<T>(&self, ix: T, start: usize, end: usize) -> (Sample, Sample)
+    pub fn split<T>(&self, ix: T, start: usize, end: usize) -> (Self, Self)
     where
         T: AsRef<[usize]>,
     {

@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 /// assert!((f.confidence(&sample, 0) - 1.0 / 3.0).abs() < 1e-15);
 /// assert_eq!(f.predict(&sample, 0), 1);
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MajorityVote<H> {
     /// The voting hypotheses.
     pub hypotheses: Vec<H>,

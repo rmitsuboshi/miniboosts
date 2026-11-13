@@ -317,7 +317,7 @@ impl WeakLearner for DecisionTree<'_> {
         let n_bins = self
             .bins
             .values()
-            .map(|bin| bin.len())
+            .map(Bins::len)
             .reduce(usize::max)
             .unwrap_or(0);
         let info = Vec::from([
@@ -450,7 +450,7 @@ impl fmt::Display for DecisionTree<'_> {
             .max()
             .expect("Tried to print bins, but no features are found")
             + 1;
-        for (feat_name, feat_bins) in self.bins.iter() {
+        for (feat_name, feat_bins) in &self.bins {
             let n_bins = feat_bins.len();
             writeln!(
                 f,

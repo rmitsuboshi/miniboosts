@@ -593,7 +593,7 @@ mod tests {
 
         if let Feature::Dense { name, vals } = f {
             assert_eq!(name, n, "expected {n}, got {name}");
-            assert!(vals.is_empty(), "expected 0-length vector, got {vals:?}.",);
+            assert!(vals.is_empty(), "expected 0-length vector, got {vals:?}.");
         } else {
             panic!("expected `Feature::Dense {{ .. }}`, got {f:?}");
         }
@@ -608,7 +608,7 @@ mod tests {
         if let Feature::Sparse { name, vals, size } = f {
             assert_eq!(name, n, "expected {n}, got {name}");
             assert_eq!(size, s, "expected {s}, got {size}");
-            assert!(vals.is_empty(), "expected 0-length vector, got {vals:?}.",);
+            assert!(vals.is_empty(), "expected 0-length vector, got {vals:?}.");
         } else {
             panic!("expected `Feature::Sparse {{ .. }}`, got {f:?}");
         }

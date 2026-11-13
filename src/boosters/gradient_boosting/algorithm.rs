@@ -299,7 +299,7 @@ impl<'a, H> GradientBoosting<'a, H> {
             }
         }
         for _ in 0..200 {
-            let mid = 0.5 * (lo + hi);
+            let mid = f64::midpoint(lo, hi);
             if mid == lo || mid == hi {
                 break;
             }
@@ -309,7 +309,7 @@ impl<'a, H> GradientBoosting<'a, H> {
                 hi = mid;
             }
         }
-        Ok(0.5 * (lo + hi))
+        Ok(f64::midpoint(lo, hi))
     }
 
     /// The training loss `(1/m) Σ_i L(y_i, F(x_i))` of the current scores.
@@ -505,7 +505,7 @@ mod tests {
         // depth-1 tree fits h with y_i h_i > 0 for every i. For the logistic
         // and exponential losses, L(y_i, ρ h_i) then decreases in ρ for all
         // i, and the infimum (as ρ → ∞) is not attained.
-        let rows: Vec<Vec<f64>> = (0..4).map(|i| vec![i as f64]).collect();
+        let rows: Vec<Vec<f64>> = (0..4).map(|i| vec![f64::from(i)]).collect();
         let sample = Sample::from_dense(&rows, Some(&[-1.0, -1.0, 1.0, 1.0])).unwrap();
         let tree = RegressionTreeBuilder::new(&sample).max_depth(1).build();
         for loss in [GbmLoss::Logistic, GbmLoss::Exponential] {

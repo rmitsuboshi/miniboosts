@@ -15,7 +15,7 @@ pub type LabelToWeight = HashMap<i32, f64>;
 
 /// A predicted value (label or regression output) of type `T`.
 /// Supports `+` when `T` does.
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct Prediction<T>(pub T);
 
@@ -39,7 +39,7 @@ where
 
 /// A confidence value of type `T`; for classifiers in this crate, an `f64`
 /// in `[-1, 1]`. Supports `+` when `T` does.
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct Confidence<T>(pub T);
 
@@ -81,14 +81,14 @@ impl ops::Add<Self> for LossValue {
     }
 }
 
-impl cmp::PartialEq<f64> for LossValue {
+impl PartialEq<f64> for LossValue {
     #[inline]
     fn eq(&self, other: &f64) -> bool {
         self.0.eq(other)
     }
 }
 
-impl cmp::PartialOrd<Self> for LossValue {
+impl PartialOrd<Self> for LossValue {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.0.partial_cmp(&other.0)
@@ -144,14 +144,14 @@ impl ops::Sub<usize> for Depth {
     }
 }
 
-impl cmp::PartialEq<usize> for Depth {
+impl PartialEq<usize> for Depth {
     #[inline]
     fn eq(&self, rhs: &usize) -> bool {
         self.0.eq(rhs)
     }
 }
 
-impl cmp::PartialOrd<usize> for Depth {
+impl PartialOrd<usize> for Depth {
     #[inline]
     fn partial_cmp(&self, other: &usize) -> Option<cmp::Ordering> {
         self.0.partial_cmp(other)
@@ -176,13 +176,13 @@ impl ops::Add<Self> for FeatureValue {
     }
 }
 
-impl cmp::PartialEq<f64> for FeatureValue {
+impl PartialEq<f64> for FeatureValue {
     fn eq(&self, other: &f64) -> bool {
         self.0.eq(other)
     }
 }
 
-impl cmp::PartialOrd<Self> for FeatureValue {
+impl PartialOrd<Self> for FeatureValue {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.0.partial_cmp(&other.0)
@@ -208,7 +208,7 @@ impl ops::Add<Self> for Mass {
     }
 }
 
-impl cmp::PartialEq<f64> for Mass {
+impl PartialEq<f64> for Mass {
     fn eq(&self, other: &f64) -> bool {
         self.0.eq(other)
     }
@@ -235,14 +235,14 @@ impl ops::Add<Self> for Target {
     }
 }
 
-impl cmp::PartialEq<f64> for Target {
+impl PartialEq<f64> for Target {
     #[inline]
     fn eq(&self, other: &f64) -> bool {
         self.0.eq(other)
     }
 }
 
-impl cmp::PartialOrd<Self> for Target {
+impl PartialOrd<Self> for Target {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.0.partial_cmp(&other.0)

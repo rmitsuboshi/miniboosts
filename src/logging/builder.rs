@@ -541,7 +541,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn time_limit_as_secs(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128)
+        self.time_limit = u128::from(time_limit)
             .checked_mul(1_000_u128)
             .expect("The time limit (ms) cannot be represented as u128");
         self
@@ -589,7 +589,7 @@ impl<'a, B, W, F, G> LoggerBuilder<'a, B, W, F, G> {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn time_limit_as_mins(mut self, time_limit: u64) -> Self {
-        self.time_limit = (time_limit as u128)
+        self.time_limit = u128::from(time_limit)
             .checked_mul(60_u128)
             .expect("The time limit (s) cannot be represented as u128")
             .checked_mul(1_000u128)

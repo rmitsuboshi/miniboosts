@@ -455,8 +455,8 @@ where
             "-".to_string()
         };
         let info = Vec::from([
-            ("# of examples", format!("{}", n_sample)),
-            ("# of features", format!("{}", n_feature)),
+            ("# of examples", format!("{n_sample}")),
+            ("# of features", format!("{n_feature}")),
             ("Tolerance", format!("{}", self.tolerance)),
             ("Max iteration", format!("{}", self.max_loop())),
             ("Force quit", quit),

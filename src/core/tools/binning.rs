@@ -412,7 +412,7 @@ impl fmt::Display for Bins {
         } else {
             let line = bins
                 .iter()
-                .map(|bin| format!("{}", bin))
+                .map(|bin| format!("{bin}"))
                 .collect::<Vec<_>>()
                 .join(", ");
             write!(f, "{line}")

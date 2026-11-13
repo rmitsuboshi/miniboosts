@@ -200,7 +200,7 @@ fn step_size(q: &[f64], losses: &[f64], t: f64) -> f64 {
     }
     let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
     for _ in 0..200 {
-        let mid = 0.5 * (lo + hi);
+        let mid = f64::midpoint(lo, hi);
         if mid <= lo || mid >= hi {
             break;
         }
@@ -210,7 +210,7 @@ fn step_size(q: &[f64], losses: &[f64], t: f64) -> f64 {
             hi = mid;
         }
     }
-    0.5 * (lo + hi)
+    f64::midpoint(lo, hi)
 }
 
 impl<F> Booster<F> for ArcGv<'_, F>

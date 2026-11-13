@@ -392,7 +392,7 @@ mod tests {
     fn missing_gamma_panics() {
         let sample = Sample::dummy(2);
         let result = std::panic::catch_unwind(|| {
-            BoostByMajority::<DecisionTreeClassifier>::init(&sample).preprocess()
+            BoostByMajority::<DecisionTreeClassifier>::init(&sample).preprocess();
         });
         assert!(result.is_err());
         let init = || BoostByMajority::<DecisionTreeClassifier>::init(&sample);

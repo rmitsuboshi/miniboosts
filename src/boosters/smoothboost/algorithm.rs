@@ -333,20 +333,18 @@ impl<'a, F> SmoothBoost<'a, F> {
 
     fn check_preconditions(&self) {
         // Check `kappa`.
-        if !(0.0..1.0).contains(&self.kappa) || self.kappa <= 0.0 {
-            panic!(
-                "Invalid kappa. \
-                 The parameter `kappa` must be in (0.0, 1.0)"
-            );
-        }
+        assert!(
+            (0.0..1.0).contains(&self.kappa) && self.kappa > 0.0,
+            "Invalid kappa. \
+             The parameter `kappa` must be in (0.0, 1.0)"
+        );
 
         // Check `gamma`.
-        if !(self.theta..0.5).contains(&self.gamma) {
-            panic!(
-                "Invalid gamma. \
-                 The parameter `gamma` must be in [self.theta, 0.5)"
-            );
-        }
+        assert!(
+            (self.theta..0.5).contains(&self.gamma),
+            "Invalid gamma. \
+             The parameter `gamma` must be in [self.theta, 0.5)"
+        );
     }
 }
 

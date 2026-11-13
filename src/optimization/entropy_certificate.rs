@@ -186,7 +186,7 @@ mod tests {
                 let bound = lower_bound(eta, nu, &margins);
                 let cap = 1.0 / nu;
                 for k in 0..=1000 {
-                    let a = 1.0 - cap + (2.0 * cap - 1.0) * k as f64 / 1000.0;
+                    let a = 1.0 - cap + (2.0 * cap - 1.0) * f64::from(k) / 1000.0;
                     assert!(bound <= objective(eta, &margins, &[a, 1.0 - a]) + 1e-14);
                 }
             }

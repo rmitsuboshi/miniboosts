@@ -228,7 +228,8 @@ impl RegressionTree {
                 }
                 let right = total.minus(left);
                 let gain = sse - left.sse() - right.sse();
-                let threshold = 0.5 * (bins.as_slice()[b].end() + bins.as_slice()[next].start());
+                let threshold =
+                    f64::midpoint(bins.as_slice()[b].end(), bins.as_slice()[next].start());
                 if gain > 0.0 && best.is_none_or(|(g, _, _)| gain > g) {
                     best = Some((gain, name.as_str(), threshold));
                 }
@@ -308,9 +309,9 @@ pub enum RegNode {
         /// The splitting rule.
         rule: Splitter,
         /// The subtree for `x[feature] < threshold`.
-        left: Box<RegNode>,
+        left: Box<Self>,
         /// The subtree for `x[feature] ≥ threshold`.
-        right: Box<RegNode>,
+        right: Box<Self>,
     },
     /// A leaf predicting `value`.
     Leaf {
@@ -412,7 +413,7 @@ mod tests {
 
     #[test]
     fn leaves_are_weighted_means_and_zero_weights_are_ignored() {
-        let rows: Vec<Vec<f64>> = (0..4).map(|i| vec![i as f64]).collect();
+        let rows: Vec<Vec<f64>> = (0..4).map(|i| vec![f64::from(i)]).collect();
         let sample = Sample::from_dense(&rows, Some(&[1.0, 3.0, 10.0, 100.0])).unwrap();
         let tree = RegressionTreeBuilder::new(&sample).max_depth(0).build();
         // Weight 0 on the last example: mean (1·1 + 1·3 + 2·10) / 4 = 6.
@@ -424,7 +425,7 @@ mod tests {
     fn a_step_function_is_fitted_exactly_at_depth_two() {
         // Greedy splitting first separates {0, 1} from {5, 9} (the largest
         // decrease of the squared error), then each half.
-        let rows: Vec<Vec<f64>> = (0..8).map(|i| vec![i as f64]).collect();
+        let rows: Vec<Vec<f64>> = (0..8).map(|i| vec![f64::from(i)]).collect();
         let z = vec![0.0, 0.0, 1.0, 1.0, 5.0, 5.0, 9.0, 9.0];
         let sample = Sample::from_dense(&rows, Some(&z)).unwrap();
         let h = RegressionTreeBuilder::new(&sample)

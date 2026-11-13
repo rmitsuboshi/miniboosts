@@ -210,20 +210,16 @@ where
     /// assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
     /// ```
     pub fn read(self) -> io::Result<Sample> {
-        if self.file.is_none() {
-            panic!("The file name for csv/svmlight is not set");
-        }
-        let file = self.file.unwrap();
+        let file = self
+            .file
+            .expect("The file name for csv/svmlight is not set");
         let file = file.as_ref();
 
         let sample = if file.extension().is_some_and(|ext| ext == "csv") {
-            if self.target.is_none() {
-                panic!(
-                    "Target (class) column is not specified. \
-                    Use `SampleReader::target_feature`."
-                );
-            }
-            let target = self.target.unwrap();
+            let target = self.target.expect(
+                "Target (class) column is not specified. \
+                Use `SampleReader::target_feature`.",
+            );
             Sample::from_csv(file, self.has_header)?.set_target(target.as_ref())
         } else {
             Sample::from_svmlight(file)?

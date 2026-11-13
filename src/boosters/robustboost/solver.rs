@@ -174,7 +174,7 @@ impl<'a> Round<'a> {
         }
         let (mut lo, mut hi) = (lo, end);
         for _ in 0..200 {
-            let mid = 0.5 * (lo + hi);
+            let mid = f64::midpoint(lo, hi);
             if mid <= lo || mid >= hi {
                 break;
             }
@@ -184,7 +184,7 @@ impl<'a> Round<'a> {
                 hi = mid;
             }
         }
-        Some(0.5 * (lo + hi))
+        Some(f64::midpoint(lo, hi))
     }
 
     /// Solves the round: the first `(Δm, Δt)` along the potential-preserving
@@ -217,12 +217,11 @@ impl<'a> Round<'a> {
         let mut above = None;
         let mut delta_m = 1.0 / 1024.0;
         for _ in 0..1100 {
-            match state(delta_m, below.1)? {
-                Some(dt) => below = (delta_m, dt),
-                None => {
-                    above = Some(delta_m);
-                    break;
-                }
+            if let Some(dt) = state(delta_m, below.1)? {
+                below = (delta_m, dt)
+            } else {
+                above = Some(delta_m);
+                break;
             }
             delta_m *= 2.0;
             if !delta_m.is_finite() {
@@ -232,7 +231,7 @@ impl<'a> Round<'a> {
         let mut above =
             above.ok_or("solving the round: the stopping condition is never reached")?;
         for _ in 0..200 {
-            let mid = 0.5 * (below.0 + above);
+            let mid = f64::midpoint(below.0, above);
             if mid <= below.0 || mid >= above {
                 break;
             }
