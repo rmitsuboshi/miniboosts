@@ -88,11 +88,39 @@ impl<H: Regressor> Regressor for AdditiveModel<H> {
                 .map(|(c, h)| c * h.predict(sample, row))
                 .sum::<f64>()
     }
+
+    /// Same values as [`Regressor::predict`] row by row, with one
+    /// `predict_all` call per hypothesis.
+    fn predict_all(&self, sample: &Sample) -> Vec<f64> {
+        // `-0.0` is the start of `Iterator::sum`, so the bits agree.
+        let mut sums = vec![-0.0_f64; sample.shape().0];
+        for (c, h) in self.coefficients.iter().zip(&self.hypotheses) {
+            for (sum, value) in sums.iter_mut().zip(h.predict_all(sample)) {
+                *sum += c * value;
+            }
+        }
+        sums.into_iter().map(|sum| self.intercept + sum).collect()
+    }
 }
 
 impl<H: Regressor> Classifier for AdditiveModel<H> {
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
-        let score = Regressor::predict(self, sample, row);
+        self.link(Regressor::predict(self, sample, row))
+    }
+
+    /// Same values as [`Classifier::confidence`] row by row, through
+    /// [`Regressor::predict_all`].
+    fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
+        Regressor::predict_all(self, sample)
+            .into_iter()
+            .map(|score| self.link(score))
+            .collect()
+    }
+}
+
+impl<H> AdditiveModel<H> {
+    /// Maps a score to a confidence in `[-1, 1]`.
+    fn link(&self, score: f64) -> f64 {
         match self.link {
             ScoreLink::Tanh => score.tanh(),
             ScoreLink::Clamp => score.clamp(-1.0, 1.0),

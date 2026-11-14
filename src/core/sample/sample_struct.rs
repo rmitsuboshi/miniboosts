@@ -6,6 +6,7 @@ use std::io::{self, BufRead, BufReader, Read};
 use std::mem;
 use std::ops::Index;
 use std::path::Path;
+use std::sync::Arc;
 
 use super::feature::*;
 use rayon::prelude::*;
@@ -96,8 +97,10 @@ use rayon::prelude::*;
 /// ```
 #[derive(Debug, Clone)]
 pub struct Sample {
-    pub(super) name_to_index: HashMap<String, usize>,
-    pub(super) features: Vec<Feature>,
+    // Shared between a sample and its copies with another target
+    // (`with_target`); a method that changes them copies them first.
+    pub(super) name_to_index: Arc<HashMap<String, usize>>,
+    pub(super) features: Arc<Vec<Feature>>,
     pub(super) target: Vec<f64>,
     pub(super) n_sample: usize,
     pub(super) n_feature: usize,
@@ -165,8 +168,8 @@ impl Sample {
             .map(|(index, feature)| (feature.name().to_owned(), index))
             .collect();
         Ok(Self {
-            name_to_index,
-            features,
+            name_to_index: Arc::new(name_to_index),
+            features: Arc::new(features),
             target: target.unwrap_or_default().to_vec(),
             n_sample,
             n_feature,
@@ -362,8 +365,8 @@ impl Sample {
             .map(|(index, feature)| (feature.name().to_owned(), index))
             .collect();
         Ok(Self {
-            name_to_index,
-            features,
+            name_to_index: Arc::new(name_to_index),
+            features: Arc::new(features),
             target: target.unwrap_or_default().to_vec(),
             n_sample: n_rows,
             n_feature,
@@ -393,8 +396,8 @@ impl Sample {
         });
         let features = vec![Feature::sparse("dummy", 0)];
         Self {
-            name_to_index: HashMap::from([("dummy".to_string(), 0)]),
-            features,
+            name_to_index: Arc::new(HashMap::from([("dummy".to_string(), 0)])),
+            features: Arc::new(features),
             target,
             n_sample,
             n_feature: 1usize,
@@ -541,8 +544,8 @@ impl Sample {
             .collect::<HashMap<_, _>>();
 
         let sample = Self {
-            name_to_index,
-            features,
+            name_to_index: Arc::new(name_to_index),
+            features: Arc::new(features),
             target,
             n_sample,
             n_feature,
@@ -584,6 +587,14 @@ impl Sample {
     ///
     /// # Panics
     /// Panics if the sample has no feature with one of the names.
+    /// Returns the shared handle of the features. Two samples hold the same
+    /// handle (`Arc::ptr_eq`) if one is a clone of the other or was made from
+    /// it by [`Sample::with_target`], with no change to the features since;
+    /// their features are then identical.
+    pub(crate) fn shared_features(&self) -> &Arc<Vec<Feature>> {
+        &self.features
+    }
+
     pub(crate) fn columns<'a, S>(&'a self, names: &[S]) -> Vec<&'a Feature>
     where
         S: AsRef<str>,
@@ -630,16 +641,17 @@ impl Sample {
             .position(|feat| feat.name() == target)
             .unwrap_or_else(|| panic!("The target class \"{target}\" does not exist"));
 
-        let target = self.features.remove(pos).into_vals();
+        let target = Arc::make_mut(&mut self.features).remove(pos).into_vals();
         self.target = target;
         self.n_feature -= 1;
 
-        self.name_to_index = self
-            .features
-            .iter()
-            .enumerate()
-            .map(|(i, f)| (f.name().to_string(), i))
-            .collect::<HashMap<_, _>>();
+        self.name_to_index = Arc::new(
+            self.features
+                .iter()
+                .enumerate()
+                .map(|(i, f)| (f.name().to_string(), i))
+                .collect::<HashMap<_, _>>(),
+        );
 
         self
     }
@@ -713,8 +725,8 @@ impl Sample {
             .collect::<HashMap<_, _>>();
 
         let mut sample = Self {
-            name_to_index,
-            features,
+            name_to_index: Arc::new(name_to_index),
+            features: Arc::new(features),
             target,
             n_sample,
             n_feature,
@@ -727,24 +739,20 @@ impl Sample {
 
     /// Removes the empty features in `self.features`.
     fn remove_allzero_features(&mut self) {
-        let features = mem::take(&mut self.features);
-        self.name_to_index = features
-            .iter()
-            .filter_map(|feat| {
-                if feat.is_empty() {
-                    None
-                } else {
-                    Some(feat.name().to_string())
-                }
-            })
-            .enumerate()
-            .map(|(i, name)| (name, i))
-            .collect();
-        self.features = features
+        let features = mem::take(Arc::make_mut(&mut self.features));
+        let features: Vec<Feature> = features
             .into_iter()
             .filter(|feat| !feat.is_empty())
             .collect();
-        self.n_feature = self.features.len();
+        self.name_to_index = Arc::new(
+            features
+                .iter()
+                .enumerate()
+                .map(|(i, feat)| (feat.name().to_string(), i))
+                .collect(),
+        );
+        self.n_feature = features.len();
+        self.features = Arc::new(features);
     }
 
     /// Returns a copy of `self` with the target values replaced by `target`
@@ -754,7 +762,10 @@ impl Sample {
     /// gradient boosting's pseudo-residuals) use it to pass them to a
     /// regression weak learner. The values need not be labels.
     ///
-    /// Time complexity: `O(m d)`, a copy of the features.
+    /// The features are shared with `self`, not copied, so this costs
+    /// `O(1)` beyond taking `target`. A weak learner can thereby recognize
+    /// the sample it was built for (see
+    /// [`RegressionTreeBuilder`](crate::RegressionTreeBuilder)).
     ///
     /// # Panics
     /// Panics if `target` does not have one value per example.
@@ -777,8 +788,11 @@ impl Sample {
             "the target needs one value per example"
         );
         Self {
+            name_to_index: Arc::clone(&self.name_to_index),
+            features: Arc::clone(&self.features),
             target,
-            ..self.clone()
+            n_sample: self.n_sample,
+            n_feature: self.n_feature,
         }
     }
 
@@ -837,7 +851,7 @@ impl Sample {
         };
         Self {
             name_to_index: self.name_to_index.clone(),
-            features,
+            features: Arc::new(features),
             target,
             n_sample: rows.len(),
             n_feature: self.n_feature,
@@ -898,17 +912,18 @@ impl Sample {
 
         let old_names = names
             .iter()
-            .zip(&mut self.features[..])
+            .zip(&mut Arc::make_mut(&mut self.features)[..])
             .map(|(name, feature)| feature.replace_name(name))
             .collect();
 
-        self.name_to_index = self
-            .features
-            .iter()
-            .map(|feature| feature.name().to_string())
-            .enumerate()
-            .map(|(i, name)| (name, i))
-            .collect();
+        self.name_to_index = Arc::new(
+            self.features
+                .iter()
+                .map(|feature| feature.name().to_string())
+                .enumerate()
+                .map(|(i, name)| (name, i))
+                .collect(),
+        );
         old_names
     }
 
@@ -1388,6 +1403,38 @@ mod tests {
     }
 
     #[test]
+    fn with_target_shares_features_until_one_side_changes() {
+        let rows = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+        let sample = Sample::from_dense(&rows, Some(&[1.0, -1.0])).unwrap();
+        let mut copy = sample.with_target(vec![0.5, 0.25]);
+        assert!(Arc::ptr_eq(
+            sample.shared_features(),
+            copy.shared_features()
+        ));
+        assert!(Arc::ptr_eq(
+            sample.shared_features(),
+            sample.clone().shared_features()
+        ));
+        assert_eq!(copy.target(), &[0.5, 0.25]);
+        assert_eq!(sample.target(), &[1.0, -1.0]);
+
+        // Renaming the copy's features leaves the original untouched.
+        copy.replace_names(["a", "b"]);
+        assert!(!Arc::ptr_eq(
+            sample.shared_features(),
+            copy.shared_features()
+        ));
+        assert_eq!(copy["b"][1], 4.0);
+        assert_eq!(sample["feature_1"][1], 4.0);
+        assert_eq!(sample.features()[0].name(), "feature_0");
+
+        // So does taking one of the copy's features as its target.
+        let copy = sample.clone().set_target("feature_0");
+        assert_eq!((copy.shape(), copy.target()), ((2, 1), &[1.0, 3.0][..]));
+        assert_eq!((sample.shape(), sample["feature_0"][1]), ((2, 2), 3.0));
+    }
+
+    #[test]
     fn select_rows_keeps_sparse_features_sparse() {
         let mut sparse = Feature::sparse("s", 4);
         sparse.append((1, 2.0));
@@ -1397,8 +1444,8 @@ mod tests {
             dense.append((0, v));
         }
         let sample = Sample {
-            name_to_index: HashMap::from([("s".to_string(), 0), ("d".to_string(), 1)]),
-            features: vec![sparse, dense],
+            name_to_index: Arc::new(HashMap::from([("s".to_string(), 0), ("d".to_string(), 1)])),
+            features: Arc::new(vec![sparse, dense]),
             target: vec![1.0, -1.0, 1.0, -1.0],
             n_sample: 4,
             n_feature: 2,
@@ -1433,17 +1480,19 @@ mod tests {
     fn split_reindexes_sparse_rows_and_preserves_labels() {
         let dense = training_examples(b"x,class\n1,1\n0,-1\n3,1\n4,-1", true);
         let mut sparse = dense.clone();
-        sparse.features = dense
-            .features
-            .iter()
-            .map(|f| {
-                let mut result = Feature::sparse(f.name(), dense.n_sample);
-                for i in 0..dense.n_sample {
-                    result.append((i, f[i]));
-                }
-                result
-            })
-            .collect();
+        sparse.features = Arc::new(
+            dense
+                .features
+                .iter()
+                .map(|f| {
+                    let mut result = Feature::sparse(f.name(), dense.n_sample);
+                    for i in 0..dense.n_sample {
+                        result.append((i, f[i]));
+                    }
+                    result
+                })
+                .collect(),
+        );
         for sample in [dense, sparse] {
             let indices = [3, 0, 2, 1];
             for (start, end) in [(1, 3), (0, 0), (0, 4), (2, 4)] {
@@ -1460,7 +1509,7 @@ mod tests {
                     for (i, &source) in expected.iter().enumerate() {
                         assert_eq!(part.at(i), sample.at(source));
                     }
-                    for feature in &part.features {
+                    for feature in part.features.iter() {
                         assert_eq!(feature.clone().into_vals().len(), expected.len());
                     }
                 }

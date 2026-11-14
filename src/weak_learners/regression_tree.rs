@@ -17,10 +17,12 @@
 //! let h = tree.produce(&sample, &[1.0 / 6.0; 6]);
 //! assert_eq!(h.predict_all(&sample), y.to_vec());
 //! ```
-use crate::core::binning::Bins;
+use crate::core::binning::{BinIndex, Bins};
 use crate::core::tree::{LeftRight, Splitter};
-use crate::core::{Regressor, Sample, WeakLearner};
+use crate::core::{Feature, Regressor, Sample, WeakLearner};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// The default number of bins per feature (as for the decision tree).
 pub const DEFAULT_NBIN: usize = 255;
@@ -104,7 +106,7 @@ impl<'a> RegressionTreeBuilder<'a> {
     /// See the [module documentation](self).
     pub fn build(self) -> RegressionTree {
         let features = self.sample.features();
-        let bins = features
+        let bins: Vec<(String, Bins)> = features
             .iter()
             .map(|f| {
                 let cap = self.n_bins.unwrap_or(DEFAULT_NBIN);
@@ -119,8 +121,15 @@ impl<'a> RegressionTreeBuilder<'a> {
                 (f.name().to_string(), bins)
             })
             .collect();
+        let bin_index = bins
+            .iter()
+            .zip(features)
+            .map(|((_, bins), feature)| bins.index(feature))
+            .collect();
         RegressionTree {
             bins,
+            features: Arc::clone(self.sample.shared_features()),
+            bin_index,
             max_depth: self.max_depth,
         }
     }
@@ -143,6 +152,18 @@ impl<'a> RegressionTreeBuilder<'a> {
 /// split decreases it. Features and thresholds are scanned in order and
 /// ties keep the first, so the result is deterministic.
 ///
+/// # Cost
+/// The builder stores the bin of every value of its sample: 4 bytes per
+/// value of a dense feature and per stored entry of a sparse one. These are
+/// used when [`WeakLearner::produce`] gets that sample, a clone of it, or a
+/// copy made by [`Sample::with_target`], which is what
+/// [`GradientBoosting`](crate::GradientBoosting) and
+/// [`LogitBoost`](crate::LogitBoost) pass; a node then costs one addition per
+/// example and feature. For any other sample, the bin of each value is
+/// searched again (`O(log n_bins)` per value). The trees are the same in
+/// both cases. Features are searched in parallel; the result does not depend
+/// on the number of threads.
+///
 /// # Limitations
 /// - A feature with more distinct values than
 ///   [`n_bins`](RegressionTreeBuilder::n_bins) is cut into equal-width bins,
@@ -159,6 +180,10 @@ impl<'a> RegressionTreeBuilder<'a> {
 pub struct RegressionTree {
     // Bins per feature, in column order.
     bins: Vec<(String, Bins)>,
+    // The features of the builder's sample and, for each, the bin of every
+    // value: used when `produce` gets a sample with these very features.
+    features: Arc<Vec<Feature>>,
+    bin_index: Vec<BinIndex>,
     max_depth: usize,
 }
 
@@ -199,7 +224,14 @@ impl Moments {
 }
 
 impl RegressionTree {
-    fn grow(&self, sample: &Sample, dist: &[f64], indices: Vec<usize>, depth: usize) -> RegNode {
+    fn grow(
+        &self,
+        sample: &Sample,
+        dist: &[f64],
+        indices: Vec<usize>,
+        depth: usize,
+        cached: bool,
+    ) -> RegNode {
         let target = sample.target();
         let mut total = Moments::default();
         for &i in &indices {
@@ -211,30 +243,63 @@ impl RegressionTree {
             return RegNode::Leaf { value };
         }
 
-        // Best split over features (in order) and bin boundaries.
-        let mut best: Option<(f64, &str, f64)> = None;
-        for (name, bins) in &self.bins {
-            let mut feature = sample[name].cursor();
-            let n_bins = bins.as_slice().len();
-            let mut per_bin = vec![Moments::default(); n_bins];
-            for &i in &indices {
-                per_bin[bins.index_of(feature.value(i))].add(dist[i], target[i]);
-            }
-            let nonempty: Vec<usize> = (0..n_bins).filter(|&b| per_bin[b].w > 0.0).collect();
-            let mut left = Moments::default();
-            for pair in nonempty.windows(2) {
-                let (b, next) = (pair[0], pair[1]);
-                // Bins strictly between `b` and `next` are empty.
-                for m in &per_bin[b..next] {
-                    left.w += m.w;
-                    left.wz += m.wz;
-                    left.wzz += m.wzz;
+        // The best split of each feature over its bin boundaries. The
+        // features are independent, so they are searched in parallel; each
+        // sum runs over `indices` in order, whatever the number of threads.
+        let per_feature: Vec<Option<(f64, f64)>> = self
+            .bins
+            .par_iter()
+            .enumerate()
+            .map(|(k, (name, bins))| {
+                let n_bins = bins.as_slice().len();
+                let mut per_bin = vec![Moments::default(); n_bins];
+                match cached.then(|| &self.bin_index[k]) {
+                    Some(BinIndex::Dense(bin_of_row)) => {
+                        for &i in &indices {
+                            per_bin[bin_of_row[i] as usize].add(dist[i], target[i]);
+                        }
+                    }
+                    Some(BinIndex::Sparse { bin_of_entry, zero }) => {
+                        let mut entries = self.features[k].cursor();
+                        for &i in &indices {
+                            let bin = entries.entry(i).map_or(*zero, |p| bin_of_entry[p]);
+                            per_bin[bin as usize].add(dist[i], target[i]);
+                        }
+                    }
+                    None => {
+                        let mut feature = sample[name].cursor();
+                        for &i in &indices {
+                            per_bin[bins.index_of(feature.value(i))].add(dist[i], target[i]);
+                        }
+                    }
                 }
-                let right = total.minus(left);
-                let gain = sse - left.sse() - right.sse();
-                let threshold =
-                    f64::midpoint(bins.as_slice()[b].end(), bins.as_slice()[next].start());
-                if gain > 0.0 && best.is_none_or(|(g, _, _)| gain > g) {
+                let nonempty: Vec<usize> = (0..n_bins).filter(|&b| per_bin[b].w > 0.0).collect();
+                let mut best: Option<(f64, f64)> = None;
+                let mut left = Moments::default();
+                for pair in nonempty.windows(2) {
+                    let (b, next) = (pair[0], pair[1]);
+                    // Bins strictly between `b` and `next` are empty.
+                    for m in &per_bin[b..next] {
+                        left.w += m.w;
+                        left.wz += m.wz;
+                        left.wzz += m.wzz;
+                    }
+                    let right = total.minus(left);
+                    let gain = sse - left.sse() - right.sse();
+                    let threshold =
+                        f64::midpoint(bins.as_slice()[b].end(), bins.as_slice()[next].start());
+                    if gain > 0.0 && best.is_none_or(|(g, _)| gain > g) {
+                        best = Some((gain, threshold));
+                    }
+                }
+                best
+            })
+            .collect();
+        // Ties go to the first feature in order, then to its first boundary.
+        let mut best: Option<(f64, &str, f64)> = None;
+        for ((name, _), candidate) in self.bins.iter().zip(per_feature) {
+            if let Some((gain, threshold)) = candidate {
+                if best.is_none_or(|(g, _, _)| gain > g) {
                     best = Some((gain, name.as_str(), threshold));
                 }
             }
@@ -252,8 +317,8 @@ impl RegressionTree {
         }
         RegNode::Branch {
             rule,
-            left: Box::new(self.grow(sample, dist, left, depth - 1)),
-            right: Box::new(self.grow(sample, dist, right, depth - 1)),
+            left: Box::new(self.grow(sample, dist, left, depth - 1, cached)),
+            right: Box::new(self.grow(sample, dist, right, depth - 1, cached)),
         }
     }
 }
@@ -295,8 +360,9 @@ impl WeakLearner for RegressionTree {
         );
         let indices: Vec<usize> = (0..n_examples).filter(|&i| dist[i] > 0.0).collect();
         assert!(!indices.is_empty(), "the weights must have positive mass");
+        let cached = Arc::ptr_eq(sample.shared_features(), &self.features);
         RegressionTreeRegressor {
-            root: self.grow(sample, dist, indices, self.max_depth),
+            root: self.grow(sample, dist, indices, self.max_depth, cached),
         }
     }
 }
@@ -330,6 +396,26 @@ pub struct RegressionTreeRegressor {
     pub root: RegNode,
 }
 
+impl RegNode {
+    /// Writes the value of every row in `rows` to `out[row]`, looking each
+    /// feature up once per node instead of once per row.
+    fn predict_rows(&self, sample: &Sample, rows: Vec<usize>, out: &mut [f64]) {
+        match self {
+            Self::Branch { rule, left, right } => {
+                // Same rule as `Splitter::split`: NaN goes right.
+                let (lrows, rrows) = sample[&rule.feature].partition_rows(rows, rule.threshold);
+                left.predict_rows(sample, lrows, out);
+                right.predict_rows(sample, rrows, out);
+            }
+            Self::Leaf { value } => {
+                for row in rows {
+                    out[row] = *value;
+                }
+            }
+        }
+    }
+}
+
 impl Regressor for RegressionTreeRegressor {
     fn predict(&self, sample: &Sample, row: usize) -> f64 {
         let mut node = &self.root;
@@ -344,6 +430,16 @@ impl Regressor for RegressionTreeRegressor {
                 }
             }
         }
+    }
+
+    /// Same values as [`Regressor::predict`] row by row, sending all rows
+    /// down the tree together.
+    fn predict_all(&self, sample: &Sample) -> Vec<f64> {
+        let n_sample = sample.shape().0;
+        let mut out = vec![0.0; n_sample];
+        self.root
+            .predict_rows(sample, (0..n_sample).collect(), &mut out);
+        out
     }
 }
 

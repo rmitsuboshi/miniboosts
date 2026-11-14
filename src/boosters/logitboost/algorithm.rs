@@ -239,9 +239,7 @@ where
         }
         let dist: Vec<f64> = weights.iter().map(|w| w / total).collect();
         let h = weak_learner.produce(&self.sample.with_target(responses), &dist);
-        let values: Vec<f64> = (0..target.len())
-            .map(|i| h.predict(self.sample, i))
-            .collect();
+        let values = h.predict_all(self.sample);
         assert!(
             values.iter().all(|v| v.is_finite()),
             "LogitBoost needs finite weak-hypothesis predictions"

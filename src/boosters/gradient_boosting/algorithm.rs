@@ -386,7 +386,7 @@ where
             &self.sample.with_target(residuals),
             &vec![1.0 / m as f64; m],
         );
-        let values: Vec<f64> = (0..m).map(|i| h.predict(self.sample, i)).collect();
+        let values = h.predict_all(self.sample);
         assert!(
             values.iter().all(|v| v.is_finite()),
             "gradient boosting needs finite weak-hypothesis predictions"
