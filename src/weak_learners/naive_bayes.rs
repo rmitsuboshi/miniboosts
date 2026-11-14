@@ -32,6 +32,7 @@
 use crate::core::sample::feature::{separable_sum_at, separable_sums};
 use crate::core::{Classifier, Feature, Sample, WeakLearner};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Weighted Gaussian naive Bayes.
 ///
@@ -165,11 +166,8 @@ impl WeakLearner for NaiveBayes {
         assert!(total > 0.0, "the distribution must have positive mass");
         let dist: Vec<f64> = dist.iter().map(|d| d / total).collect();
 
-        let feature_names: Vec<String> = sample
-            .features()
-            .iter()
-            .map(|f| f.name().to_string())
-            .collect();
+        // One list of names shared with the other hypotheses on this sample.
+        let feature_names = sample.shared_names();
         let prior = |y: f64| -> f64 {
             target
                 .iter()
@@ -181,7 +179,7 @@ impl WeakLearner for NaiveBayes {
         let (prior_pos, prior_neg) = (prior(1.0), prior(-1.0));
         if prior_pos == 0.0 || prior_neg == 0.0 {
             return NaiveBayesClassifier {
-                feature_names: Vec::new(),
+                feature_names: Arc::from(Vec::new()),
                 only_label: Some(if prior_neg == 0.0 { 1.0 } else { -1.0 }),
                 log_prior_ratio: 0.0,
                 positive: Vec::new(),
@@ -226,7 +224,7 @@ impl WeakLearner for NaiveBayes {
 /// See the [module documentation](self).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NaiveBayesClassifier {
-    feature_names: Vec<String>,
+    feature_names: Arc<[String]>,
     // The label holding all the weight, if the other one has none. The
     // infinite log odds are not stored because JSON has no infinity.
     #[serde(default)]

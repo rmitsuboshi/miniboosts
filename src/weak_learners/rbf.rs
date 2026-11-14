@@ -36,6 +36,7 @@ use crate::core::sample::feature::{separable_sum_at, separable_sums};
 use crate::core::{Classifier, Sample};
 use crate::weak_learners::finite_class::FiniteClass;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// The Gaussian bump `k_c(x) = exp(-‖x - x_c‖² / (2σ²))` around a center
 /// `x_c`. See the [module documentation](self).
@@ -59,7 +60,7 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RbfHypothesis {
-    feature_names: Vec<String>,
+    feature_names: Arc<[String]>,
     center: Vec<f64>,
     bandwidth: f64,
 }
@@ -75,6 +76,12 @@ impl RbfHypothesis {
     /// # Examples
     /// See [`RbfHypothesis`].
     pub fn new(feature_names: Vec<String>, center: Vec<f64>, bandwidth: f64) -> Self {
+        Self::with_shared_names(feature_names.into(), center, bandwidth)
+    }
+
+    /// [`RbfHypothesis::new`] with a list of names that the other bumps of a
+    /// class hold too, so that the names are stored once for the class.
+    fn with_shared_names(feature_names: Arc<[String]>, center: Vec<f64>, bandwidth: f64) -> Self {
         assert_eq!(
             feature_names.len(),
             center.len(),
@@ -283,12 +290,7 @@ impl<'a> RbfClassBuilder<'a> {
         let bandwidth = self
             .bandwidth
             .expect("set the RBF bandwidth with `RbfClassBuilder::bandwidth`");
-        let names: Vec<String> = self
-            .sample
-            .features()
-            .iter()
-            .map(|f| f.name().to_string())
-            .collect();
+        let names = self.sample.shared_names();
         let rows = self
             .centers
             .unwrap_or_else(|| (0..self.sample.shape().0).collect());
@@ -296,7 +298,7 @@ impl<'a> RbfClassBuilder<'a> {
             .iter()
             .map(|&row| {
                 let center = self.sample.features().iter().map(|f| f[row]).collect();
-                RbfHypothesis::new(names.clone(), center, bandwidth)
+                RbfHypothesis::with_shared_names(Arc::clone(&names), center, bandwidth)
             })
             .collect();
         FiniteClass::new(self.sample, hypotheses).with_negations()

@@ -44,6 +44,7 @@
 //! ```
 use crate::core::{Classifier, Feature, Sample, WeakLearner};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// How a [`LinearClassifier`] maps the score `z = w·x + b` to a confidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,7 +78,7 @@ pub enum LinearOutput {
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LinearClassifier {
-    feature_names: Vec<String>,
+    feature_names: Arc<[String]>,
     weights: Vec<f64>,
     bias: f64,
     output: LinearOutput,
@@ -94,6 +95,18 @@ impl LinearClassifier {
     /// See [`LinearClassifier`].
     pub fn new(
         feature_names: Vec<String>,
+        weights: Vec<f64>,
+        bias: f64,
+        output: LinearOutput,
+    ) -> Self {
+        Self::with_shared_names(feature_names.into(), weights, bias, output)
+    }
+
+    /// [`LinearClassifier::new`] with a list of names that other hypotheses
+    /// may hold too (see `Sample::shared_names`), so that the names are
+    /// stored once for all of them.
+    fn with_shared_names(
+        feature_names: Arc<[String]>,
         weights: Vec<f64>,
         bias: f64,
         output: LinearOutput,
@@ -309,7 +322,7 @@ impl WeakLearner for BoundedLinear {
     fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis {
         check_inputs(sample, dist);
         let features = sample.features();
-        let names: Vec<String> = features.iter().map(|f| f.name().to_string()).collect();
+        let names = sample.shared_names();
         let dim = names.len();
         // Both sums below run over the features (columns) and add, for each
         // row, the terms in the order a row-wise sum would; a sparse feature
@@ -360,7 +373,7 @@ impl WeakLearner for BoundedLinear {
             0.0
         };
         let weights = g[..dim].iter().map(|v| v * factor).collect();
-        LinearClassifier::new(names, weights, g[dim] * factor, LinearOutput::Clamp)
+        LinearClassifier::with_shared_names(names, weights, g[dim] * factor, LinearOutput::Clamp)
     }
 }
 
@@ -481,25 +494,28 @@ impl LogisticRegression {
         self
     }
 
-    /// Minimizes `L` for the weights `dist` and returns `(w, b)` as one
-    /// vector `θ = (w, b)`.
+    /// Minimizes the regularized logistic loss `L` for the weights `dist`
+    /// over `θ = (w, b)` of length `dim`. `xs` holds the augmented examples
+    /// `(x_i, 1)`.
     // Index loops mirror the symmetric Hessian's formulas.
     #[allow(clippy::needless_range_loop)]
-    /// Minimizes the regularized logistic loss over `θ = (w, b)` of length
-    /// `dim`. `xs[i]` is the augmented example `(x_i, 1)`.
-    fn fit<R: Row>(&self, xs: &[R], dim: usize, target: &[f64], dist: &[f64]) -> Vec<f64> {
+    fn fit<X>(&self, xs: &X, dim: usize, target: &[f64], dist: &[f64]) -> Vec<f64>
+    where
+        X: Design + ?Sized,
+    {
         let lambda = self.regularization;
         let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
-        // θ·x, in the order of the entries of `x`.
-        let score = |theta: &[f64], x: &R| x.entries().map(|(k, v)| theta[k] * v).sum::<f64>();
         let loss = |theta: &[f64]| {
-            xs.iter()
+            xs.scores(theta)
+                .iter()
                 .zip(target)
                 .zip(dist)
-                .map(|((x, y), d)| d * softplus(-y * score(theta, x)))
+                .map(|((z, y), d)| d * softplus(-y * z))
                 .sum::<f64>()
                 + 0.5 * lambda * dot(theta, theta)
         };
+        // Examples without weight add nothing to the gradient or Hessian.
+        let active: Vec<usize> = (0..dist.len()).filter(|&i| dist[i] != 0.0).collect();
 
         let mut theta = vec![0.0; dim];
         let mut value = loss(&theta);
@@ -507,21 +523,17 @@ impl LogisticRegression {
             // Gradient and Hessian.
             let mut grad: Vec<f64> = theta.iter().map(|t| lambda * t).collect();
             let mut hess = vec![vec![0.0; dim]; dim];
-            for ((x, &y), &d) in xs.iter().zip(target).zip(dist) {
-                if d == 0.0 {
-                    continue;
-                }
-                let z = score(&theta, x);
-                let coef = -d * y * logistic(-y * z);
-                let curv = d * logistic(z) * logistic(-z);
-                // Lower triangle: the entries are in increasing order.
-                for (position, (a, xa)) in x.entries().enumerate() {
-                    grad[a] += coef * xa;
-                    for (b, xb) in x.entries().take(position + 1) {
-                        hess[a][b] += curv * xa * xb;
-                    }
-                }
+            // Per example: the derivative of its loss in the score, and the
+            // curvature.
+            let scores = xs.scores(&theta);
+            let (mut coef, mut curv) = (vec![0.0; dist.len()], vec![0.0; dist.len()]);
+            for &i in &active {
+                let (z, y, d) = (scores[i], target[i], dist[i]);
+                coef[i] = -d * y * logistic(-y * z);
+                curv[i] = d * logistic(z) * logistic(-z);
             }
+            // The lower triangle of the Hessian.
+            xs.accumulate(&active, &coef, &curv, &mut grad, &mut hess);
             for a in 0..dim {
                 hess[a][a] += lambda;
                 for b in 0..a {
@@ -585,7 +597,7 @@ impl WeakLearner for LogisticRegression {
     fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis {
         check_inputs(sample, dist);
         let features = sample.features();
-        let names: Vec<String> = features.iter().map(|f| f.name().to_string()).collect();
+        let names = sample.shared_names();
         let dim = names.len();
         let theta = if features.iter().any(Feature::is_sparse) {
             // Stored entries only: a product with an implicit zero adds
@@ -608,14 +620,19 @@ impl WeakLearner for LogisticRegression {
             for x in &mut xs {
                 x.push((dim, 1.0));
             }
-            self.fit(&xs, dim + 1, sample.target(), dist)
+            self.fit(&xs[..], dim + 1, sample.target(), dist)
         } else {
-            let xs: Vec<Vec<f64>> = (0..sample.shape().0)
-                .map(|i| features.iter().map(|f| f[i]).chain([1.0]).collect())
+            // The columns are read in place: no row is copied.
+            let columns: Vec<&[f64]> = features
+                .iter()
+                .map(|feature| match feature {
+                    Feature::Dense { vals, .. } => &vals[..],
+                    Feature::Sparse { .. } => unreachable!("handled above"),
+                })
                 .collect();
-            self.fit(&xs, dim + 1, sample.target(), dist)
+            self.fit(&DenseColumns(columns), dim + 1, sample.target(), dist)
         };
-        LinearClassifier::new(names, theta[..dim].to_vec(), theta[dim], self.output)
+        LinearClassifier::with_shared_names(names, theta[..dim].to_vec(), theta[dim], self.output)
     }
 }
 
@@ -638,6 +655,104 @@ impl Row for Vec<f64> {
 impl Row for Vec<(usize, f64)> {
     fn entries(&self) -> impl Iterator<Item = (usize, f64)> {
         self.iter().copied()
+    }
+}
+
+/// The examples of a logistic regression, with the constant `1` of the bias
+/// as their last coordinate. The two implementations add the same terms in
+/// the same order, so they give the same bits.
+trait Design {
+    /// `θ·x_i` for every example, each sum in increasing coordinate order.
+    fn scores(&self, theta: &[f64]) -> Vec<f64>;
+
+    /// Adds `Σ_i coef[i] x_i` to `grad` and the lower triangle of
+    /// `Σ_i curv[i] x_i x_iᵀ` to `hess`, over the examples `i` in `active`
+    /// (increasing).
+    fn accumulate(
+        &self,
+        active: &[usize],
+        coef: &[f64],
+        curv: &[f64],
+        grad: &mut [f64],
+        hess: &mut [Vec<f64>],
+    );
+}
+
+/// One [`Row`] per example.
+impl<R: Row> Design for [R] {
+    fn scores(&self, theta: &[f64]) -> Vec<f64> {
+        self.iter()
+            .map(|x| x.entries().map(|(k, v)| theta[k] * v).sum::<f64>())
+            .collect()
+    }
+
+    fn accumulate(
+        &self,
+        active: &[usize],
+        coef: &[f64],
+        curv: &[f64],
+        grad: &mut [f64],
+        hess: &mut [Vec<f64>],
+    ) {
+        for &i in active {
+            let x = &self[i];
+            // The entries are in increasing order.
+            for (position, (a, xa)) in x.entries().enumerate() {
+                grad[a] += coef[i] * xa;
+                for (b, xb) in x.entries().take(position + 1) {
+                    hess[a][b] += curv[i] * xa * xb;
+                }
+            }
+        }
+    }
+}
+
+/// The dense features of a sample, read in place; the bias coordinate is
+/// implicit. This needs no copy of the examples as rows.
+struct DenseColumns<'a>(Vec<&'a [f64]>);
+
+impl Design for DenseColumns<'_> {
+    fn scores(&self, theta: &[f64]) -> Vec<f64> {
+        let n_examples = self.0.first().map_or(0, |column| column.len());
+        // `-0.0` is where `Iterator::sum` starts.
+        let mut scores = vec![-0.0_f64; n_examples];
+        for (column, &t) in self.0.iter().zip(theta) {
+            for (score, &v) in scores.iter_mut().zip(*column) {
+                *score += t * v;
+            }
+        }
+        let bias = theta[self.0.len()];
+        for score in &mut scores {
+            *score += bias * 1.0;
+        }
+        scores
+    }
+
+    fn accumulate(
+        &self,
+        active: &[usize],
+        coef: &[f64],
+        curv: &[f64],
+        grad: &mut [f64],
+        hess: &mut [Vec<f64>],
+    ) {
+        let dim = self.0.len();
+        // One example at a time, as for rows: its updates touch different
+        // cells, which a processor adds in parallel, whereas a sum over the
+        // examples for one cell is a chain of dependent additions (measured
+        // 5 times slower). Only the current example is copied.
+        let mut x = vec![1.0; dim + 1];
+        for &i in active {
+            for (value, column) in x.iter_mut().zip(&self.0) {
+                *value = column[i];
+            }
+            for (a, &xa) in x.iter().enumerate() {
+                grad[a] += coef[i] * xa;
+                for (cell, &xb) in hess[a].iter_mut().zip(&x[..=a]) {
+                    *cell += curv[i] * xa * xb;
+                }
+            }
+        }
     }
 }
 

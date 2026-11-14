@@ -40,7 +40,8 @@ const LOGITBOOST_UNDERFLOW_STOP: &str = "every LogitBoost weight underflowed to 
 /// A feature matrix from Python. The estimators pass the raw bytes of numpy
 /// arrays (native byte order), which avoids one Python object per value:
 /// - `(n_rows, n_features, values)`: a dense matrix, `values` being its
-///   `float64` entries in row-major order;
+///   `float64` entries in row-major order (numpy's default), which are
+///   copied once, straight into the columns of the sample;
 /// - `(n_rows, indptr, indices, data)`: a `scipy.sparse` CSC matrix, with
 ///   `int64` `indptr` and `indices` and `float64` `data`; its features are
 ///   stored sparsely.
@@ -59,27 +60,23 @@ impl Matrix {
     fn sample(&self, target: Option<&[f64]>) -> PyResult<Sample> {
         match self {
             Self::DenseBytes(n_rows, n_features, values) => {
-                let values = floats(values)?;
-                if n_rows.checked_mul(*n_features) != Some(values.len()) {
+                if values.len() % 8 != 0 {
+                    return Err(PyValueError::new_err(
+                        "an array buffer must hold 8-byte values",
+                    ));
+                }
+                if n_rows.checked_mul(*n_features) != Some(values.len() / 8) {
                     return Err(PyValueError::new_err(
                         "the dense buffer does not match the matrix shape",
                     ));
                 }
-                let rows: Vec<Vec<f64>> = if *n_features == 0 {
-                    Vec::new()
-                } else {
-                    values
-                        .chunks_exact(*n_features)
-                        .map(<[f64]>::to_vec)
-                        .collect()
-                };
-                Sample::from_dense(&rows, target)
+                Sample::from_columns(transpose(values, *n_rows, *n_features), target)
             }
             Self::CscBytes(n_rows, indptr, indices, data) => Sample::from_csc(
                 *n_rows,
                 &offsets(indptr)?,
                 &offsets(indices)?,
-                &floats(data)?,
+                &floats(whole_words(data)?),
                 target,
             ),
             Self::Csc(n_rows, indptr, indices, data) => {
@@ -91,26 +88,53 @@ impl Matrix {
     }
 }
 
-/// The 8-byte words of a numpy buffer.
-fn words(bytes: &[u8]) -> PyResult<impl Iterator<Item = [u8; 8]> + '_> {
-    if bytes.len() % 8 != 0 {
-        return Err(PyValueError::new_err(
-            "an array buffer must hold 8-byte values",
-        ));
+/// The columns of an `n_rows × n_features` matrix of `float64` values given
+/// in row-major order. The rows are taken a block at a time so that a block
+/// stays in the cache while each of its columns is copied.
+fn transpose(values: &[u8], n_rows: usize, n_features: usize) -> Vec<Vec<f64>> {
+    const BLOCK_BYTES: usize = 1 << 18;
+    let row_bytes = 8 * n_features;
+    let block_rows = (BLOCK_BYTES / row_bytes.max(1)).max(1);
+    let mut columns = vec![vec![0.0; n_rows]; n_features];
+    for (block, rows) in values.chunks(block_rows * row_bytes.max(1)).enumerate() {
+        let first = block * block_rows;
+        for (k, column) in columns.iter_mut().enumerate() {
+            let cells = &mut column[first..first + rows.len() / row_bytes];
+            for (cell, row) in cells.iter_mut().zip(rows.chunks_exact(row_bytes)) {
+                let word = row[8 * k..8 * k + 8].try_into().expect("8 bytes");
+                *cell = f64::from_ne_bytes(word);
+            }
+        }
     }
-    Ok(bytes
-        .chunks_exact(8)
-        .map(|word| word.try_into().expect("chunks of 8 bytes")))
+    columns
 }
 
-/// The values of a `float64` numpy buffer.
-fn floats(bytes: &[u8]) -> PyResult<Vec<f64>> {
-    Ok(words(bytes)?.map(f64::from_ne_bytes).collect())
+/// The 8-byte words of a numpy buffer whose length is a multiple of 8.
+fn words(bytes: &[u8]) -> impl Iterator<Item = [u8; 8]> + '_ {
+    bytes
+        .chunks_exact(8)
+        .map(|word| word.try_into().expect("chunks of 8 bytes"))
+}
+
+/// Rejects a buffer that does not hold 8-byte values.
+fn whole_words(bytes: &[u8]) -> PyResult<&[u8]> {
+    if bytes.len() % 8 == 0 {
+        Ok(bytes)
+    } else {
+        Err(PyValueError::new_err(
+            "an array buffer must hold 8-byte values",
+        ))
+    }
+}
+
+/// The values of a `float64` numpy buffer whose length is a multiple of 8.
+fn floats(bytes: &[u8]) -> Vec<f64> {
+    words(bytes).map(f64::from_ne_bytes).collect()
 }
 
 /// The values of an `int64` numpy buffer of indices.
 fn offsets(bytes: &[u8]) -> PyResult<Vec<usize>> {
-    words(bytes)?
+    words(whole_words(bytes)?)
         .map(|word| {
             usize::try_from(i64::from_ne_bytes(word))
                 .map_err(|_| PyValueError::new_err("sparse indices must be nonnegative"))

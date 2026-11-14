@@ -168,6 +168,24 @@ byte instead of four when a feature has at most 256 bins (the default is 255).
 The Python boosters no longer copy the feature matrix into Rust, which never
 read it: the weak learners are fitted in Python.
 
+`LinearClassifier`, `NaiveBayesClassifier`, and `RbfHypothesis` hold one list
+of feature names shared with the sample they were fitted on, instead of a
+copy each: an ensemble of `T` hypotheses over `d` features stores `d` names
+rather than `T d`, and an RBF class over `m` centers `d` rather than `m d`.
+Their constructors, `feature_names()`, and serialized form are unchanged; a
+deserialized hypothesis has its own list.
+
+`LogisticRegression` reads dense features in place instead of copying the
+sample into rows, and is 2 to 3 times faster on dense samples (5000 examples
+with 40 features, 10 rounds: 164 ms became 67 ms). The fitted weights are
+unchanged.
+
+`Sample::from_columns` builds a sample from dense columns without copying
+them. The Python estimators use it: a dense matrix is copied once from its
+bytes into the columns, instead of through a vector of values and a vector of
+rows. On 20000 examples with 300 dense features, `decision_function` of a
+native weak learner takes 14 ms instead of 32 ms.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

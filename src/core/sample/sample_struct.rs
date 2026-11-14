@@ -6,7 +6,7 @@ use std::io::{self, BufRead, BufReader, Read};
 use std::mem;
 use std::ops::Index;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use super::feature::*;
 use rayon::prelude::*;
@@ -101,6 +101,9 @@ pub struct Sample {
     // (`with_target`); a method that changes them copies them first.
     pub(super) name_to_index: Arc<HashMap<String, usize>>,
     pub(super) features: Arc<Vec<Feature>>,
+    // The feature names in column order, made on first use and shared with
+    // the hypotheses that record them; cleared when the features change.
+    pub(super) names: OnceLock<Arc<[String]>>,
     pub(super) target: Vec<f64>,
     pub(super) n_sample: usize,
     pub(super) n_feature: usize,
@@ -173,6 +176,73 @@ impl Sample {
             target: target.unwrap_or_default().to_vec(),
             n_sample,
             n_feature,
+            names: OnceLock::new(),
+        })
+    }
+
+    /// Constructs data from dense columns: `columns[j][i]` is feature `j` of
+    /// example `i`. The columns are taken as they are, without a copy, which
+    /// makes this the constructor to use for a matrix that is already stored
+    /// column by column (for example in column-major, "Fortran", order).
+    /// Feature names and the role of `target` are those of
+    /// [`Sample::from_dense`], which gives the same sample from the rows.
+    ///
+    /// # Errors
+    /// Returns an error if there is no column or no row, if the columns
+    /// differ in length, for a non-finite entry, or for a target that is
+    /// non-finite or whose length differs from the number of rows.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// // The matrix [[-1, 0.5], [2, 0], [3, -0.5]].
+    /// let columns = vec![vec![-1.0, 2.0, 3.0], vec![0.5, 0.0, -0.5]];
+    /// let sample = Sample::from_columns(columns, Some(&[-1.0, 1.0, 1.0])).unwrap();
+    /// assert_eq!(sample.shape(), (3, 2));
+    /// assert_eq!(sample["feature_1"][2], -0.5);
+    ///
+    /// assert!(Sample::from_columns(vec![vec![1.0], vec![1.0, 2.0]], None).is_err());
+    /// ```
+    pub fn from_columns(columns: Vec<Vec<f64>>, target: Option<&[f64]>) -> Result<Self, String> {
+        let n_feature = columns.len();
+        let n_sample = columns.first().map_or(0, Vec::len);
+        if n_sample == 0 || n_feature == 0 {
+            return Err("dense data must contain at least one row and one feature".into());
+        }
+        for (column, values) in columns.iter().enumerate() {
+            if values.len() != n_sample {
+                return Err(format!("feature {column} has a different number of rows"));
+            }
+            if values.iter().any(|v| !v.is_finite()) {
+                return Err(format!("feature {column} contains a non-finite value"));
+            }
+        }
+        if let Some(y) = target {
+            if y.len() != n_sample || y.iter().any(|v| !v.is_finite()) {
+                return Err("target must be finite and have one value per row".into());
+            }
+        }
+        let features = columns
+            .into_iter()
+            .enumerate()
+            .map(|(column, vals)| Feature::Dense {
+                name: format!("feature_{column}"),
+                vals,
+            })
+            .collect::<Vec<_>>();
+        let name_to_index = features
+            .iter()
+            .enumerate()
+            .map(|(index, feature)| (feature.name().to_owned(), index))
+            .collect();
+        Ok(Self {
+            name_to_index: Arc::new(name_to_index),
+            features: Arc::new(features),
+            target: target.unwrap_or_default().to_vec(),
+            n_sample,
+            n_feature,
+            names: OnceLock::new(),
         })
     }
 
@@ -370,6 +440,7 @@ impl Sample {
             target: target.unwrap_or_default().to_vec(),
             n_sample: n_rows,
             n_feature,
+            names: OnceLock::new(),
         })
     }
 
@@ -401,6 +472,7 @@ impl Sample {
             target,
             n_sample,
             n_feature: 1usize,
+            names: OnceLock::new(),
         }
     }
 
@@ -549,6 +621,7 @@ impl Sample {
             target,
             n_sample,
             n_feature,
+            names: OnceLock::new(),
         };
 
         Ok(sample)
@@ -593,6 +666,18 @@ impl Sample {
     /// their features are then identical.
     pub(crate) fn shared_features(&self) -> &Arc<Vec<Feature>> {
         &self.features
+    }
+
+    /// Returns the feature names in column order, as one allocation shared
+    /// by every caller: a hypothesis that records the names of its features
+    /// holds this handle instead of its own copy of the strings.
+    pub(crate) fn shared_names(&self) -> Arc<[String]> {
+        Arc::clone(self.names.get_or_init(|| {
+            self.features
+                .iter()
+                .map(|feature| feature.name().to_string())
+                .collect()
+        }))
     }
 
     pub(crate) fn columns<'a, S>(&'a self, names: &[S]) -> Vec<&'a Feature>
@@ -641,6 +726,7 @@ impl Sample {
             .position(|feat| feat.name() == target)
             .unwrap_or_else(|| panic!("The target class \"{target}\" does not exist"));
 
+        self.names = OnceLock::new();
         let target = Arc::make_mut(&mut self.features).remove(pos).into_vals();
         self.target = target;
         self.n_feature -= 1;
@@ -730,6 +816,7 @@ impl Sample {
             target,
             n_sample,
             n_feature,
+            names: OnceLock::new(),
         };
 
         sample.remove_allzero_features();
@@ -739,6 +826,7 @@ impl Sample {
 
     /// Removes the empty features in `self.features`.
     fn remove_allzero_features(&mut self) {
+        self.names = OnceLock::new();
         let features = mem::take(Arc::make_mut(&mut self.features));
         let features: Vec<Feature> = features
             .into_iter()
@@ -793,6 +881,9 @@ impl Sample {
             target,
             n_sample: self.n_sample,
             n_feature: self.n_feature,
+            // Shared too, so that the hypotheses fitted on the copies of every
+            // round hold one list of names.
+            names: OnceLock::from(self.shared_names()),
         }
     }
 
@@ -855,6 +946,7 @@ impl Sample {
             target,
             n_sample: rows.len(),
             n_feature: self.n_feature,
+            names: OnceLock::new(),
         }
     }
 
@@ -901,6 +993,7 @@ impl Sample {
         T: AsRef<[S]>,
     {
         let names = names.as_ref();
+        self.names = OnceLock::new();
 
         let n_features = self.shape().1;
         let n_names = names.len();
@@ -1286,6 +1379,37 @@ where
 #[cfg(test)]
 mod tests {
     #[test]
+    fn from_columns_agrees_with_from_dense() {
+        let rows = vec![vec![1.0, -2.0], vec![0.0, 4.5], vec![3.0, 0.25]];
+        let columns = vec![vec![1.0, 0.0, 3.0], vec![-2.0, 4.5, 0.25]];
+        let y = [1.0, -1.0, 1.0];
+        let by_row = Sample::from_dense(&rows, Some(&y)).unwrap();
+        let by_column = Sample::from_columns(columns.clone(), Some(&y)).unwrap();
+        assert_eq!(by_column.shape(), by_row.shape());
+        assert_eq!(by_column.target(), by_row.target());
+        for (c, r) in by_column.features().iter().zip(by_row.features()) {
+            assert!(c.is_dense());
+            assert_eq!(c.name(), r.name());
+            assert_eq!(c.clone().into_vals(), r.clone().into_vals());
+        }
+        assert!(
+            Sample::from_columns(columns.clone(), None)
+                .unwrap()
+                .target()
+                .is_empty()
+        );
+
+        let ok =
+            |columns: Vec<Vec<f64>>, y: Option<&[f64]>| Sample::from_columns(columns, y).is_ok();
+        assert!(!ok(vec![], None));
+        assert!(!ok(vec![vec![]], None));
+        assert!(!ok(vec![vec![1.0], vec![1.0, 2.0]], None));
+        assert!(!ok(vec![vec![1.0, f64::NAN]], None));
+        assert!(!ok(columns.clone(), Some(&[1.0, -1.0])));
+        assert!(!ok(columns, Some(&[1.0, -1.0, f64::INFINITY])));
+    }
+
+    #[test]
     fn from_csc_agrees_with_from_dense() {
         // Column 1 is all zero and column 2 stores an explicit zero.
         let rows = vec![
@@ -1449,6 +1573,7 @@ mod tests {
             target: vec![1.0, -1.0, 1.0, -1.0],
             n_sample: 4,
             n_feature: 2,
+            names: OnceLock::new(),
         };
         let sub = sample.select_rows(&[3, 3, 0, 1]);
         assert!(sub["s"].is_sparse() && sub["d"].is_dense());
