@@ -118,6 +118,8 @@ took 35 ms instead of 6.4 s; on dense samples it is about twice as fast.
 compressed sparse column form (`n_rows`, `indptr`, `indices`, `data`), with the
 feature names of `Sample::from_dense`. It rejects unsorted or duplicate row
 indices and non-finite values, and does not store entries equal to `0.0`.
+`Sample::from_csr` does the same for compressed sparse row form
+(`n_features`, `indptr`, `indices`, `data`) and gives the same sample.
 The Python estimators accept `scipy.sparse` input through it: the native weak
 learners and `RegressionTreeRegressor` keep the features sparse in Rust, and
 boosters pass the sparse matrix on to their weak learner. `scipy>=1.8` is now

@@ -222,12 +222,7 @@ impl Sample {
         if indptr[0] != 0 || indptr[n_feature] != data.len() {
             return Err("indptr must start at 0 and end at the number of entries".into());
         }
-        if let Some(y) = target {
-            if y.len() != n_rows || y.iter().any(|v| !v.is_finite()) {
-                return Err("target must be finite and have one value per row".into());
-            }
-        }
-        let mut features = Vec::with_capacity(n_feature);
+        let mut columns = Vec::with_capacity(n_feature);
         for (column, bounds) in indptr.windows(2).enumerate() {
             let (start, end) = (bounds[0], bounds[1]);
             // `end <= data.len()` holds once every pair is ordered, since
@@ -247,17 +242,120 @@ impl Sample {
             if values.iter().any(|v| !v.is_finite()) {
                 return Err(format!("feature {column} contains a non-finite value"));
             }
-            features.push(Feature::Sparse {
-                name: format!("feature_{column}"),
-                vals: rows
-                    .iter()
+            columns.push(
+                rows.iter()
                     .zip(values)
                     .filter(|&(_, &value)| value != 0.0)
                     .map(|(&row, &value)| (row, value))
                     .collect(),
-                size: n_rows,
-            });
+            );
         }
+        Self::from_sparse_columns(columns, n_rows, target)
+    }
+
+    /// Constructs owned data with sparse features from a matrix in compressed
+    /// sparse row (CSR) form, the layout of `scipy.sparse.csr_matrix`:
+    /// example `i` has the entries `indptr[i]..indptr[i + 1]`, whose features
+    /// are `indices[k]` and whose values are `data[k]`. The number of rows is
+    /// `indptr.len() - 1`; CSR does not record the number of features, so it
+    /// is given as `n_features`. The result is the same as that of
+    /// [`Sample::from_csc`] on the same matrix: the entries are regrouped by
+    /// feature in one pass, in time proportional to their number.
+    ///
+    /// # Errors
+    /// Returns an error if there is no row or no feature, if `indptr` does
+    /// not start at 0, decreases, or does not end at the common length of
+    /// `indices` and `data`, if the features of a row are not strictly
+    /// increasing (unsorted or duplicate entries) or reach `n_features`, for
+    /// a non-finite value, or for a target that is non-finite or whose length
+    /// differs from the number of rows.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    ///
+    /// // The matrix [[1, 0], [0, 0], [2, 3]].
+    /// let sample =
+    ///     Sample::from_csr(2, &[0, 1, 1, 3], &[0, 0, 1], &[1.0, 2.0, 3.0], None).unwrap();
+    /// assert_eq!(sample.shape(), (3, 2));
+    /// assert!(sample["feature_0"].is_sparse());
+    /// assert_eq!(sample["feature_0"][2], 2.0);
+    /// assert_eq!(sample["feature_1"][0], 0.0);
+    ///
+    /// // Features must be strictly increasing within a row.
+    /// assert!(Sample::from_csr(2, &[0, 2], &[1, 0], &[1.0, 2.0], None).is_err());
+    /// ```
+    pub fn from_csr(
+        n_features: usize,
+        indptr: &[usize],
+        indices: &[usize],
+        data: &[f64],
+        target: Option<&[f64]>,
+    ) -> Result<Self, String> {
+        let n_rows = indptr.len().saturating_sub(1);
+        if n_rows == 0 || n_features == 0 {
+            return Err("sparse data must contain at least one row and one feature".into());
+        }
+        if indices.len() != data.len() {
+            return Err("indices and data must have the same length".into());
+        }
+        if indptr[0] != 0 || indptr[n_rows] != data.len() {
+            return Err("indptr must start at 0 and end at the number of entries".into());
+        }
+        // Rows are visited in increasing order, so the entries of every
+        // feature come out in increasing row order.
+        let mut columns = vec![Vec::new(); n_features];
+        for (row, bounds) in indptr.windows(2).enumerate() {
+            let (start, end) = (bounds[0], bounds[1]);
+            if start > end || end > data.len() {
+                return Err(format!("indptr decreases at row {row}"));
+            }
+            let (features, values) = (&indices[start..end], &data[start..end]);
+            if features.windows(2).any(|pair| pair[0] >= pair[1]) {
+                return Err(format!(
+                    "row {row} has unsorted or duplicate feature indices"
+                ));
+            }
+            if features
+                .last()
+                .is_some_and(|&feature| feature >= n_features)
+            {
+                return Err(format!("row {row} has a feature index out of range"));
+            }
+            if values.iter().any(|v| !v.is_finite()) {
+                return Err(format!("row {row} contains a non-finite value"));
+            }
+            for (&feature, &value) in features.iter().zip(values) {
+                if value != 0.0 {
+                    columns[feature].push((row, value));
+                }
+            }
+        }
+        Self::from_sparse_columns(columns, n_rows, target)
+    }
+
+    /// Builds the sample of [`Sample::from_csc`] and [`Sample::from_csr`]
+    /// from the validated `(row, value)` entries of each feature.
+    fn from_sparse_columns(
+        columns: Vec<Vec<(usize, f64)>>,
+        n_rows: usize,
+        target: Option<&[f64]>,
+    ) -> Result<Self, String> {
+        if let Some(y) = target {
+            if y.len() != n_rows || y.iter().any(|v| !v.is_finite()) {
+                return Err("target must be finite and have one value per row".into());
+            }
+        }
+        let n_feature = columns.len();
+        let features = columns
+            .into_iter()
+            .enumerate()
+            .map(|(column, vals)| Feature::Sparse {
+                name: format!("feature_{column}"),
+                vals,
+                size: n_rows,
+            })
+            .collect::<Vec<_>>();
         let name_to_index = features
             .iter()
             .enumerate()
@@ -1204,6 +1302,67 @@ mod tests {
             unreachable!()
         };
         assert_eq!(vals, &[(1, -4.0)]);
+    }
+
+    #[test]
+    fn from_csr_agrees_with_from_csc() {
+        // [[1, 0, 0], [0, 0, -4], [2, 0, 0]] with an explicit zero at (0, 2).
+        let y = [1.0, -1.0, 1.0];
+        let csc = Sample::from_csc(
+            3,
+            &[0, 2, 2, 4],
+            &[0, 2, 0, 1],
+            &[1.0, 2.0, 0.0, -4.0],
+            Some(&y),
+        )
+        .unwrap();
+        let csr = Sample::from_csr(
+            3,
+            &[0, 2, 3, 4],
+            &[0, 2, 2, 0],
+            &[1.0, 0.0, -4.0, 2.0],
+            Some(&y),
+        )
+        .unwrap();
+        assert_eq!(csr.shape(), csc.shape());
+        assert_eq!(csr.target(), csc.target());
+        for (r, c) in csr.features().iter().zip(csc.features()) {
+            let (
+                Feature::Sparse {
+                    vals: a, size: m, ..
+                },
+                Feature::Sparse {
+                    vals: b, size: n, ..
+                },
+            ) = (r, c)
+            else {
+                unreachable!()
+            };
+            assert_eq!((r.name(), a, m), (c.name(), b, n));
+        }
+        assert_eq!(csr["feature_0"][2], 2.0);
+    }
+
+    #[test]
+    fn from_csr_rejects_malformed_input() {
+        let ok = |d, indptr: &[usize], indices: &[usize], data: &[f64], y: Option<&[f64]>| {
+            Sample::from_csr(d, indptr, indices, data, y).is_ok()
+        };
+        assert!(ok(2, &[0, 1, 1], &[1], &[1.0], Some(&[1.0, -1.0])));
+        assert!(!ok(2, &[0], &[], &[], None)); // no row
+        assert!(!ok(2, &[], &[], &[], None));
+        assert!(!ok(0, &[0, 0], &[], &[], None)); // no feature
+        assert!(!ok(2, &[0, 1], &[1], &[1.0, 2.0], None)); // lengths differ
+        assert!(!ok(2, &[1, 1], &[1], &[1.0], None)); // does not start at 0
+        assert!(!ok(2, &[0, 2], &[1], &[1.0], None)); // does not end at nnz
+        assert!(!ok(2, &[0, 2, 1, 2], &[0, 1], &[1.0, 1.0], None)); // decreases
+        assert!(!ok(2, &[0, 3, 2], &[0, 1], &[1.0, 1.0], None)); // exceeds nnz
+        assert!(!ok(2, &[0, 2], &[1, 0], &[1.0, 1.0], None)); // unsorted
+        assert!(!ok(2, &[0, 2], &[1, 1], &[1.0, 1.0], None)); // duplicate
+        assert!(!ok(2, &[0, 1], &[2], &[1.0], None)); // feature out of range
+        assert!(!ok(2, &[0, 1], &[0], &[f64::NAN], None));
+        assert!(!ok(2, &[0, 1], &[0], &[1.0], Some(&[1.0, -1.0]))); // target length
+        assert!(!ok(2, &[0, 1], &[0], &[1.0], Some(&[f64::INFINITY])));
     }
 
     #[test]
