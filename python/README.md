@@ -198,9 +198,9 @@ feature sparsely in Rust, and the trees and linear learners work on the stored
 entries. On 20000 examples with 300 features and 1% nonzero entries, fitting
 and evaluating one `DecisionTreeClassifier(max_depth=3)` took 27 ms instead of
 547 ms for the same data as a dense array, and one `BoundedLinearClassifier`
-21 ms instead of 398 ms (Apple M-series, release build, conversion included).
-`NaiveBayesClassifier` and `RBFClassifier` accept sparse input but gain no
-speed from it.
+21 ms instead of 398 ms, one `NaiveBayesClassifier` 32 ms instead of 496 ms,
+and one `RBFClassifier` with 50 centers 29 ms instead of 1046 ms (Apple
+M-series, release build, conversion included).
 
 A sparse matrix and the equal dense array give results that agree up to
 rounding in the last bits, because sums over a sparse feature leave out its

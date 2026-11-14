@@ -32,6 +32,7 @@
 //! let f = LpBoost::init(&sample).nu(1.0).tolerance(0.01).run(&learner);
 //! assert_eq!(f.predict_all(&sample), sample.target().iter().map(|&y| y as i64).collect::<Vec<_>>());
 //! ```
+use crate::core::sample::feature::{separable_sum_at, separable_sums};
 use crate::core::{Classifier, Sample};
 use crate::weak_learners::finite_class::FiniteClass;
 use serde::{Deserialize, Serialize};
@@ -117,17 +118,35 @@ impl Classifier for RbfHypothesis {
     /// # Panics
     /// Panics if `sample` lacks one of the center's features.
     fn confidence(&self, sample: &Sample, row: usize) -> f64 {
-        self.bump(|k| sample[&self.feature_names[k]][row])
+        let columns = sample.columns(&self.feature_names);
+        if columns.iter().any(|feature| feature.is_sparse()) {
+            let squared = separable_sum_at(&columns, row, |k, x| (x - self.center[k]).powi(2));
+            return self.bump_at(squared.max(0.0));
+        }
+        self.bump(|k| columns[k][row])
     }
 
     /// Same values as [`Classifier::confidence`] row by row, looking each
     /// feature up once instead of once per row.
+    ///
+    /// If a feature is sparse, the time is proportional to the dense values
+    /// and the stored entries: `‖x - x_c‖²` is `Σ_k x_{c,k}²` over the sparse
+    /// features, plus `(x_k - x_{c,k})² - x_{c,k}²` where one stores a value.
+    /// The difference cancels where both `x_k` and `x_{c,k}` are nonzero, so
+    /// the squared distance has an absolute error of order `ε ‖x_c‖²`
+    /// (`ε = 2⁻⁵³`) and is clamped at 0 to keep the confidence at most 1.
     fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
         let n_sample = sample.shape().0;
         if n_sample == 0 {
             return Vec::new();
         }
         let columns = sample.columns(&self.feature_names);
+        if columns.iter().any(|feature| feature.is_sparse()) {
+            return separable_sums(&columns, n_sample, |k, x| (x - self.center[k]).powi(2))
+                .into_iter()
+                .map(|squared| self.bump_at(squared.max(0.0)))
+                .collect();
+        }
         (0..n_sample)
             .map(|row| self.bump(|k| columns[k][row]))
             .collect()
@@ -144,6 +163,11 @@ impl RbfHypothesis {
             .enumerate()
             .map(|(k, c)| (x(k) - c).powi(2))
             .sum();
+        self.bump_at(squared)
+    }
+
+    /// `exp(-squared / (2σ²))` for the squared distance `squared`.
+    fn bump_at(&self, squared: f64) -> f64 {
         (-squared / (2.0 * self.bandwidth * self.bandwidth)).exp()
     }
 }

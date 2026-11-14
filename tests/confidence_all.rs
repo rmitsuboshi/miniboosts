@@ -96,3 +96,79 @@ fn majority_vote() {
     assert_matches_rowwise(&MajorityVote::new(voters), &sample);
     assert_matches_rowwise(&MajorityVote::<LinearClassifier>::new(Vec::new()), &sample);
 }
+
+/// 40 examples with 6 features, about a third of the entries nonzero and
+/// feature 4 all zero, as a dense sample and as a sparse one (from CSR).
+fn dense_and_sparse() -> (Sample, Sample) {
+    let rows: Vec<Vec<f64>> = (0..40_u32)
+        .map(|i| {
+            (0..6_u32)
+                .map(|k| {
+                    if k != 4 && (i * 7 + k * 5) % 3 == 0 {
+                        f64::from((i * 11 + k * 13) % 17) * 0.25 - 2.0
+                    } else {
+                        0.0
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    let target: Vec<f64> = (0..40)
+        .map(|i| if i % 3 == 0 { 1.0 } else { -1.0 })
+        .collect();
+    let (mut indptr, mut indices, mut data) = (vec![0], Vec::new(), Vec::new());
+    for row in &rows {
+        for (k, &x) in row.iter().enumerate() {
+            if x != 0.0 {
+                indices.push(k);
+                data.push(x);
+            }
+        }
+        indptr.push(data.len());
+    }
+    let dense = Sample::from_dense(&rows, Some(&target)).unwrap();
+    let sparse = Sample::from_csr(6, &indptr, &indices, &data, Some(&target)).unwrap();
+    (dense, sparse)
+}
+
+/// On sparse features the terms at zero are added once for all rows, which
+/// reorders the sums: the batch and row-wise values still agree bitwise, and
+/// both agree with the dense sample up to rounding.
+fn assert_sparse_matches_dense<H: Classifier>(h: &H, dense: &Sample, sparse: &Sample) {
+    assert!(sparse.features().iter().all(|f| f.is_sparse()));
+    assert_matches_rowwise(h, sparse);
+    let expected = h.confidence_all(dense);
+    for (row, value) in h.confidence_all(sparse).into_iter().enumerate() {
+        // Sums of at most 7 terms of magnitude below 100.
+        assert!((value - expected[row]).abs() < 1e-13, "row {row}");
+        assert!(value.abs() <= 1.0, "row {row}");
+    }
+}
+
+#[test]
+fn naive_bayes_on_sparse_features() {
+    let (dense, sparse) = dense_and_sparse();
+    let dist = vec![1.0 / 40.0; 40];
+    let from_dense = NaiveBayes::new().produce(&dense, &dist);
+    assert_sparse_matches_dense(&from_dense, &dense, &sparse);
+    // Trained on the sparse sample: the same model up to rounding.
+    let from_sparse = NaiveBayes::new().produce(&sparse, &dist);
+    assert_sparse_matches_dense(&from_sparse, &dense, &sparse);
+    let expected = from_dense.confidence_all(&dense);
+    for (row, value) in from_sparse.confidence_all(&dense).into_iter().enumerate() {
+        assert!((value - expected[row]).abs() < 1e-13, "row {row}");
+    }
+}
+
+#[test]
+fn rbf_on_sparse_features() {
+    let (dense, sparse) = dense_and_sparse();
+    let h = RbfHypothesis::new(names(&dense), vec![0.25, -1.0, 0.0, 3.0, 0.0, -0.5], 2.0);
+    assert_sparse_matches_dense(&h, &dense, &sparse);
+    // Centered at an example: the squared distance cancels to about 0 there
+    // and must not become negative.
+    let (center, _) = dense.at(3);
+    let h = RbfHypothesis::new(names(&dense), center, 0.5);
+    assert_sparse_matches_dense(&h, &dense, &sparse);
+    assert!((h.confidence(&sparse, 3) - 1.0).abs() < 1e-13);
+}

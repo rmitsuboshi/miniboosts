@@ -606,6 +606,71 @@ pub(crate) fn gallop<T>(items: &[T], from: usize, before: impl Fn(&T) -> bool) -
     lo + items[lo..hi].partition_point(before)
 }
 
+/// Returns `Σ_k term(k, x_k)` for every row of `columns`, a set of features
+/// with `n_rows` rows of which at least one is sparse, in time proportional
+/// to the dense values and the stored sparse entries rather than to
+/// `n_rows × columns.len()`.
+///
+/// A sparse feature `k` contributes `term(k, 0.0)` to a base value shared by
+/// all rows, and `term(k, x) - term(k, 0.0)` to the rows where it stores a
+/// nonzero `x`. This is a different order of summation than adding
+/// `term(k, x_k)` feature by feature, so the result differs from that sum by
+/// rounding. [`separable_sum_at`] performs the same operations for one row
+/// and returns the same bits.
+pub(crate) fn separable_sums(
+    columns: &[&Feature],
+    n_rows: usize,
+    term: impl Fn(usize, f64) -> f64,
+) -> Vec<f64> {
+    let mut sums = vec![separable_base(columns, &term); n_rows];
+    for (k, feature) in columns.iter().enumerate() {
+        match feature {
+            Feature::Dense { vals, .. } => {
+                for (sum, &x) in sums.iter_mut().zip(vals) {
+                    *sum += term(k, x);
+                }
+            }
+            Feature::Sparse { vals, .. } => {
+                let at_zero = term(k, 0.0);
+                for &(row, x) in vals {
+                    if x != 0.0 {
+                        sums[row] += term(k, x) - at_zero;
+                    }
+                }
+            }
+        }
+    }
+    sums
+}
+
+/// The entry of [`separable_sums`] for `row`.
+pub(crate) fn separable_sum_at(
+    columns: &[&Feature],
+    row: usize,
+    term: impl Fn(usize, f64) -> f64,
+) -> f64 {
+    let mut sum = separable_base(columns, &term);
+    for (k, feature) in columns.iter().enumerate() {
+        let x = feature[row];
+        if feature.is_dense() {
+            sum += term(k, x);
+        } else if x != 0.0 {
+            sum += term(k, x) - term(k, 0.0);
+        }
+    }
+    sum
+}
+
+/// The sum of `term(k, 0.0)` over the sparse features.
+fn separable_base(columns: &[&Feature], term: &impl Fn(usize, f64) -> f64) -> f64 {
+    columns
+        .iter()
+        .enumerate()
+        .filter(|(_, feature)| feature.is_sparse())
+        .map(|(k, _)| term(k, 0.0))
+        .sum()
+}
+
 impl Index<usize> for Feature {
     type Output = f64;
     fn index(&self, idx: usize) -> &Self::Output {

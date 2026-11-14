@@ -126,6 +126,29 @@ boosters pass the sparse matrix on to their weak learner. `scipy>=1.8` is now
 a declared dependency of the Python package (scikit-learn already required
 scipy). Dense input behaves as before.
 
+`GradientBoosting` and `LogitBoost` with `RegressionTree` are 10 to 27 times
+faster and return the same models. `Sample` now shares its features between
+clones and the copies made by `Sample::with_target`, which no longer copies
+them (a method that changes the features of one copy, such as `set_target` or
+`replace_names`, copies them first). `RegressionTree` stores the bin of every
+value of its builder's sample (4 bytes per value, or per stored entry of a
+sparse feature), uses it when `produce` gets that sample or a `with_target`
+copy of it, and searches the features in parallel. `RegressionTreeRegressor`
+and `AdditiveModel` override `predict_all` (and `AdditiveModel`
+`confidence_all`), and both boosters call it. On 20000 examples with depth-3
+trees, a round of gradient boosting went from 83 ms to 7.8 ms with 50 dense
+features, and from 265 ms to 20 ms with 300 sparse features (5% nonzero); a
+round of LogitBoost went from 78 ms to 2.9 ms on the dense data.
+
+`NaiveBayesClassifier` and `RbfHypothesis` predict on sparse features in time
+proportional to the stored entries. Each adds its terms at `x_k = 0` once for
+all rows and corrects them where a feature stores a value, so on a sample
+with a sparse feature the confidences differ from earlier results in the last
+bits (`confidence` and `confidence_all` still agree exactly). For
+`RbfHypothesis` the squared distance then has an absolute error of order
+`2⁻⁵³ ‖x_c‖²` and is clamped at 0. Samples without sparse features give the
+same values as before.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

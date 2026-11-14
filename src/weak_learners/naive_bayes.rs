@@ -29,7 +29,8 @@
 //! println!("{correct} of 12 training examples correct");
 //! assert!(f.confidence_all(&sample).iter().all(|c| (-1.0..=1.0).contains(c)));
 //! ```
-use crate::core::{Classifier, Sample, WeakLearner};
+use crate::core::sample::feature::{separable_sum_at, separable_sums};
+use crate::core::{Classifier, Feature, Sample, WeakLearner};
 use serde::{Deserialize, Serialize};
 
 /// Weighted Gaussian naive Bayes.
@@ -258,7 +259,33 @@ impl NaiveBayesClassifier {
     /// assert_eq!(h.log_odds(&midpoint, 0), 0.0);
     /// ```
     pub fn log_odds(&self, sample: &Sample, row: usize) -> f64 {
+        if self.only_label.is_none() {
+            let columns = sample.columns(&self.feature_names);
+            if columns.iter().any(|feature| feature.is_sparse()) {
+                return separable_sum_at(&columns, row, |k, x| self.log_ratio(k, x))
+                    + self.log_prior_ratio;
+            }
+        }
         self.log_odds_from(|k| sample[&self.feature_names[k]][row])
+    }
+
+    /// `ln N(x; μ_{+1,k}, σ²_{+1,k}) - ln N(x; μ_{-1,k}, σ²_{-1,k})`.
+    fn log_ratio(&self, k: usize, x: f64) -> f64 {
+        let log_density = |(mean, var): (f64, f64)| {
+            -0.5 * (std::f64::consts::TAU * var).ln() - (x - mean).powi(2) / (2.0 * var)
+        };
+        log_density(self.positive[k]) - log_density(self.negative[k])
+    }
+
+    /// The log odds of every row of `columns`, of which at least one is
+    /// sparse: the terms of `L(x)` at `x_k = 0` are added once for all rows
+    /// and corrected where a sparse feature stores a value.
+    fn log_odds_sparse(&self, columns: &[&Feature], n_sample: usize) -> Vec<f64> {
+        let mut odds = separable_sums(columns, n_sample, |k, x| self.log_ratio(k, x));
+        for value in &mut odds {
+            *value += self.log_prior_ratio;
+        }
+        odds
     }
 
     /// The log odds, where `x(k)` is the value of the `k`-th feature. `x` is
@@ -267,17 +294,8 @@ impl NaiveBayesClassifier {
         if let Some(label) = self.only_label {
             return label * f64::INFINITY;
         }
-        let log_density = |x: f64, (mean, var): (f64, f64)| {
-            -0.5 * (std::f64::consts::TAU * var).ln() - (x - mean).powi(2) / (2.0 * var)
-        };
-        self.positive
-            .iter()
-            .zip(&self.negative)
-            .enumerate()
-            .map(|(k, (&pos, &neg))| {
-                let x = x(k);
-                log_density(x, pos) - log_density(x, neg)
-            })
+        (0..self.positive.len())
+            .map(|k| self.log_ratio(k, x(k)))
             .sum::<f64>()
             + self.log_prior_ratio
     }
@@ -289,7 +307,8 @@ impl Classifier for NaiveBayesClassifier {
     }
 
     /// Same values as [`Classifier::confidence`] row by row, looking each
-    /// feature up once instead of once per row.
+    /// feature up once instead of once per row. If a feature is sparse, the
+    /// time is proportional to the dense values and the stored entries.
     fn confidence_all(&self, sample: &Sample) -> Vec<f64> {
         let n_sample = sample.shape().0;
         // With a single label the features are not read at all.
@@ -298,6 +317,13 @@ impl Classifier for NaiveBayesClassifier {
         } else {
             sample.columns(&self.feature_names)
         };
+        if columns.iter().any(|feature| feature.is_sparse()) {
+            return self
+                .log_odds_sparse(&columns, n_sample)
+                .into_iter()
+                .map(|odds| (0.5 * odds).tanh())
+                .collect();
+        }
         (0..n_sample)
             .map(|row| (0.5 * self.log_odds_from(|k| columns[k][row])).tanh())
             .collect()
