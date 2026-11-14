@@ -149,6 +149,12 @@ bits (`confidence` and `confidence_all` still agree exactly). For
 `2⁻⁵³ ‖x_c‖²` and is clamped at 0. Samples without sparse features give the
 same values as before.
 
+The Python estimators pass feature matrices to Rust as the bytes of their
+arrays instead of nested lists. On 20000 examples with 300 dense features,
+`decision_function` of a native weak learner takes 32 ms instead of 187 ms,
+and 20 rounds of `AdaBoostClassifier` with depth-3 trees 5.3 s instead of
+12.3 s. Results are unchanged.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

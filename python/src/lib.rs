@@ -8,6 +8,7 @@ use miniboosts::{
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
     prelude::*,
+    pybacked::PyBackedBytes,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -36,11 +37,19 @@ const GBM_NO_MINIMIZER_STOP: &str =
 // left to fit (the scores of all examples have saturated).
 const LOGITBOOST_UNDERFLOW_STOP: &str = "every LogitBoost weight underflowed to 0";
 
-/// A feature matrix from Python: a list of dense rows, or the tuple
-/// `(n_rows, indptr, indices, data)` of a `scipy.sparse` CSC matrix, whose
-/// features are then stored sparsely.
+/// A feature matrix from Python. The estimators pass the raw bytes of numpy
+/// arrays (native byte order), which avoids one Python object per value:
+/// - `(n_rows, n_features, values)`: a dense matrix, `values` being its
+///   `float64` entries in row-major order;
+/// - `(n_rows, indptr, indices, data)`: a `scipy.sparse` CSC matrix, with
+///   `int64` `indptr` and `indices` and `float64` `data`; its features are
+///   stored sparsely.
+///
+/// A list of dense rows and a CSC tuple of lists are accepted as well.
 #[derive(FromPyObject)]
 enum Matrix {
+    DenseBytes(usize, usize, PyBackedBytes),
+    CscBytes(usize, PyBackedBytes, PyBackedBytes, PyBackedBytes),
     Csc(usize, Vec<usize>, Vec<usize>, Vec<f64>),
     Dense(Vec<Vec<f64>>),
 }
@@ -49,6 +58,30 @@ impl Matrix {
     /// target, if any.
     fn sample(&self, target: Option<&[f64]>) -> PyResult<Sample> {
         match self {
+            Self::DenseBytes(n_rows, n_features, values) => {
+                let values = floats(values)?;
+                if n_rows.checked_mul(*n_features) != Some(values.len()) {
+                    return Err(PyValueError::new_err(
+                        "the dense buffer does not match the matrix shape",
+                    ));
+                }
+                let rows: Vec<Vec<f64>> = if *n_features == 0 {
+                    Vec::new()
+                } else {
+                    values
+                        .chunks_exact(*n_features)
+                        .map(<[f64]>::to_vec)
+                        .collect()
+                };
+                Sample::from_dense(&rows, target)
+            }
+            Self::CscBytes(n_rows, indptr, indices, data) => Sample::from_csc(
+                *n_rows,
+                &offsets(indptr)?,
+                &offsets(indices)?,
+                &floats(data)?,
+                target,
+            ),
             Self::Csc(n_rows, indptr, indices, data) => {
                 Sample::from_csc(*n_rows, indptr, indices, data, target)
             }
@@ -56,6 +89,33 @@ impl Matrix {
         }
         .map_err(PyValueError::new_err)
     }
+}
+
+/// The 8-byte words of a numpy buffer.
+fn words(bytes: &[u8]) -> PyResult<impl Iterator<Item = [u8; 8]> + '_> {
+    if bytes.len() % 8 != 0 {
+        return Err(PyValueError::new_err(
+            "an array buffer must hold 8-byte values",
+        ));
+    }
+    Ok(bytes
+        .chunks_exact(8)
+        .map(|word| word.try_into().expect("chunks of 8 bytes")))
+}
+
+/// The values of a `float64` numpy buffer.
+fn floats(bytes: &[u8]) -> PyResult<Vec<f64>> {
+    Ok(words(bytes)?.map(f64::from_ne_bytes).collect())
+}
+
+/// The values of an `int64` numpy buffer of indices.
+fn offsets(bytes: &[u8]) -> PyResult<Vec<usize>> {
+    words(bytes)?
+        .map(|word| {
+            usize::try_from(i64::from_ne_bytes(word))
+                .map_err(|_| PyValueError::new_err("sparse indices must be nonnegative"))
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug)]

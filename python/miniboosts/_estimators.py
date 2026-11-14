@@ -39,20 +39,23 @@ def _positive_finite(name, value):
 
 
 def _native_matrix(X):
-    """The form of X that the Rust functions take.
+    """The form of X that the Rust functions take: the bytes of its arrays.
 
-    A dense array becomes a list of rows. A sparse matrix becomes
+    A dense array becomes ``(n_rows, n_features, values)`` with its float64
+    values in row order. A sparse matrix becomes
     ``(n_rows, indptr, indices, data)`` in CSC form, with sorted row indices
-    and no duplicate entries; Rust then stores every feature sparsely.
+    and no duplicate entries; Rust then stores every feature sparsely. Bytes
+    cost one copy of the array, not one Python object per value.
     """
     if not sparse.issparse(X):
-        return X.tolist()
+        return X.shape[0], X.shape[1], np.ascontiguousarray(X, dtype=np.float64).tobytes()
     X = X.tocsc()
     if not X.has_canonical_format:
         # Do not reorder the caller's matrix in place.
         X = X.copy()
         X.sum_duplicates()
-    return X.shape[0], X.indptr.tolist(), X.indices.tolist(), X.data.tolist()
+    return (X.shape[0], X.indptr.astype(np.int64).tobytes(),
+            X.indices.astype(np.int64).tobytes(), X.data.astype(np.float64).tobytes())
 
 
 class _SparseInput:

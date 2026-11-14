@@ -128,3 +128,28 @@ def test_native_boundary_validates_csc_arrays():
 def test_sparse_input_tag():
     for estimator in [DecisionTreeClassifier(), RegressionTreeRegressor()]:
         assert estimator.__sklearn_tags__().input_tags.sparse
+
+
+def test_native_boundary_validates_array_bytes():
+    y, w = [-1.0, 1.0, 1.0], [0.25, 0.25, 0.5]
+    fit = _native.fit_bounded_linear
+    f8 = lambda values: np.asarray(values, dtype=np.float64).tobytes()
+    i8 = lambda values: np.asarray(values, dtype=np.int64).tobytes()
+    dense = fit((3, 2, f8([1, 0, 0, 0, -1, 2])), y, w)
+    from_csc = fit((3, i8([0, 2, 3]), i8([0, 2, 2]), f8([1, -1, 2])), y, w)
+    rows = [[1.0, 0.0], [0.0, 0.0], [-1.0, 2.0]]
+    expected = fit(rows, y, w).decision_function(rows)
+    for model in [dense, from_csc]:
+        np.testing.assert_allclose(model.decision_function((3, 2, f8(rows))), expected,
+                                   rtol=0, atol=TOLERANCE)
+    for matrix, message in [
+        ((3, 2, f8([1, 0, 0, 0, -1])), 'shape'),
+        ((3, 2, f8([1, 0, 0, 0, -1, 2])[:-1]), '8-byte'),
+        ((3, 2, f8([1, 0, 0, 0, -1, np.nan])), 'non-finite'),
+        ((3, 0, b''), 'at least one row and one feature'),
+        ((3, i8([0, 2]), i8([-1, 2]), f8([1, -1])), 'nonnegative'),
+        ((3, i8([0, 2]), i8([2, 0]), f8([1, -1])), 'unsorted or duplicate'),
+        ((3, i8([0, 2]), i8([0, 2]), f8([1, -1])[:-3]), '8-byte'),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            fit(matrix, y, w)

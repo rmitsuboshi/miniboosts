@@ -351,7 +351,9 @@ provide multiclass, model persistence/pickling, `predict_proba`,
 or an interactive UI. Do not share a fitted model across concurrent prediction
 calls. Process-based workflows that serialize fitted native models are not
 supported. Native weak-learner fitting releases the Python GIL; the entire boosting
-loop does not. Array conversion and callback copies incur overhead, so include
-them when reporting Python-facing timings. Training caches use O(nT) memory
+loop does not. Feature matrices cross into Rust as the bytes of their arrays
+(one copy), and Rust copies them once more into its column store; boosters
+also copy `X` for every weak-learner call. Include this overhead when
+reporting Python-facing timings. Training caches use O(nT) memory
 for n examples and T candidate learners, in addition to algorithm-specific
 storage. Free-threaded CPython builds are not supported.
