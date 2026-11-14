@@ -36,6 +36,28 @@ const GBM_NO_MINIMIZER_STOP: &str =
 // left to fit (the scores of all examples have saturated).
 const LOGITBOOST_UNDERFLOW_STOP: &str = "every LogitBoost weight underflowed to 0";
 
+/// A feature matrix from Python: a list of dense rows, or the tuple
+/// `(n_rows, indptr, indices, data)` of a `scipy.sparse` CSC matrix, whose
+/// features are then stored sparsely.
+#[derive(FromPyObject)]
+enum Matrix {
+    Csc(usize, Vec<usize>, Vec<usize>, Vec<f64>),
+    Dense(Vec<Vec<f64>>),
+}
+impl Matrix {
+    /// Validates the matrix (shape, finite values, sorted CSC rows) and the
+    /// target, if any.
+    fn sample(&self, target: Option<&[f64]>) -> PyResult<Sample> {
+        match self {
+            Self::Csc(n_rows, indptr, indices, data) => {
+                Sample::from_csc(*n_rows, indptr, indices, data, target)
+            }
+            Self::Dense(rows) => Sample::from_dense(rows, target),
+        }
+        .map_err(PyValueError::new_err)
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Hypothesis {
     index: usize,
@@ -294,7 +316,7 @@ where
 #[allow(clippy::too_many_arguments)]
 fn train(
     algorithm: &str,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     callback: Py<PyAny>,
     max_iterations: Option<usize>,
@@ -314,7 +336,7 @@ fn train(
     first_stage: &str,
     first_stage_tolerance: f64,
 ) -> PyResult<Model> {
-    let sample = Sample::from_dense(&x, Some(&y)).map_err(PyValueError::new_err)?;
+    let sample = x.sample(Some(&y))?;
     if max_iterations == Some(0) {
         return Err(PyValueError::new_err("max_iterations must be positive"));
     }
@@ -661,8 +683,8 @@ struct NativeClassifier {
 }
 #[pymethods]
 impl NativeClassifier {
-    fn decision_function(&self, x: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
-        let sample = Sample::from_dense(&x, None).map_err(PyValueError::new_err)?;
+    fn decision_function(&self, x: Matrix) -> PyResult<Vec<f64>> {
+        let sample = x.sample(None)?;
         if sample.shape().1 != self.n_features {
             return Err(PyValueError::new_err("incorrect feature count"));
         }
@@ -674,12 +696,12 @@ impl NativeClassifier {
 /// (invalid parameters, non-convergence) become `RuntimeError`.
 fn fit_native<H: Send>(
     py: Python<'_>,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     weights: Vec<f64>,
     fit: impl FnOnce(&Sample, &[f64]) -> H + Send,
 ) -> PyResult<(H, usize)> {
-    let sample = Sample::from_dense(&x, Some(&y)).map_err(PyValueError::new_err)?;
+    let sample = x.sample(Some(&y))?;
     check_labels(&y)?;
     check_distribution(&weights, y.len())?;
     let n_features = sample.shape().1;
@@ -741,7 +763,7 @@ impl Selection {
 #[allow(clippy::too_many_arguments)]
 fn fit_tree(
     py: Python<'_>,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     weights: Vec<f64>,
     max_depth: usize,
@@ -791,7 +813,7 @@ fn fit_tree(
 #[pyfunction]
 fn fit_bounded_linear(
     py: Python<'_>,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     weights: Vec<f64>,
 ) -> PyResult<NativeClassifier> {
@@ -802,7 +824,7 @@ fn fit_bounded_linear(
 #[pyfunction]
 fn fit_logistic_regression(
     py: Python<'_>,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     weights: Vec<f64>,
     regularization: f64,
@@ -825,7 +847,7 @@ fn fit_logistic_regression(
 #[pyfunction]
 fn fit_naive_bayes(
     py: Python<'_>,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     weights: Vec<f64>,
     var_smoothing: f64,
@@ -841,7 +863,7 @@ fn fit_naive_bayes(
 #[allow(clippy::too_many_arguments)]
 fn fit_rbf(
     py: Python<'_>,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     weights: Vec<f64>,
     bandwidth: f64,
@@ -964,8 +986,8 @@ struct NativeRegressor {
 }
 #[pymethods]
 impl NativeRegressor {
-    fn predict(&self, x: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
-        let sample = Sample::from_dense(&x, None).map_err(PyValueError::new_err)?;
+    fn predict(&self, x: Matrix) -> PyResult<Vec<f64>> {
+        let sample = x.sample(None)?;
         if sample.shape().1 != self.n_features {
             return Err(PyValueError::new_err("incorrect feature count"));
         }
@@ -977,14 +999,14 @@ impl NativeRegressor {
 #[pyo3(signature = (x, y, weights, max_depth, n_bins=None))]
 fn fit_regression_tree(
     py: Python<'_>,
-    x: Vec<Vec<f64>>,
+    x: Matrix,
     y: Vec<f64>,
     weights: Vec<f64>,
     max_depth: usize,
     n_bins: Option<usize>,
 ) -> PyResult<NativeRegressor> {
-    // Targets are real values, so only finiteness is checked (by from_dense).
-    let sample = Sample::from_dense(&x, Some(&y)).map_err(PyValueError::new_err)?;
+    // Targets are real values, so only finiteness is checked (by `Matrix::sample`).
+    let sample = x.sample(Some(&y))?;
     check_distribution(&weights, y.len())?;
     if n_bins == Some(0) {
         return Err(PyValueError::new_err("n_bins must be positive"));

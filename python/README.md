@@ -179,6 +179,38 @@ equal-width bins, and the best split may be missed.
   `gamma` (`sign_` holds the signed scale). If no member reaches `gamma`, the
   largest edge is used and `assumption_violated_` is `True`.
 
+## Sparse input
+
+`fit`, `decision_function`, and `predict` accept `scipy.sparse` matrices and
+arrays of any format; they are converted to CSC, like the output of
+`sklearn.datasets.load_svmlight_file`:
+
+```python
+from sklearn.datasets import load_svmlight_file
+from miniboosts import AdaBoostClassifier, DecisionTreeClassifier
+
+X, y = load_svmlight_file("train.svm")  # a scipy.sparse CSR matrix
+clf = AdaBoostClassifier(estimator=DecisionTreeClassifier(max_depth=3)).fit(X, y)
+```
+
+The native weak learners and `RegressionTreeRegressor` then store every
+feature sparsely in Rust, and the trees and linear learners work on the stored
+entries. On 20000 examples with 300 features and 1% nonzero entries, fitting
+and evaluating one `DecisionTreeClassifier(max_depth=3)` took 27 ms instead of
+547 ms for the same data as a dense array, and one `BoundedLinearClassifier`
+21 ms instead of 398 ms (Apple M-series, release build, conversion included).
+`NaiveBayesClassifier` and `RBFClassifier` accept sparse input but gain no
+speed from it.
+
+A sparse matrix and the equal dense array give results that agree up to
+rounding in the last bits, because sums over a sparse feature leave out its
+zeros. A decision tree can therefore choose a different split when two
+candidates have exactly the same score, which happens on small samples.
+Entries stored as `0.0` are treated as zeros, duplicate entries are summed, and
+your matrix is not modified. Boosters and the sub-sample majorities pass the
+sparse matrix on to the weak learner, so a custom weak learner must accept it.
+`center_` of `RBFClassifier` is a dense vector.
+
 ## Algorithms and parameters
 
 All boosters accept `estimator=None` and `max_iterations=100` (SparsiBoost and
@@ -314,8 +346,8 @@ Do not mutate these fitted learners or lists.
 
 ## Current limits
 
-This first binding supports dense binary classification. It does not yet
-provide sparse inputs, multiclass, model persistence/pickling, `predict_proba`,
+This first binding supports binary classification. It does not yet
+provide multiclass, model persistence/pickling, `predict_proba`,
 or an interactive UI. Do not share a fitted model across concurrent prediction
 calls. Process-based workflows that serialize fitted native models are not
 supported. Native weak-learner fitting releases the Python GIL; the entire boosting

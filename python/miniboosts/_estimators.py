@@ -3,6 +3,7 @@ import numbers
 import warnings
 
 import numpy as np
+from scipy import sparse
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
 from sklearn.utils.validation import check_is_fitted, validate_data
 
@@ -37,6 +38,32 @@ def _positive_finite(name, value):
         raise ValueError(f'{name} must be finite and strictly positive')
 
 
+def _native_matrix(X):
+    """The form of X that the Rust functions take.
+
+    A dense array becomes a list of rows. A sparse matrix becomes
+    ``(n_rows, indptr, indices, data)`` in CSC form, with sorted row indices
+    and no duplicate entries; Rust then stores every feature sparsely.
+    """
+    if not sparse.issparse(X):
+        return X.tolist()
+    X = X.tocsc()
+    if not X.has_canonical_format:
+        # Do not reorder the caller's matrix in place.
+        X = X.copy()
+        X.sum_duplicates()
+    return X.shape[0], X.indptr.tolist(), X.indices.tolist(), X.data.tolist()
+
+
+class _SparseInput:
+    """Estimators whose Rust implementation reads sparse features directly."""
+
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        tags.input_tags.sparse = True
+        return tags
+
+
 def _training_data(estimator, X, y):
     # Preserve mixed Python values until validation; numpy may stringify NaN.
     raw_y = np.asarray(y, dtype=object)
@@ -51,7 +78,7 @@ def _training_data(estimator, X, y):
              for v in raw_y}
     if len(kinds) > 1:
         raise ValueError('class labels must be all numeric, all strings, or all bytes')
-    X, y = validate_data(estimator, X, y, dtype=np.float64, ensure_min_samples=2)
+    X, y = validate_data(estimator, X, y, accept_sparse='csc', dtype=np.float64, ensure_min_samples=2)
     try:
         classes, inverse = np.unique(y, return_inverse=True)
     except TypeError as error:
@@ -88,8 +115,8 @@ def _confidence(estimator, X, context):
         values = np.asarray(raw, dtype=np.float64)
     except (TypeError, ValueError) as error:
         raise ValueError(f'{context}: confidence must be a numeric vector') from error
-    if values.shape != (len(X),):
-        raise ValueError(f'{context}: confidence shape {values.shape}; expected ({len(X)},)')
+    if values.shape != (X.shape[0],):
+        raise ValueError(f'{context}: confidence shape {values.shape}; expected ({X.shape[0]},)')
     invalid = ~np.isfinite(values) | (values < -1) | (values > 1)
     if np.any(invalid):
         row = int(np.flatnonzero(invalid)[0])
@@ -107,8 +134,8 @@ def _prediction(estimator, X, context):
         values = np.asarray(raw, dtype=np.float64)
     except (TypeError, ValueError) as error:
         raise ValueError(f'{context}: prediction must be a numeric vector') from error
-    if values.shape != (len(X),):
-        raise ValueError(f'{context}: prediction shape {values.shape}; expected ({len(X)},)')
+    if values.shape != (X.shape[0],):
+        raise ValueError(f'{context}: prediction shape {values.shape}; expected ({X.shape[0]},)')
     invalid = ~np.isfinite(values)
     if np.any(invalid):
         row = int(np.flatnonzero(invalid)[0])
@@ -170,10 +197,10 @@ class _BoostClassifier(ClassifierMixin, BaseEstimator):
             method = 'predict' if self._regression else 'decision_function'
             if not callable(getattr(template, 'fit', None)) or not callable(getattr(template, method, None)):
                 raise TypeError(f'estimator needs fit(X, y, sample_weight=...) and {method}(X)')
-            options = self._options(len(X))
+            options = self._options(X.shape[0])
             fitted, rounds = [], []
             # Own the training buffers: callbacks must not mutate shared X/y.
-            training_X = np.array(X, copy=True)
+            training_X = X.copy()
             training_y = np.array(encoded, copy=True)
 
             def produce(weights, round_number, target):
@@ -196,7 +223,7 @@ class _BoostClassifier(ClassifierMixin, BaseEstimator):
                 rounds.append(round_number)
                 return values.tolist()
 
-            native = _native.train(self._algorithm, training_X.tolist(), training_y.tolist(),
+            native = _native.train(self._algorithm, _native_matrix(training_X), training_y.tolist(),
                                    produce, max_iterations, **options)
             self.classes_ = classes
             self.estimators_ = fitted
@@ -213,10 +240,10 @@ class _BoostClassifier(ClassifierMixin, BaseEstimator):
     def decision_function(self, X):
         """Return ensemble confidence, not a probability or bounded weak score."""
         check_is_fitted(self, '_model_')
-        X = validate_data(self, X, reset=False, dtype=np.float64)
-        predictions = [self._weak_values(estimator, np.array(X, copy=True), round_number).tolist()
+        X = validate_data(self, X, accept_sparse='csc', reset=False, dtype=np.float64)
+        predictions = [self._weak_values(estimator, X.copy(), round_number).tolist()
                        for estimator, round_number in zip(self.estimators_, self.estimator_rounds_)]
-        return np.asarray(self._model_.decision_function(predictions, len(X)))
+        return np.asarray(self._model_.decision_function(predictions, X.shape[0]))
 
     def predict(self, X):
         scores = self.decision_function(X)
@@ -553,7 +580,7 @@ class GraphSeparationBoostingClassifier(_BoostClassifier):
         self.max_iterations = max_iterations
 
 
-class _NativeWeakClassifier(ClassifierMixin, BaseEstimator):
+class _NativeWeakClassifier(_SparseInput, ClassifierMixin, BaseEstimator):
     """A Rust weak learner fitted on (X, y, sample_weight)."""
 
     def _check_parameters(self):
@@ -567,7 +594,7 @@ class _NativeWeakClassifier(ClassifierMixin, BaseEstimator):
         try:
             self._check_parameters()
             X, encoded, classes = _training_data(self, X, y)
-            weights = _distribution(sample_weight, len(X))
+            weights = _distribution(sample_weight, X.shape[0])
             self._model_ = self._fit_native(X, encoded, weights)
             self.classes_ = classes
             return self
@@ -577,8 +604,8 @@ class _NativeWeakClassifier(ClassifierMixin, BaseEstimator):
 
     def decision_function(self, X):
         check_is_fitted(self, '_model_')
-        X = validate_data(self, X, reset=False, dtype=np.float64)
-        return np.asarray(self._model_.decision_function(X.tolist()))
+        X = validate_data(self, X, accept_sparse='csc', reset=False, dtype=np.float64)
+        return np.asarray(self._model_.decision_function(_native_matrix(X)))
 
     def predict(self, X):
         scores = self.decision_function(X)
@@ -612,7 +639,7 @@ class DecisionTreeClassifier(_NativeWeakClassifier):
             raise ValueError('leaf_confidence must be purity or sign')
 
     def _fit_native(self, X, encoded, weights):
-        return _native.fit_tree(X.tolist(), encoded.tolist(), weights.tolist(), int(self.max_depth),
+        return _native.fit_tree(_native_matrix(X), encoded.tolist(), weights.tolist(), int(self.max_depth),
                                 self.split_by, bool(self.exact_splits), self.leaf_confidence)
 
 
@@ -636,7 +663,7 @@ class BoundedLinearClassifier(_NativeWeakClassifier):
     """
 
     def _fit_native(self, X, encoded, weights):
-        return _native.fit_bounded_linear(X.tolist(), encoded.tolist(), weights.tolist())
+        return _native.fit_bounded_linear(_native_matrix(X), encoded.tolist(), weights.tolist())
 
 
 class LogisticRegressionClassifier(_NativeWeakClassifier):
@@ -656,7 +683,7 @@ class LogisticRegressionClassifier(_NativeWeakClassifier):
             raise ValueError('output must be sign or tanh')
 
     def _fit_native(self, X, encoded, weights):
-        return _native.fit_logistic_regression(X.tolist(), encoded.tolist(), weights.tolist(),
+        return _native.fit_logistic_regression(_native_matrix(X), encoded.tolist(), weights.tolist(),
                                                float(self.regularization), self.output)
 
 
@@ -669,7 +696,7 @@ class NaiveBayesClassifier(_NativeWeakClassifier):
         _positive_finite('var_smoothing', self.var_smoothing)
 
     def _fit_native(self, X, encoded, weights):
-        return _native.fit_naive_bayes(X.tolist(), encoded.tolist(), weights.tolist(),
+        return _native.fit_naive_bayes(_native_matrix(X), encoded.tolist(), weights.tolist(),
                                        float(self.var_smoothing))
 
 
@@ -697,20 +724,21 @@ class RBFClassifier(_NativeWeakClassifier):
             raw = np.asarray(self.centers)
             if (raw.ndim != 1 or len(raw) == 0 or raw.dtype == np.bool_
                     or not np.issubdtype(raw.dtype, np.integer)
-                    or np.any(raw < 0) or np.any(raw >= len(X))):
+                    or np.any(raw < 0) or np.any(raw >= X.shape[0])):
                 raise ValueError('centers must be a nonempty list of training row indices')
             centers = raw.astype(np.int64).tolist()
-        model = _native.fit_rbf(X.tolist(), encoded.tolist(), weights.tolist(),
+        model = _native.fit_rbf(_native_matrix(X), encoded.tolist(), weights.tolist(),
                                 float(self.bandwidth), centers, self.selection,
                                 _check_selection(self.selection, self.gamma))
         self.center_index_ = model.index if centers is None else centers[model.index]
-        self.center_ = X[self.center_index_].copy()
+        row = X[[self.center_index_]]
+        self.center_ = (row.toarray() if sparse.issparse(row) else row).ravel().copy()
         self.sign_ = model.sign
         self.assumption_violated_ = model.assumption_violated
         return model
 
 
-class RegressionTreeRegressor(RegressorMixin, BaseEstimator):
+class RegressionTreeRegressor(_SparseInput, RegressorMixin, BaseEstimator):
     """Rust weighted least-squares regression tree, for regression boosters.
 
     A feature with at most ``n_bins`` (default 255) distinct values gets
@@ -728,10 +756,10 @@ class RegressionTreeRegressor(RegressorMixin, BaseEstimator):
             _nonnegative_integer('max_depth', self.max_depth)
             if self.n_bins is not None:
                 _positive_integer('n_bins', self.n_bins)
-            X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True)
-            weights = _distribution(sample_weight, len(X))
+            X, y = validate_data(self, X, y, accept_sparse='csc', dtype=np.float64, y_numeric=True)
+            weights = _distribution(sample_weight, X.shape[0])
             n_bins = None if self.n_bins is None else int(self.n_bins)
-            self._model_ = _native.fit_regression_tree(X.tolist(), np.asarray(y, dtype=np.float64).tolist(),
+            self._model_ = _native.fit_regression_tree(_native_matrix(X), np.asarray(y, dtype=np.float64).tolist(),
                                                        weights.tolist(), int(self.max_depth), n_bins)
             return self
         except BaseException:
@@ -740,8 +768,8 @@ class RegressionTreeRegressor(RegressorMixin, BaseEstimator):
 
     def predict(self, X):
         check_is_fitted(self, '_model_')
-        X = validate_data(self, X, reset=False, dtype=np.float64)
-        return np.asarray(self._model_.predict(X.tolist()))
+        X = validate_data(self, X, accept_sparse='csc', reset=False, dtype=np.float64)
+        return np.asarray(self._model_.predict(_native_matrix(X)))
 
 
 class FiniteClassClassifier(ClassifierMixin, BaseEstimator):
@@ -782,7 +810,7 @@ class FiniteClassClassifier(ClassifierMixin, BaseEstimator):
                 raise ValueError('with_negations must be a boolean')
             gamma = _check_selection(self.selection, self.gamma)
             X, encoded, classes = _training_data(self, X, y)
-            weights = _distribution(sample_weight, len(X))
+            weights = _distribution(sample_weight, X.shape[0])
             columns = [_confidence(h, X.copy(), f'{type(h).__name__}, hypothesis {j}').tolist()
                        for j, h in enumerate(self.hypotheses)]
             index, sign, violated = _native.select_finite_class(
@@ -800,7 +828,7 @@ class FiniteClassClassifier(ClassifierMixin, BaseEstimator):
 
     def decision_function(self, X):
         check_is_fitted(self, 'hypothesis_')
-        X = validate_data(self, X, reset=False, dtype=np.float64)
+        X = validate_data(self, X, accept_sparse='csc', reset=False, dtype=np.float64)
         context = f'{type(self.hypothesis_).__name__}, hypothesis {self.index_}'
         return self.sign_ * _confidence(self.hypothesis_, X, context)
 
@@ -828,7 +856,7 @@ class _SubsampleMajority(ClassifierMixin, BaseEstimator):
             if not callable(getattr(template, 'fit', None)) or not callable(getattr(template, 'predict', None)):
                 raise TypeError('estimator needs fit(X, y) and predict(X)')
             fitted = []
-            for k, rows in enumerate(self._subsamples(len(X))):
+            for k, rows in enumerate(self._subsamples(X.shape[0])):
                 rows = np.asarray(rows, dtype=np.intp)
                 learner = clone(template)
                 try:
@@ -850,11 +878,11 @@ class _SubsampleMajority(ClassifierMixin, BaseEstimator):
     def decision_function(self, X):
         """Mean of the voters' -1/+1 predictions; its sign is the majority."""
         check_is_fitted(self, 'estimators_')
-        X = validate_data(self, X, reset=False, dtype=np.float64)
+        X = validate_data(self, X, accept_sparse='csc', reset=False, dtype=np.float64)
         votes = []
         for k, learner in enumerate(self.estimators_):
-            raw = np.asarray(learner.predict(np.array(X, copy=True)))
-            if raw.shape != (len(X),) or not np.isin(raw, [-1, 1]).all():
+            raw = np.asarray(learner.predict(X.copy()))
+            if raw.shape != (X.shape[0],) or not np.isin(raw, [-1, 1]).all():
                 raise ValueError(f'{type(self).__name__}, voter {k}: predictions must be -1/+1')
             votes.append(raw.astype(np.float64))
         return np.mean(votes, axis=0)
@@ -936,9 +964,9 @@ class PredictionAdapter(ClassifierMixin, BaseEstimator):
 
     def decision_function(self, X):
         check_is_fitted(self, 'estimator_')
-        X = validate_data(self, X, reset=False, dtype=np.float64)
+        X = validate_data(self, X, accept_sparse='csc', reset=False, dtype=np.float64)
         raw = np.asarray(self.estimator_.predict(X))
-        if raw.shape != (len(X),) or not np.isin(raw, [-1, 1]).all():
+        if raw.shape != (X.shape[0],) or not np.isin(raw, [-1, 1]).all():
             raise ValueError('PredictionAdapter requires the wrapped estimator to predict -1/+1 labels')
         return raw.astype(np.float64)
 

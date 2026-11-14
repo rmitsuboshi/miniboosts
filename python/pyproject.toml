@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Rust",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["numpy>=1.24", "scikit-learn>=1.6,<2"]
+dependencies = ["numpy>=1.24", "scipy>=1.8", "scikit-learn>=1.6,<2"]
 
 [project.urls]
 Homepage = "https://github.com/rmitsuboshi/miniboosts"

@@ -114,6 +114,16 @@ out, which can only turn a `0.0` into `-0.0` or back. On 20000 examples with
 300 sparse features (5% nonzero), 30 rounds of AdaBoost with `BoundedLinear`
 took 35 ms instead of 6.4 s; on dense samples it is about twice as fast.
 
+`Sample::from_csc` builds a sample with sparse features from a matrix in
+compressed sparse column form (`n_rows`, `indptr`, `indices`, `data`), with the
+feature names of `Sample::from_dense`. It rejects unsorted or duplicate row
+indices and non-finite values, and does not store entries equal to `0.0`.
+The Python estimators accept `scipy.sparse` input through it: the native weak
+learners and `RegressionTreeRegressor` keep the features sparse in Rust, and
+boosters pass the sparse matrix on to their weak learner. `scipy>=1.8` is now
+a declared dependency of the Python package (scikit-learn already required
+scipy). Dense input behaves as before.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles
