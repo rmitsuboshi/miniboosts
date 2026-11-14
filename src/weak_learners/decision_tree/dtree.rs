@@ -88,7 +88,7 @@ use std::fmt;
 ///   builder; `produce` must be called on a sample with the same feature
 ///   names. Values outside the builder's range fall into the outer bins.
 /// - The bin of every row of the builder's sample is stored for each dense
-///   feature (4 bytes per value). `produce` uses it when it is called on that
+///   feature (1 byte per value; 2 or 4 bytes with more than 256 or 65536 bins). `produce` uses it when it is called on that
 ///   same sample, as boosters do, and searches the bins again otherwise.
 /// - No pruning, minimum leaf size, or impurity-decrease threshold, unlike
 ///   the cost-complexity pruning of the original CART method.

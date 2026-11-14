@@ -236,14 +236,18 @@ impl Bins {
     /// Returns the [`BinIndex`] of `feature`, which these bins must cover.
     pub(crate) fn index(&self, feature: &Feature) -> BinIndex {
         match feature {
-            Feature::Dense { vals, .. } => {
-                BinIndex::Dense(vals.iter().map(|&x| self.index_of(x) as u32).collect())
-            }
+            Feature::Dense { vals, .. } => BinIndex::Dense(BinIds::collect(
+                self.0.len(),
+                vals.iter().map(|&x| self.index_of(x)),
+            )),
             Feature::Sparse { vals, .. } => BinIndex::Sparse {
-                bin_of_entry: vals.iter().map(|&(_, x)| self.index_of(x) as u32).collect(),
+                bin_of_entry: BinIds::collect(
+                    self.0.len(),
+                    vals.iter().map(|&(_, x)| self.index_of(x)),
+                ),
                 // Unused when no row is an implicit zero.
                 zero: if feature.has_zero() {
-                    self.index_of(0.0) as u32
+                    self.index_of(0.0)
                 } else {
                     0
                 },
@@ -352,11 +356,11 @@ impl Bins {
         let mut present = vec![false; self.0.len() * n_labels];
         match bin_index {
             BinIndex::Dense(bin_of_row) => {
-                for &i in indices {
-                    let cell = bin_of_row[i] as usize * n_labels + label_index[i] as usize;
+                bin_of_row.for_each(indices, |i, bin| {
+                    let cell = bin * n_labels + label_index[i] as usize;
                     weights[cell] += dist[i];
                     present[cell] = true;
-                }
+                });
             }
             BinIndex::Sparse { bin_of_entry, zero } => {
                 let by_difference = totals.is_some_and(|totals| {
@@ -375,8 +379,8 @@ impl Bins {
                     present.fill(false);
                     let mut entries = feature.cursor();
                     for &i in indices {
-                        let bin = entries.entry(i).map_or(*zero, |p| bin_of_entry[p]);
-                        let cell = bin as usize * n_labels + label_index[i] as usize;
+                        let bin = entries.entry(i).map_or(*zero, |p| bin_of_entry.get(p));
+                        let cell = bin * n_labels + label_index[i] as usize;
                         weights[cell] += dist[i];
                         present[cell] = true;
                     }
@@ -456,16 +460,64 @@ impl Bins {
 #[derive(Debug, Clone)]
 pub(crate) enum BinIndex {
     /// For a dense feature: the bin of each row.
-    Dense(Vec<u32>),
+    Dense(BinIds),
     /// For a sparse feature: the bin of each stored entry, in the order of
     /// the entries, and the bin of the implicit zeros. This keeps the memory
     /// proportional to the number of stored entries.
     Sparse {
         /// The bin of each stored entry.
-        bin_of_entry: Vec<u32>,
+        bin_of_entry: BinIds,
         /// The bin containing `0.0`.
-        zero: u32,
+        zero: usize,
     },
+}
+
+/// Bin numbers in the narrowest unsigned integer that holds every bin of
+/// the feature: one byte per value up to 256 bins, which covers the default
+/// of 255.
+#[derive(Debug, Clone)]
+pub(crate) enum BinIds {
+    /// At most `2⁸` bins.
+    U8(Vec<u8>),
+    /// At most `2¹⁶` bins.
+    U16(Vec<u16>),
+    /// More bins.
+    U32(Vec<u32>),
+}
+
+impl BinIds {
+    /// Stores `bins`, each of which is below `n_bins`.
+    fn collect(n_bins: usize, bins: impl Iterator<Item = usize>) -> Self {
+        if n_bins <= 1 << 8 {
+            Self::U8(bins.map(|bin| bin as u8).collect())
+        } else if n_bins <= 1 << 16 {
+            Self::U16(bins.map(|bin| bin as u16).collect())
+        } else {
+            Self::U32(bins.map(|bin| bin as u32).collect())
+        }
+    }
+
+    /// Calls `visit(row, bin)` for every row in `rows`, in order, with the
+    /// bin stored at position `row`. The width is decided once, outside the
+    /// loop over the rows.
+    #[inline]
+    pub(crate) fn for_each(&self, rows: &[usize], mut visit: impl FnMut(usize, usize)) {
+        match self {
+            Self::U8(bins) => rows.iter().for_each(|&i| visit(i, usize::from(bins[i]))),
+            Self::U16(bins) => rows.iter().for_each(|&i| visit(i, usize::from(bins[i]))),
+            Self::U32(bins) => rows.iter().for_each(|&i| visit(i, bins[i] as usize)),
+        }
+    }
+
+    /// Returns the bin stored at position `at`.
+    #[inline]
+    pub(crate) fn get(&self, at: usize) -> usize {
+        match self {
+            Self::U8(bins) => usize::from(bins[at]),
+            Self::U16(bins) => usize::from(bins[at]),
+            Self::U32(bins) => bins[at] as usize,
+        }
+    }
 }
 
 /// The labels of a sample's rows as indices into its distinct labels.
@@ -535,7 +587,7 @@ const MIN_ROWS_PER_ENTRY: usize = 4;
 fn pack_stored_entries(
     indices: &[usize],
     feature: &Feature,
-    (bin_of_entry, zero): (&[u32], u32),
+    (bin_of_entry, zero): (&BinIds, usize),
     label_index: &[u32],
     dist: &[f64],
     totals: &LabelTotals,
@@ -552,7 +604,7 @@ fn pack_stored_entries(
     let mut stored_count = vec![0_usize; n_labels];
     let mut add = |i: usize, p: usize| {
         let label = label_index[i] as usize;
-        let cell = bin_of_entry[p] as usize * n_labels + label;
+        let cell = bin_of_entry.get(p) * n_labels + label;
         weights[cell] += dist[i];
         present[cell] = true;
         stored_weight[label] += dist[i];
@@ -582,7 +634,7 @@ fn pack_stored_entries(
         if !(zeros >= MIN_ZERO_FRACTION * totals.weight[label] && zeros > 0.0) {
             return false;
         }
-        let cell = zero as usize * n_labels + label;
+        let cell = zero * n_labels + label;
         weights[cell] += zeros;
         present[cell] = true;
     }
@@ -650,6 +702,41 @@ impl fmt::Display for Bin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bin_ids_use_the_narrowest_width_that_holds_every_bin() {
+        let mut dense = Feature::dense("x");
+        let mut sparse = Feature::sparse("x", 70_000);
+        for row in 0..70_000 {
+            // 0, 1, ..., 69999 with zeros at the multiples of 7.
+            let value = if row % 7 == 0 { 0.0 } else { row as f64 };
+            dense.append((row, value));
+            sparse.append((row, value));
+        }
+        for (n_bins, bytes) in [(255, 1), (256, 1), (257, 2), (65_536, 2), (65_537, 4)] {
+            let bins = Bins::cut(&dense, n_bins);
+            let BinIndex::Dense(of_row) = bins.index(&dense) else {
+                unreachable!()
+            };
+            let BinIndex::Sparse { bin_of_entry, zero } = bins.index(&sparse) else {
+                unreachable!()
+            };
+            let width = |ids: &BinIds| match ids {
+                BinIds::U8(_) => 1,
+                BinIds::U16(_) => 2,
+                BinIds::U32(_) => 4,
+            };
+            assert_eq!((width(&of_row), width(&bin_of_entry)), (bytes, bytes));
+            assert_eq!(zero, bins.index_of(0.0));
+            let mut entries = sparse.cursor();
+            for row in (0..70_000).step_by(13) {
+                let expected = bins.index_of(dense[row]);
+                assert_eq!(of_row.get(row), expected, "{n_bins} bins, row {row}");
+                let stored = entries.entry(row).map_or(zero, |p| bin_of_entry.get(p));
+                assert_eq!(stored, expected, "{n_bins} bins, row {row}");
+            }
+        }
+    }
 
     #[test]
     fn pack_by_index_matches_pack_for_dense_and_sparse_features() {

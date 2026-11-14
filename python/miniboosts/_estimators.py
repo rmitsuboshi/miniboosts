@@ -226,7 +226,7 @@ class _BoostClassifier(ClassifierMixin, BaseEstimator):
                 rounds.append(round_number)
                 return values.tolist()
 
-            native = _native.train(self._algorithm, _native_matrix(training_X), training_y.tolist(),
+            native = _native.train(self._algorithm, training_y.tolist(),
                                    produce, max_iterations, **options)
             self.classes_ = classes
             self.estimators_ = fitted

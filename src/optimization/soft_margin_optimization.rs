@@ -161,7 +161,9 @@ where
     let sns = build_sns(n_examples, n_hypotheses);
     let rhs = build_rhs(n_examples, n_hypotheses);
 
-    let mut solver = build_solver(obj, mat, sns, rhs);
+    let mut solver = build_solver(obj, &mat, sns, rhs);
+    // The solver has its own copy.
+    drop(mat);
     solver.solve();
 
     // AlmostSolved is a numerical status, not an optimality certificate.
@@ -281,7 +283,7 @@ fn build_rhs(n_examples: usize, n_hypotheses: usize) -> Vec<f64> {
 
 fn build_solver(
     obj: Vec<f64>,
-    mat: CscMatrix<f64>,
+    mat: &CscMatrix<f64>,
     sns: Vec<SupportedConeT<f64>>,
     rhs: Vec<f64>,
 ) -> DefaultSolver<f64> {
@@ -294,7 +296,7 @@ fn build_solver(
     let n_variables = obj.len();
     let zmx = CscMatrix::<f64>::zeros((n_variables, n_variables));
 
-    DefaultSolver::new(&zmx, &obj, &mat, &rhs, &sns, settings)
+    DefaultSolver::new(&zmx, &obj, mat, &rhs, &sns, settings)
         .expect("failed to construct the LP solver: invalid dimensions or settings")
 }
 
@@ -570,7 +572,13 @@ impl<'a> ColumnGeneration<'a> {
         let sns = build_sns(n_examples, self.n_hypotheses);
         let rhs = build_rhs(n_examples, self.n_hypotheses);
 
-        let mut solver = build_solver(obj, mat, sns, rhs);
+        let mut solver = build_solver(obj, &mat, sns, rhs);
+        // The solver has its own copy; take the columns back for the next
+        // round before anything can fail.
+        self.col_ptr = mat.colptr;
+        self.col_ptr.pop();
+        self.row_idx = mat.rowval;
+        self.nonzero = mat.nzval;
         solver.solve();
 
         assert!(
@@ -620,13 +628,12 @@ impl<'a> ColumnGeneration<'a> {
         let n_rows = 1 + 2 * n_examples + n_hypotheses;
         let n_cols = 1 + n_examples + n_hypotheses;
 
-        let col_ptr = {
-            let mut col_ptr = self.col_ptr.clone();
-            col_ptr.push(self.row_idx.len());
-            col_ptr
-        };
-        let row_idx = self.row_idx.clone();
-        let nonzero = self.nonzero.clone();
+        // The stored columns move into the matrix instead of being copied;
+        // `solve` moves them back.
+        let mut col_ptr = std::mem::take(&mut self.col_ptr);
+        col_ptr.push(self.row_idx.len());
+        let row_idx = std::mem::take(&mut self.row_idx);
+        let nonzero = std::mem::take(&mut self.nonzero);
 
         CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
     }

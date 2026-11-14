@@ -153,8 +153,9 @@ impl<'a> RegressionTreeBuilder<'a> {
 /// ties keep the first, so the result is deterministic.
 ///
 /// # Cost
-/// The builder stores the bin of every value of its sample: 4 bytes per
-/// value of a dense feature and per stored entry of a sparse one. These are
+/// The builder stores the bin of every value of its sample: 1 byte per
+/// value of a dense feature and per stored entry of a sparse one (2 or 4
+/// bytes for a feature with more than 256 or 65536 bins). These are
 /// used when [`WeakLearner::produce`] gets that sample, a clone of it, or a
 /// copy made by [`Sample::with_target`], which is what
 /// [`GradientBoosting`](crate::GradientBoosting) and
@@ -255,15 +256,15 @@ impl RegressionTree {
                 let mut per_bin = vec![Moments::default(); n_bins];
                 match cached.then(|| &self.bin_index[k]) {
                     Some(BinIndex::Dense(bin_of_row)) => {
-                        for &i in &indices {
-                            per_bin[bin_of_row[i] as usize].add(dist[i], target[i]);
-                        }
+                        bin_of_row.for_each(&indices, |i, bin| {
+                            per_bin[bin].add(dist[i], target[i]);
+                        });
                     }
                     Some(BinIndex::Sparse { bin_of_entry, zero }) => {
                         let mut entries = self.features[k].cursor();
                         for &i in &indices {
-                            let bin = entries.entry(i).map_or(*zero, |p| bin_of_entry[p]);
-                            per_bin[bin as usize].add(dist[i], target[i]);
+                            let bin = entries.entry(i).map_or(*zero, |p| bin_of_entry.get(p));
+                            per_bin[bin].add(dist[i], target[i]);
                         }
                     }
                     None => {

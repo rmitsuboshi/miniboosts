@@ -368,7 +368,7 @@ where
 
 #[pyfunction]
 #[pyo3(signature = (
-    algorithm, x, y, callback, max_iterations, tolerance=None, nu=1.0, gamma=0.25,
+    algorithm, y, callback, max_iterations, tolerance=None, nu=1.0, gamma=0.25,
     kappa=0.1, update_rule="default", edge_threshold=1e-3, n_hypotheses=None, seed=0,
     theta=0.0, sigma_f=0.1, loss="logistic", shrinkage=1.0, max_response=4.0,
     first_stage="adaboostv", first_stage_tolerance=0.01,
@@ -376,7 +376,6 @@ where
 #[allow(clippy::too_many_arguments)]
 fn train(
     algorithm: &str,
-    x: Matrix,
     y: Vec<f64>,
     callback: Py<PyAny>,
     max_iterations: Option<usize>,
@@ -396,7 +395,15 @@ fn train(
     first_stage: &str,
     first_stage_tolerance: f64,
 ) -> PyResult<Model> {
-    let sample = x.sample(Some(&y))?;
+    // The weak hypotheses are tables of values filled by `callback`, so the
+    // boosters read the labels and the number of examples only: the feature
+    // matrix stays in Python.
+    if y.is_empty() || y.iter().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err(
+            "target must be finite and have at least one value",
+        ));
+    }
+    let sample = Sample::dummy(y.len()).with_target(y.clone());
     if max_iterations == Some(0) {
         return Err(PyValueError::new_err("max_iterations must be positive"));
     }

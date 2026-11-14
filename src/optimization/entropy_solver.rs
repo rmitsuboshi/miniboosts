@@ -18,24 +18,17 @@ pub(crate) struct EntropySolution {
 pub(crate) fn solve(
     eta: f64,
     nu: f64,
-    linear: CscMatrix<f64>,
+    matrix: CscMatrix<f64>,
+    margins: Vec<Vec<f64>>,
     mut rhs: Vec<f64>,
     mut cones: Vec<SupportedConeT<f64>>,
     m: usize,
-    n: usize,
 ) -> EntropySolution {
+    let n = margins.len();
     let edge_start = 1 + 2 * m;
-    // Retain the margin matrix for validation and a separate entropy dual bound.
-    let mut margins = vec![vec![0.0; m]; n];
-    #[allow(clippy::needless_range_loop)] // `i` indexes columns, not `margins`.
-    for i in 0..m {
-        for k in linear.colptr[i + 1]..linear.colptr[i + 2] {
-            let row = linear.rowval[k];
-            if row >= edge_start {
-                margins[row - edge_start][i] = linear.nzval[k];
-            }
-        }
-    }
+    // `margins[j][i] = y_i h_j(x_i)` is kept for validation and a separate
+    // entropy dual bound; `matrix` holds the linear constraints followed by
+    // the cone rows (`build_constraint_matrix` with `exponential_cones`).
     if nu == m as f64 {
         let distribution = vec![1.0 / m as f64; m];
         let (index, value) = margins
@@ -57,30 +50,11 @@ pub(crate) fn solve(
             weights,
         };
     }
-    let offset = linear.m;
     let variables = 1 + 2 * m;
-    let mut colptr = vec![0];
-    let mut rowval = Vec::new();
-    let mut nzval = Vec::new();
-    for col in 0..=m {
-        for k in linear.colptr[col]..linear.colptr[col + 1] {
-            rowval.push(linear.rowval[k]);
-            nzval.push(linear.nzval[k]);
-        }
-        if col > 0 {
-            rowval.push(offset + 3 * (col - 1) + 1);
-            nzval.push(-1.0);
-        }
-        colptr.push(rowval.len());
-    }
-    for i in 0..m {
-        rowval.push(offset + 3 * i);
-        nzval.push(1.0);
-        colptr.push(rowval.len());
+    for _ in 0..m {
         rhs.extend([0.0, 0.0, 1.0 / m as f64]);
         cones.push(ExponentialConeT());
     }
-    let matrix = CscMatrix::new(offset + 3 * m, variables, colptr, rowval, nzval);
     let p = CscMatrix::zeros((variables, variables));
     let mut q = vec![0.0; variables];
     q[0] = 1.0;

@@ -38,25 +38,20 @@ use std::iter;
 /// # of
 /// cols                 m
 /// ```
-fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H]) -> CscMatrix<f64>
-where
-    H: Classifier,
-{
-    let n_hypotheses = hypotheses.len();
-    let n_examples = sample.shape().0;
+fn build_constraint_matrix(margins: &[Vec<f64>], n_examples: usize) -> CscMatrix<f64> {
+    let n_hypotheses = margins.len();
 
     let mut col_ptr = Vec::new();
     let mut row_idx = Vec::new();
     let mut nonzero = Vec::new();
 
     let offset = 1 + 2 * n_examples;
-    let y = sample.target();
-    // One pass per hypothesis: `confidence_all` evaluates all rows at once.
-    let confidences: Vec<Vec<f64>> = hypotheses
-        .iter()
-        .map(|h| h.confidence_all(sample))
-        .collect();
-    for (i, yi) in y.iter().enumerate() {
+    // The rows of the linear constraints drawn above; below them, example
+    // `i` has the three rows of its exponential-cone slack `(-t_i, d_i, 1)`,
+    // which gives `d_i * exp(-t_i / d_i) <= 1`, or `t_i >= d_i ln(d_i)`.
+    // The closed cone also represents `d_i = 0` without log perturbations.
+    let n_linear = 1 + 2 * n_examples + n_hypotheses;
+    for i in 0..n_examples {
         col_ptr.push(row_idx.len());
 
         // `Σ d[i] = 1.`
@@ -71,20 +66,29 @@ where
         row_idx.push(1 + n_examples + i);
         nonzero.push(1f64);
 
-        for (j, hx) in confidences.iter().enumerate() {
-            let yh = yi * hx[i];
-
+        for (j, yh) in margins.iter().enumerate() {
             row_idx.push(offset + j);
-            nonzero.push(yh);
+            nonzero.push(yh[i]);
         }
+        row_idx.push(n_linear + 3 * i + 1);
+        nonzero.push(-1.0);
+    }
+    // Variables are (d, t): the columns of `t` follow those of `d`.
+    for i in 0..n_examples {
+        col_ptr.push(row_idx.len());
+        row_idx.push(n_linear + 3 * i);
+        nonzero.push(1.0);
     }
     col_ptr.push(row_idx.len());
 
-    assert_eq!(col_ptr.len(), n_examples + 1);
-
-    let n_cols = n_examples;
-    let n_rows = 1 + 2 * n_examples + n_hypotheses;
-    CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
+    assert_eq!(col_ptr.len(), 2 * n_examples + 1);
+    CscMatrix::new(
+        n_linear + 3 * n_examples,
+        2 * n_examples,
+        col_ptr,
+        row_idx,
+        nonzero,
+    )
 }
 
 fn build_sns(n_examples: usize, n_hypotheses: usize) -> Vec<SupportedConeT<f64>> {
@@ -190,36 +194,14 @@ impl SoftBoostSolver<'_> {
 
         assert!(gamma.is_finite() && delta.is_finite() && delta > 0.0);
         self.primal.clear();
-        let linear = build_constraint_matrix(self.sample, hypotheses);
-        assert!(linear.nzval.iter().all(|v| v.is_finite()));
-        let offset = linear.m;
-        let mut colptr = vec![0];
-        let mut rowval = Vec::new();
-        let mut nzval = Vec::new();
-        // Variables are (d, t). The cone slack (-t_i, d_i, 1) gives
-        // d_i * exp(-t_i / d_i) <= 1, or t_i >= d_i ln(d_i).
-        // The closed cone also represents d_i = 0 without log perturbations.
-        for i in 0..n_examples {
-            for k in linear.colptr[i]..linear.colptr[i + 1] {
-                rowval.push(linear.rowval[k]);
-                nzval.push(linear.nzval[k]);
-            }
-            rowval.push(offset + 3 * i + 1);
-            nzval.push(-1.0);
-            colptr.push(rowval.len());
-        }
-        for i in 0..n_examples {
-            rowval.push(offset + 3 * i);
-            nzval.push(1.0);
-            colptr.push(rowval.len());
-        }
-        let mat = CscMatrix::new(
-            offset + 3 * n_examples,
-            2 * n_examples,
-            colptr,
-            rowval,
-            nzval,
-        );
+        // The margins are written straight into the one matrix the solver
+        // needs and are not kept.
+        let mat = {
+            let margins =
+                crate::optimization::edge_minimization::margin_table(self.sample, hypotheses);
+            assert!(margins.iter().flatten().all(|v| v.is_finite()));
+            build_constraint_matrix(&margins, n_examples)
+        };
         let mut rhs = build_rhs(self.nu, gamma, delta, n_examples, n_hypotheses);
         let mut cones = build_sns(n_examples, n_hypotheses);
         for _ in 0..n_examples {

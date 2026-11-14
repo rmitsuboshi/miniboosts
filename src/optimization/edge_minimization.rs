@@ -144,7 +144,7 @@ where
     checkers::capping_parameter(nu, n_examples);
 
     let obj = build_objective(n_examples + 1);
-    let mat = build_constraint_matrix(sample, hypotheses);
+    let mat = build_constraint_matrix(&margin_table(sample, hypotheses), sample.shape().0, false);
     let sns = build_sns(n_examples, n_hypotheses);
     let rhs = build_rhs(nu, n_examples, n_hypotheses);
 
@@ -206,12 +206,12 @@ fn build_objective(n_variables: usize) -> Vec<f64> {
 /// # of
 /// cols     1 ┃               m
 /// ```
-fn build_constraint_matrix<H>(sample: &Sample, hypotheses: &[H]) -> CscMatrix<f64>
-where
-    H: Classifier,
-{
-    let n_hypotheses = hypotheses.len();
-    let n_examples = sample.shape().0;
+fn build_constraint_matrix(
+    margins: &[Vec<f64>],
+    n_examples: usize,
+    exponential_cones: bool,
+) -> CscMatrix<f64> {
+    let n_hypotheses = margins.len();
 
     let start = 1 + 2 * n_examples;
     let end = 1 + 2 * n_examples + n_hypotheses;
@@ -221,13 +221,9 @@ where
     let mut nonzero = vec![-1f64; n_hypotheses];
 
     let offset = 1 + 2 * n_examples;
-    let y = sample.target();
-    // One pass per hypothesis: `confidence_all` evaluates all rows at once.
-    let confidences: Vec<Vec<f64>> = hypotheses
-        .iter()
-        .map(|h| h.confidence_all(sample))
-        .collect();
-    for (i, yi) in y.iter().enumerate() {
+    // The rows of the linear constraints; the cone rows follow them.
+    let n_linear = 1 + 2 * n_examples + n_hypotheses;
+    for i in 0..n_examples {
         col_ptr.push(row_idx.len());
 
         // `Σ d[i] = 1.`
@@ -242,20 +238,49 @@ where
         row_idx.push(1 + n_examples + i);
         nonzero.push(1f64);
 
-        for (j, hx) in confidences.iter().enumerate() {
-            let yh = yi * hx[i];
-
+        for (j, yh) in margins.iter().enumerate() {
             row_idx.push(offset + j);
-            nonzero.push(yh);
+            nonzero.push(yh[i]);
+        }
+        if exponential_cones {
+            // The slack `(-t_i, d_i, 1/m)`: `d_i` is its second entry.
+            row_idx.push(n_linear + 3 * i + 1);
+            nonzero.push(-1.0);
+        }
+    }
+    if exponential_cones {
+        // The columns of `t`, each the first entry of its slack.
+        for i in 0..n_examples {
+            col_ptr.push(row_idx.len());
+            row_idx.push(n_linear + 3 * i);
+            nonzero.push(1.0);
         }
     }
     col_ptr.push(row_idx.len());
 
-    assert_eq!(col_ptr.len(), n_examples + 2);
-
-    let n_cols = n_examples + 1;
-    let n_rows = 1 + 2 * n_examples + n_hypotheses;
+    let (n_rows, n_cols) = if exponential_cones {
+        (n_linear + 3 * n_examples, 1 + 2 * n_examples)
+    } else {
+        (n_linear, 1 + n_examples)
+    };
+    assert_eq!(col_ptr.len(), n_cols + 1);
     CscMatrix::new(n_rows, n_cols, col_ptr, row_idx, nonzero)
+}
+
+/// The margins `y_i h_j(x_i)`, one vector over the examples per hypothesis.
+/// `confidence_all` evaluates all rows of a hypothesis at once.
+pub(crate) fn margin_table<H: Classifier>(sample: &Sample, hypotheses: &[H]) -> Vec<Vec<f64>> {
+    let y = sample.target();
+    hypotheses
+        .iter()
+        .map(|h| {
+            let mut margins = h.confidence_all(sample);
+            for (yh, yi) in margins.iter_mut().zip(y) {
+                *yh *= yi;
+            }
+            margins
+        })
+        .collect()
 }
 
 fn build_sns(n_examples: usize, n_hypotheses: usize) -> Vec<SupportedConeT<f64>> {
@@ -635,23 +660,20 @@ where
         assert!(n_hypotheses > 0, "row generation requires a hypothesis");
         checkers::capping_parameter(self.nu, n_examples);
 
-        let mat = build_constraint_matrix(self.sample, hypotheses);
+        // The margins are computed once and written into the one constraint
+        // matrix that the solver needs.
+        let margins = margin_table(self.sample, hypotheses);
         assert!(
-            mat.nzval.iter().all(|v| v.is_finite()),
+            margins.iter().flatten().all(|v| v.is_finite()),
             "non-finite hypothesis margin"
         );
         let sns = build_sns(n_examples, n_hypotheses);
         let rhs = build_rhs(self.nu, n_examples, n_hypotheses);
 
         if let Some(eta) = self.objective.entropy_parameter() {
+            let mat = build_constraint_matrix(&margins, n_examples, true);
             let result = crate::optimization::entropy_solver::solve(
-                eta,
-                self.nu,
-                mat,
-                rhs,
-                sns,
-                n_examples,
-                n_hypotheses,
+                eta, self.nu, mat, margins, rhs, sns, n_examples,
             );
             self.optval = result.value;
             self.lower_bound = Some(result.lower_bound);
@@ -660,6 +682,8 @@ where
             return;
         }
 
+        let mat = build_constraint_matrix(&margins, n_examples, false);
+        drop(margins);
         let mut current = vec![1f64 / n_examples as f64; n_examples];
         let mut objval = self.objval(hypotheses, &current[..]);
         assert!(objval.is_finite(), "non-finite row-generation objective");

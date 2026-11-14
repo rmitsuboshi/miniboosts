@@ -2,7 +2,7 @@
 
 Decision trees train and predict faster; the trees themselves are unchanged.
 `DecisionTree` stores the bin of every row of the builder's sample for each
-dense feature (4 bytes per value) and uses it when `produce` is called on that
+dense feature (1 byte per value with at most 256 bins) and uses it when `produce` is called on that
 sample. Tree hypotheses and `WeightedMajority` override
 `Classifier::confidence_all` and `predict_all` to evaluate all rows at once, and
 boosters now compute training margins with `confidence_all`; a custom
@@ -89,7 +89,7 @@ thread: handing an `O(m)` loop to the thread pool cost more than the loop.
 
 Decision trees train and predict faster on sparse features (SVMlight input),
 with unchanged trees. `DecisionTree` now also stores the bin of every stored
-entry of a sparse feature (4 bytes per entry), and the tree learners and tree
+entry of a sparse feature (1 byte per entry), and the tree learners and tree
 hypotheses read sparse features at increasing rows without a search per row.
 AdaBoost with depth-3 trees on 20000 examples with 300 features, 5% of the
 entries nonzero: 88 ms per round became 13 ms.
@@ -131,7 +131,7 @@ faster and return the same models. `Sample` now shares its features between
 clones and the copies made by `Sample::with_target`, which no longer copies
 them (a method that changes the features of one copy, such as `set_target` or
 `replace_names`, copies them first). `RegressionTree` stores the bin of every
-value of its builder's sample (4 bytes per value, or per stored entry of a
+value of its builder's sample (1 byte per value, or per stored entry of a
 sparse feature), uses it when `produce` gets that sample or a `with_target`
 copy of it, and searches the features in parallel. `RegressionTreeRegressor`
 and `AdditiveModel` override `predict_all` (and `AdditiveModel`
@@ -154,6 +154,19 @@ arrays instead of nested lists. On 20000 examples with 300 dense features,
 `decision_function` of a native weak learner takes 32 ms instead of 187 ms,
 and 20 rounds of `AdaBoostClassifier` with depth-3 trees 5.3 s instead of
 12.3 s. Results are unchanged.
+
+Memory use is lower, with unchanged results. The row-generation solvers
+behind `ErlpBoost`, `TotalBoost`, and `SoftBoost` compute the margins of all
+hypotheses once per solve and write them into the one constraint matrix the
+solver gets; they used to hold a table of confidences, a matrix of the linear
+constraints, a dense copy of the margins, and the final matrix (about 40
+bytes per example and hypothesis at the peak, now about 24 for `ErlpBoost`
+and 16 for `SoftBoost` and `TotalBoost`, before the solver's own copies).
+`ColumnGeneration` (`LpBoost`) hands its stored columns to the solver
+without copying them every round. The tree learners store bin numbers in one
+byte instead of four when a feature has at most 256 bins (the default is 255).
+The Python boosters no longer copy the feature matrix into Rust, which never
+read it: the weak learners are fitted in Python.
 
 # Changes in 0.5.2
 
