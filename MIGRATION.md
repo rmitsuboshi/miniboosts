@@ -26,8 +26,27 @@ panic. `LoggerBuilder` and `Entropy` implement `Default`.
 `MajorityOfFive` (Høgsgaard, Larsen, and Mathiasen, 2024) and `LarsenRitzert`
 (Larsen and Ritzert, 2022) are new, in `boosters::subsample_majority` and the
 prelude. They run a booster, given as a closure, on sub-samples and return the
-`MajorityVote` of the results. `Sample::select_rows` returns a sample made of
-given rows, with repetitions allowed.
+`MajorityVote` of the results. With the closure set by
+`.booster(|part, weak_learner| SomeBooster::init(part).run(weak_learner))` they
+implement `Booster` and `CurrentHypothesis`: each round runs the booster on one
+sub-sample with the weak learner passed to `run`, one after the other.
+`run_with(|part| ...)` takes a closure that trains on a sub-sample by any means
+and runs the sub-samples in parallel. `Sample::select_rows` returns a sample
+made of given rows, with repetitions allowed.
+
+`BoostedLearner` is a new weak learner, in `weak_learners::boosted` and the
+prelude, that makes a booster with its weak learner a weak learner:
+`BoostedLearner::new(|drawn, weak_learner| SomeBooster::init(drawn).run(weak_learner), inner)`.
+`produce` draws as many rows as the sample has (`sample_size` changes this)
+from the distribution, with replacement, and runs the closure on them; the draw
+depends only on `seed` and the distribution. It returns a `BoostedHypothesis`
+with the booster output's confidences, or its `±1` predictions with `.sign()`.
+This is
+boosting by resampling, an approximation of running the booster on the
+distribution itself; a drawn sample with a single label gives a constant
+hypothesis without running the booster. `DynWeakLearner<H>`, exported from the
+crate root, is a borrowed weak learner of erased type, which is what the
+closures of `MajorityOfFive::booster` and `LarsenRitzert::booster` receive.
 
 `SparsiBoost::first_stage(booster)` replaces AdaBoostV by another booster whose
 `WeightedMajority` is then sparsified, e.g. TotalBoost. `SparsiBoost` gained a

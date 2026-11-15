@@ -702,7 +702,7 @@ impl SplitMix64 {
     }
 
     /// Uniform on the open interval `(0, 1)`.
-    fn uniform(&mut self) -> f64 {
+    pub(crate) fn uniform(&mut self) -> f64 {
         ((self.next_u64() >> 11) as f64 + 0.5) / (1u64 << 53) as f64
     }
 

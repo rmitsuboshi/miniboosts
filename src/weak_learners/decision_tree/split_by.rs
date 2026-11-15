@@ -782,110 +782,25 @@ mod tests {
     }
 
     #[test]
-    fn test_best_split_entropy() {
+    fn every_criterion_finds_the_separating_split() {
         let sample = test_sample();
         let bins = sample
             .features()
             .iter()
-            .map(|feature| {
-                let name = feature.name();
-                (name, Bins::cut(feature, 10))
-            })
+            .map(|feature| (feature.name(), Bins::cut(feature, 10)))
             .collect::<HashMap<_, _>>();
         let m = sample.shape().0;
         let ix = (0..m).collect::<Vec<_>>();
         let dist = vec![1f64 / m as f64; m];
-        let s = SplitBy::Entropy;
-        let (name, thr) = s.best_split(&bins, None, &sample, &dist[..], &ix[..]);
-
-        let expected_name = "feat";
-        assert_eq!(expected_name, name);
-
-        let expected_thr = 0.55;
-        assert!(
-            (expected_thr - thr).abs() < TEST_TOLERANCE,
-            "expected {expected_thr}, got {thr}.",
-        );
-    }
-
-    #[test]
-    fn test_best_split_gini() {
-        let sample = test_sample();
-        let bins = sample
-            .features()
-            .iter()
-            .map(|feature| {
-                let name = feature.name();
-                (name, Bins::cut(feature, 10))
-            })
-            .collect::<HashMap<_, _>>();
-        let m = sample.shape().0;
-        let ix = (0..m).collect::<Vec<_>>();
-        let dist = vec![1f64 / m as f64; m];
-        let s = SplitBy::Gini;
-        let (name, thr) = s.best_split(&bins, None, &sample, &dist[..], &ix[..]);
-
-        let expected_name = "feat";
-        assert_eq!(expected_name, name);
-
-        let expected_thr = 0.55;
-        assert!(
-            (expected_thr - thr).abs() < TEST_TOLERANCE,
-            "expected {expected_thr}, got {thr}.",
-        );
-    }
-
-    #[test]
-    fn test_best_split_edge() {
-        let sample = test_sample();
-        let bins = sample
-            .features()
-            .iter()
-            .map(|feature| {
-                let name = feature.name();
-                (name, Bins::cut(feature, 10))
-            })
-            .collect::<HashMap<_, _>>();
-        let m = sample.shape().0;
-        let ix = (0..m).collect::<Vec<_>>();
-        let dist = vec![1f64 / m as f64; m];
-        let s = SplitBy::Edge;
-        let (name, thr) = s.best_split(&bins, None, &sample, &dist[..], &ix[..]);
-
-        let expected_name = "feat";
-        assert_eq!(expected_name, name);
-
-        let expected_thr = 0.55;
-        assert!(
-            (expected_thr - thr).abs() < TEST_TOLERANCE,
-            "expected {expected_thr}, got {thr}.",
-        );
-    }
-
-    #[test]
-    fn test_best_split_twoing() {
-        let sample = test_sample();
-        let bins = sample
-            .features()
-            .iter()
-            .map(|feature| {
-                let name = feature.name();
-                (name, Bins::cut(feature, 10))
-            })
-            .collect::<HashMap<_, _>>();
-        let m = sample.shape().0;
-        let ix = (0..m).collect::<Vec<_>>();
-        let dist = vec![1f64 / m as f64; m];
-        let s = SplitBy::Twoing;
-        let (name, thr) = s.best_split(&bins, None, &sample, &dist[..], &ix[..]);
-
-        let expected_name = "feat";
-        assert_eq!(expected_name, name);
-
-        let expected_thr = 0.55;
-        assert!(
-            (expected_thr - thr).abs() < TEST_TOLERANCE,
-            "expected {expected_thr}, got {thr}.",
-        );
+        for criterion in [
+            SplitBy::Entropy,
+            SplitBy::Gini,
+            SplitBy::Edge,
+            SplitBy::Twoing,
+        ] {
+            let (name, thr) = criterion.best_split(&bins, None, &sample, &dist[..], &ix[..]);
+            assert_eq!(name, "feat", "{criterion}");
+            assert!((thr - 0.55).abs() < TEST_TOLERANCE, "{criterion}: {thr}");
+        }
     }
 }

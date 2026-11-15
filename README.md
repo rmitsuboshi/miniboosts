@@ -177,7 +177,8 @@ Import these types from `miniboosts` or `miniboosts::prelude`:
 
 `MajorityOfFive` and `LarsenRitzert` are sample-optimal weak-to-strong learners
 that take a majority vote of boosters run on sub-samples. They take the booster
-as a closure, so any booster above can be used inside them.
+as a closure (`.booster(|part, weak_learner| ...)`), so any booster above can be
+used inside them.
 
 The built-in weak learners are a [decision tree][decisiontree] (an exact
 edge-maximizing decision stump with `exact_splits`, `SplitBy::Edge`, and
@@ -192,8 +193,10 @@ bounded linear functions; boosting it yields a linear classifier),
 Bayes), and `RegressionTreeBuilder` (a weighted least-squares regression tree for
 `GradientBoosting` and `LogitBoost`, which fit real-valued responses and return
 an `AdditiveModel`). `WeakLearnerUnion` runs several of these learners and returns
-the candidate with the largest edge in each round. Implement `WeakLearner` to use
-your own learner. See the [migration notes](https://github.com/rmitsuboshi/miniboosts/blob/main/MIGRATION.md) for removed APIs.
+the candidate with the largest edge in each round. `BoostedLearner` turns a
+booster with its weak learner into a weak learner: it runs the booster on rows
+resampled from the distribution, so boosters can be nested. Implement
+`WeakLearner` to use your own learner. See the [migration notes](https://github.com/rmitsuboshi/miniboosts/blob/main/MIGRATION.md) for removed APIs.
 
 Custom hypotheses must return consistent predictions for a fixed sample.
 CorrectiveERLPBoost and MLPBoost cache training margins instead of repeatedly

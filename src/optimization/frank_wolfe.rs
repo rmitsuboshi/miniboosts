@@ -755,184 +755,61 @@ mod test {
     }
 
     #[test]
-    fn classic_frank_wolfe_l2_objective() {
+    fn every_rule_minimizes_the_l2_objective() {
         let dim = 100usize;
-        let f = L2::new();
-        let mut x = initial_point_l2(dim);
-        let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::Classic);
-
-        loop {
-            let g = f.gradient(&x[..]);
-            let v = linear_minimization_oracle_l2(&g[..]);
-            if stopping_criterion(&v[..], &x[..], &g[..]) {
-                break;
+        for rule in [
+            FwUpdateRule::Classic,
+            FwUpdateRule::ShortStep,
+            FwUpdateRule::LineSearch,
+            FwUpdateRule::BlendedPairwise,
+        ] {
+            let f = L2::new();
+            let mut x = initial_point_l2(dim);
+            let mut algo = FrankWolfe::new(L2::new(), rule);
+            loop {
+                let g = f.gradient(&x[..]);
+                let v = linear_minimization_oracle_l2(&g[..]);
+                if stopping_criterion(&v[..], &x[..], &g[..]) {
+                    break;
+                }
+                x = algo.next(x, v);
             }
-            x = algo.next(x, v);
+            let optval = f.objective_value(&optimal_solution_l2(dim)[..]);
+            let objval = f.objective_value(&x[..]);
+            assert!(
+                objval - optval < TEST_TOLERANCE,
+                "{rule:?}: expected {optval}, got {objval}."
+            );
         }
-
-        let xoptimal = optimal_solution_l2(dim);
-        let optval = f.objective_value(&xoptimal[..]);
-        let objval = f.objective_value(&x[..]);
-
-        assert!(
-            objval - optval < TEST_TOLERANCE,
-            "expected {optval}, got {objval}."
-        );
     }
 
     #[test]
-    fn shortstep_frank_wolfe_l2_objective() {
+    fn every_rule_minimizes_the_entropy_objective() {
         let dim = 100usize;
-        let f = L2::new();
-        let mut x = initial_point_l2(dim);
-        let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::ShortStep);
-
-        loop {
-            let g = f.gradient(&x[..]);
-            let v = linear_minimization_oracle_l2(&g[..]);
-            if stopping_criterion(&v[..], &x[..], &g[..]) {
-                break;
+        // The short-step rule is not run here: it was not among the original
+        // entropy tests.
+        for rule in [
+            FwUpdateRule::Classic,
+            FwUpdateRule::LineSearch,
+            FwUpdateRule::BlendedPairwise,
+        ] {
+            let f = Entropy::new();
+            let mut x = initial_point_entropy(dim);
+            let mut algo = FrankWolfe::new(Entropy::new(), rule);
+            loop {
+                let g = f.gradient(&x[..]);
+                let v = linear_minimization_oracle_entropy(&g[..]);
+                if stopping_criterion(&v[..], &x[..], &g[..]) {
+                    break;
+                }
+                x = algo.next(x, v);
             }
-            x = algo.next(x, v);
+            let optval = f.objective_value(&optimal_solution_entropy(dim)[..]);
+            let objval = f.objective_value(&x[..]);
+            assert!(
+                objval - optval < TEST_TOLERANCE,
+                "{rule:?}: expected {optval}, got {objval}."
+            );
         }
-
-        let xoptimal = optimal_solution_l2(dim);
-        let optval = f.objective_value(&xoptimal[..]);
-        let objval = f.objective_value(&x[..]);
-
-        assert!(
-            objval - optval < TEST_TOLERANCE,
-            "expected {optval}, got {objval}."
-        );
-    }
-
-    #[test]
-    fn line_search_frank_wolfe_l2_objective() {
-        let dim = 100usize;
-        let f = L2::new();
-        let mut x = initial_point_l2(dim);
-        let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::LineSearch);
-
-        loop {
-            let g = f.gradient(&x[..]);
-            let v = linear_minimization_oracle_l2(&g[..]);
-            if stopping_criterion(&v[..], &x[..], &g[..]) {
-                break;
-            }
-            x = algo.next(x, v);
-        }
-
-        let xoptimal = optimal_solution_l2(dim);
-        let optval = f.objective_value(&xoptimal[..]);
-        let objval = f.objective_value(&x[..]);
-
-        assert!(
-            objval - optval < TEST_TOLERANCE,
-            "expected {optval}, got {objval}."
-        );
-    }
-
-    #[test]
-    fn bpfw_frank_wolfe_l2_objective() {
-        let dim = 100usize;
-        let f = L2::new();
-        let mut x = initial_point_l2(dim);
-        let mut algo = FrankWolfe::new(L2::new(), FwUpdateRule::BlendedPairwise);
-
-        loop {
-            let g = f.gradient(&x[..]);
-            let v = linear_minimization_oracle_l2(&g[..]);
-            if stopping_criterion(&v[..], &x[..], &g[..]) {
-                break;
-            }
-            x = algo.next(x, v);
-        }
-
-        let xoptimal = optimal_solution_l2(dim);
-        let optval = f.objective_value(&xoptimal[..]);
-        let objval = f.objective_value(&x[..]);
-
-        assert!(
-            objval - optval < TEST_TOLERANCE,
-            "expected {optval}, got {objval}."
-        );
-    }
-
-    #[test]
-    fn classic_frank_wolfe_entropy_objective() {
-        let dim = 100usize;
-        let f = Entropy::new();
-        let mut x = initial_point_entropy(dim);
-        let mut algo = FrankWolfe::new(Entropy::new(), FwUpdateRule::Classic);
-
-        loop {
-            let g = f.gradient(&x[..]);
-            let v = linear_minimization_oracle_entropy(&g[..]);
-            if stopping_criterion(&v[..], &x[..], &g[..]) {
-                break;
-            }
-            x = algo.next(x, v);
-        }
-
-        let xoptimal = optimal_solution_entropy(dim);
-        let optval = f.objective_value(&xoptimal[..]);
-        let objval = f.objective_value(&x[..]);
-
-        assert!(
-            objval - optval < TEST_TOLERANCE,
-            "expected {optval}, got {objval}."
-        );
-    }
-
-    #[test]
-    fn line_search_frank_wolfe_entropy_objective() {
-        let dim = 100usize;
-        let f = Entropy::new();
-        let mut x = initial_point_entropy(dim);
-        let mut algo = FrankWolfe::new(Entropy::new(), FwUpdateRule::LineSearch);
-
-        loop {
-            let g = f.gradient(&x[..]);
-            let v = linear_minimization_oracle_entropy(&g[..]);
-            if stopping_criterion(&v[..], &x[..], &g[..]) {
-                break;
-            }
-            x = algo.next(x, v);
-        }
-
-        let xoptimal = optimal_solution_entropy(dim);
-        let optval = f.objective_value(&xoptimal[..]);
-        let objval = f.objective_value(&x[..]);
-
-        assert!(
-            objval - optval < TEST_TOLERANCE,
-            "expected {optval}, got {objval}."
-        );
-    }
-
-    #[test]
-    fn bpfw_frank_wolfe_entropy_objective() {
-        let dim = 100usize;
-        let f = Entropy::new();
-        let mut x = initial_point_entropy(dim);
-        let mut algo = FrankWolfe::new(Entropy::new(), FwUpdateRule::BlendedPairwise);
-
-        loop {
-            let g = f.gradient(&x[..]);
-            let v = linear_minimization_oracle_entropy(&g[..]);
-            if stopping_criterion(&v[..], &x[..], &g[..]) {
-                break;
-            }
-            x = algo.next(x, v);
-        }
-
-        let xoptimal = optimal_solution_entropy(dim);
-        let optval = f.objective_value(&xoptimal[..]);
-        let objval = f.objective_value(&x[..]);
-
-        assert!(
-            objval - optval < TEST_TOLERANCE,
-            "expected {optval}, got {objval}."
-        );
     }
 }

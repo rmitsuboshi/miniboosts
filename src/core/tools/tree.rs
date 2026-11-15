@@ -315,86 +315,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_prediction_add_01() {
-        let p1 = Prediction::from(1.0);
-        let p2 = Prediction::from(1.0);
-        let res = p1 + p2;
-        let exp = Prediction::from(2.0);
-        assert_eq!(exp, res, "expected {exp:?}, got {res:?}.");
+    fn predictions_and_confidences_add() {
+        for (a, b, sum) in [(1.0, 1.0, 2.0), (1.0, -1.0, 0.0)] {
+            assert_eq!(
+                Prediction::from(a) + Prediction::from(b),
+                Prediction::from(sum)
+            );
+            assert_eq!(
+                Confidence::from(a) + Confidence::from(b),
+                Confidence::from(sum)
+            );
+        }
     }
 
     #[test]
-    fn test_prediction_add_02() {
-        let p1 = Prediction::from(1.0);
-        let p2 = Prediction::from(-1.0);
-        let res = p1 + p2;
-        let exp = Prediction::from(0.0);
-        assert_eq!(exp, res, "expected {exp:?}, got {res:?}.");
-    }
-
-    #[test]
-    fn test_confidence_add_01() {
-        let c1 = Confidence::from(1.0);
-        let c2 = Confidence::from(1.0);
-        let res = c1 + c2;
-        let exp = Confidence::from(2.0);
-        assert_eq!(exp, res, "expected {exp:?}, got {res:?}.");
-    }
-
-    #[test]
-    fn test_confidence_add_02() {
-        let c1 = Confidence::from(1.0);
-        let c2 = Confidence::from(-1.0);
-        let res = c1 + c2;
-        let exp = Confidence::from(0.0);
-        assert_eq!(exp, res, "expected {exp:?}, got {res:?}.");
-    }
-
-    #[test]
-    fn test_depth_sub_01() {
-        let d1 = Depth::from(3);
-        let res = d1 - 1;
-        let exp = Depth::from(2);
-        assert_eq!(exp, res, "expected {exp:?}, got {res:?}.");
-    }
-
-    #[test]
-    fn test_depth_sub_02() {
-        let d1 = Depth::from(0);
-        let res = d1 - 1;
-        let exp = Depth::from(0);
-        assert_eq!(exp, res, "expected {exp:?}, got {res:?}.");
-    }
-
-    #[test]
-    fn test_depth_cmp_01() {
-        let d1 = Depth::from(2);
-        let rhs = 3;
-        let res = d1 < rhs;
-        assert!(res, "failed for {d1:?} < {rhs}. got {res}.");
-    }
-
-    #[test]
-    fn test_depth_cmp_02() {
-        let d1 = Depth::from(2);
-        let rhs = 0;
-        let res = !(d1 < rhs);
-        assert!(res, "failed for !({d1:?} < {rhs}). got {res}.");
-    }
-
-    #[test]
-    fn test_depth_cmp_03() {
-        let d1 = Depth::from(2);
-        let rhs = 2;
-        let res = !(d1 < rhs);
-        assert!(res, "failed for !({d1:?} < {rhs}). got {res}.");
-    }
-
-    #[test]
-    fn test_depth_cmp_04() {
-        let d1 = Depth::from(2);
-        let rhs = 2;
-        let res = d1 <= rhs;
-        assert!(res, "failed for {d1:?} <= {rhs}. got {res}.");
+    fn depth_subtraction_saturates_and_compares_with_integers() {
+        assert_eq!(Depth::from(3) - 1, Depth::from(2));
+        assert_eq!(Depth::from(0) - 1, Depth::from(0));
+        let depth = Depth::from(2);
+        assert!(depth < 3);
+        assert!(!(depth < 0) && !(depth < 2));
+        assert!(depth <= 2);
     }
 }

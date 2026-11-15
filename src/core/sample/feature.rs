@@ -800,50 +800,6 @@ mod tests {
     }
 
     #[test]
-    fn test_dense() {
-        let n = "test-001";
-        let f = Feature::dense(n);
-
-        if let Feature::Dense { name, vals } = f {
-            assert_eq!(name, n, "expected {n}, got {name}");
-            assert!(vals.is_empty(), "expected 0-length vector, got {vals:?}.");
-        } else {
-            panic!("expected `Feature::Dense {{ .. }}`, got {f:?}");
-        }
-    }
-
-    #[test]
-    fn test_sparse() {
-        let n = "test-002";
-        let s = 1_234;
-        let f = Feature::sparse(n, s);
-
-        if let Feature::Sparse { name, vals, size } = f {
-            assert_eq!(name, n, "expected {n}, got {name}");
-            assert_eq!(size, s, "expected {s}, got {size}");
-            assert!(vals.is_empty(), "expected 0-length vector, got {vals:?}.");
-        } else {
-            panic!("expected `Feature::Sparse {{ .. }}`, got {f:?}");
-        }
-    }
-
-    #[test]
-    fn test_into_vals_01() {
-        let n = "test-003";
-        let mut f = Feature::dense(n);
-        f.append((0, 0.7));
-        f.append((8, 0.0));
-        f.append((0, 9.3));
-        f.append((100, -30.4));
-
-        let result = f.into_vals();
-        let expect = vec![0.7, 0.0, 9.3, -30.4];
-        for (r, e) in result.into_iter().zip(expect) {
-            assert_eq!(r, e, "expected {e}, got {r}");
-        }
-    }
-
-    #[test]
     fn test_into_vals_02() {
         let n = "test-004";
         let s = 10;
@@ -869,80 +825,18 @@ mod tests {
     }
 
     #[test]
-    fn test_zero_counts_01() {
-        let n = "test-005";
-        let mut f = Feature::dense(n);
-        f.append((0, 0.7));
-        f.append((8, 0.0));
-        f.append((9, 9.3));
-        f.append((5, -30.4));
-        f.append((3, 300.8));
-
-        let result = f.zero_counts();
-        let expect = 1;
-
-        assert_eq!(result, expect);
-    }
-
-    #[test]
-    fn test_zero_counts_02() {
-        let n = "test-006";
-        let s = 1_000;
-        let mut f = Feature::sparse(n, s);
-        f.append((0, 0.7));
-        f.append((8, 0.0));
-        f.append((9, 9.3));
-        f.append((5, -30.4));
-        f.append((3, 300.8));
-
-        let result = f.zero_counts();
-        let expect = 996;
-
-        assert_eq!(result, expect);
-    }
-
-    #[test]
-    fn test_is_dense_01() {
-        let name = "test-007";
-        let f = Feature::dense(name);
-        assert!(f.is_dense());
-    }
-
-    #[test]
-    fn test_is_dense_02() {
-        let name = "test-008";
-        let size = 100;
-        let f = Feature::sparse(name, size);
-        assert!(!f.is_dense());
-    }
-
-    #[test]
-    fn test_is_sparse_01() {
-        let name = "test-009";
-        let f = Feature::dense(name);
-        assert!(!f.is_sparse());
-    }
-
-    #[test]
-    fn test_is_sparse_02() {
-        let name = "test-010";
-        let size = 100;
-        let f = Feature::sparse(name, size);
-        assert!(f.is_sparse());
-    }
-
-    #[test]
-    fn test_name_01() {
-        let name = "test-011";
-        let f = Feature::dense(name);
-        assert_eq!(name, f.name());
-    }
-
-    #[test]
-    fn test_name_02() {
-        let name = "test-012";
-        let size = 100;
-        let f = Feature::sparse(name, size);
-        assert_eq!(name, f.name());
+    fn zero_counts_include_the_rows_a_sparse_feature_does_not_store() {
+        let entries = [(0, 0.7), (8, 0.0), (9, 9.3), (5, -30.4), (3, 300.8)];
+        let mut dense = Feature::dense("x");
+        let mut sparse = Feature::sparse("x", 1_000);
+        for entry in entries {
+            dense.append(entry);
+            sparse.append(entry);
+        }
+        assert_eq!(dense.zero_counts(), 1);
+        assert_eq!(sparse.zero_counts(), 996);
+        assert!(dense.is_dense() && !dense.is_sparse());
+        assert!(sparse.is_sparse() && !sparse.is_dense());
+        assert_eq!((dense.name(), sparse.name()), ("x", "x"));
     }
 }

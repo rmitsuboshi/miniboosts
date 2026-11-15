@@ -6,7 +6,8 @@
 //!   data and file readers (CSV and SVMlight).
 //! - [`Booster`] and
 //!   [`WeakLearner`]: the two players of the
-//!   boosting protocol.
+//!   boosting protocol, and [`DynWeakLearner`], a borrowed weak learner of
+//!   erased type.
 //! - [`Classifier`] and
 //!   [`Regressor`]: prediction traits for hypotheses.
 //! - [`CurrentHypothesis`]: a snapshot of a
@@ -34,7 +35,7 @@ pub use tools::{binning, checkers, helpers, tree};
 
 pub use sample::{Feature, Sample, SampleReader};
 
-pub use weak_learner::WeakLearner;
+pub use weak_learner::{DynWeakLearner, WeakLearner};
 
 pub use booster::Booster;
 

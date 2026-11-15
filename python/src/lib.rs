@@ -3,7 +3,7 @@
 //! for boosters with regression weak learners, of real-valued predictions).
 use miniboosts::{
     Classifier, FwUpdateRule, RegressionTreeRegressor, Regressor, Sample, WeightedMajority,
-    prelude::*,
+    prelude::*, weak_learners::boosted::resample,
 };
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
@@ -1047,6 +1047,35 @@ fn majority_of_five_parts(
         .parts())
 }
 
+/// Rows that `BoostedLearner` draws for the weights `weights`: `sample_size`
+/// of them (default: one per weight), with replacement, in increasing order.
+#[pyfunction]
+#[pyo3(signature = (weights, seed, sample_size=None))]
+fn boosted_learner_rows(
+    weights: Vec<f64>,
+    seed: u64,
+    sample_size: Option<usize>,
+) -> PyResult<Vec<usize>> {
+    if weights.is_empty() || weights.iter().any(|w| !w.is_finite() || *w < 0.0) {
+        return Err(PyValueError::new_err(
+            "weights must be nonempty, finite, and nonnegative",
+        ));
+    }
+    let total: f64 = weights.iter().sum();
+    if !(total > 0.0 && total.is_finite()) {
+        return Err(PyValueError::new_err(
+            "weights must have a positive finite total",
+        ));
+    }
+    if sample_size == Some(0) {
+        return Err(PyValueError::new_err(
+            "sample_size must be a positive integer",
+        ));
+    }
+    let size = sample_size.unwrap_or(weights.len());
+    Ok(resample(&weights, size, seed))
+}
+
 /// Row indices of the sub-samples used by `LarsenRitzert` on `n_samples`
 /// rows.
 #[pyfunction]
@@ -1131,6 +1160,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit_regression_tree, m)?)?;
     m.add_function(wrap_pyfunction!(majority_of_five_parts, m)?)?;
     m.add_function(wrap_pyfunction!(larsen_ritzert_subsamples, m)?)?;
+    m.add_function(wrap_pyfunction!(boosted_learner_rows, m)?)?;
     m.add_class::<Model>()?;
     m.add_class::<NativeClassifier>()?;
     m.add_class::<NativeRegressor>()?;

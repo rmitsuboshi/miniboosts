@@ -13,6 +13,9 @@ use std::ops::ControlFlow;
 ///    than random guessing with respect to `d_t`.
 ///
 /// After sufficiently many rounds, the booster outputs a combined hypothesis.
+/// A round need not be a single call of the weak learner: a round of
+/// [`crate::MajorityOfFive`] or [`crate::LarsenRitzert`] runs a whole
+/// booster on a sub-sample.
 /// What "sufficiently many" means and what the combined hypothesis achieves
 /// (training error, margin, soft margin) depend on the algorithm and on its
 /// weak-learning assumption; neither is checked by this trait.

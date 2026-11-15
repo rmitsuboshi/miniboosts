@@ -1,6 +1,7 @@
-use super::{shuffled, vote};
+use super::{Voters, shuffled, vote};
 use crate::MajorityVote;
-use crate::core::{Classifier, Sample};
+use crate::core::{Booster, Classifier, CurrentHypothesis, DynWeakLearner, Sample, WeakLearner};
+use std::ops::ControlFlow;
 
 /// Majority-of-5 (Høgsgaard, Larsen, and Mathiasen, 2024): split the sample
 /// into five disjoint parts, run a booster on each, and take the unweighted
@@ -16,7 +17,7 @@ use crate::core::{Classifier, Sample};
 ///    prediction `±1`.
 ///
 /// Here the booster of step 2 is the closure passed to
-/// [`MajorityOfFive::run`]; the paper notes that AdaBoost*_ν
+/// [`MajorityOfFive::booster`]; the paper notes that AdaBoost*_ν
 /// ([`AdaBoostV`](crate::AdaBoostV)) can be used instead of AdaBoost. The paper leaves the partition open; this
 /// implementation shuffles the rows with [`MajorityOfFive::seed`] and cuts
 /// the shuffled order into contiguous parts whose sizes differ by at most
@@ -41,8 +42,18 @@ use crate::core::{Classifier, Sample};
 /// - The closure must handle any part it receives. In particular, many
 ///   boosters panic on a part with a single label, which can happen on
 ///   small or very unbalanced samples.
-/// - Not a [`Booster`](crate::Booster): there are no rounds, logging, or
-///   [`CurrentHypothesis`](crate::core::CurrentHypothesis).
+///
+/// # As a booster
+/// With [`MajorityOfFive::booster`], this type implements
+/// [`Booster`](crate::Booster): round `t` runs the closure on part `t` with
+/// the weak learner given to `run`, so there are as many rounds as parts,
+/// one after the other. The weak learner is the same for every part; one
+/// that was built for the whole sample, such as
+/// [`DecisionTree`](crate::DecisionTree), keeps what it derived from the
+/// feature values of all parts (the tree's bin boundaries; no labels).
+/// [`MajorityOfFive::run_with`] instead takes a closure that trains on a
+/// part by any means, e.g. with a weak learner built for that part, and
+/// runs the parts in parallel.
 ///
 /// # Paper
 /// Mikael Møller Høgsgaard, Kasper Green Larsen, and Markus Engelund
@@ -57,22 +68,46 @@ use crate::core::{Classifier, Sample};
 /// let y: Vec<f64> = (0..40).map(|i| if i < 20 { -1.0 } else { 1.0 }).collect();
 /// let sample = Sample::from_dense(&rows, Some(&y)).unwrap();
 ///
-/// let f = MajorityOfFive::init(&sample).seed(1).run(|part: &Sample| {
+/// let labels: Vec<i64> = y.iter().map(|&v| v as i64).collect();
+///
+/// // As a booster: the closure runs AdaBoost on a part.
+/// let stump = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+/// let f = MajorityOfFive::init(&sample)
+///     .seed(1)
+///     .booster(|part, weak_learner| AdaBoost::init(part).force_quit_at(10).run(weak_learner))
+///     .run(&stump);
+/// assert_eq!(f.hypotheses.len(), 5);
+/// assert_eq!(f.predict_all(&sample), labels);
+///
+/// // With a closure that also builds the weak learner for its part.
+/// let f = MajorityOfFive::init(&sample).seed(1).run_with(|part: &Sample| {
 ///     let stump = DecisionTreeBuilder::new(part).max_depth(1).build();
 ///     AdaBoost::init(part).force_quit_at(10).run(&stump)
 /// });
 /// assert_eq!(f.hypotheses.len(), 5);
-/// assert_eq!(f.predict_all(&sample), y.iter().map(|&v| v as i64).collect::<Vec<_>>());
+/// assert_eq!(f.predict_all(&sample), labels);
 /// ```
-#[derive(Debug)]
-pub struct MajorityOfFive<'a> {
+pub struct MajorityOfFive<'a, F = (), O = ()> {
     sample: &'a Sample,
     n_parts: usize,
     seed: u64,
+    voters: Voters<F, O>,
+}
+
+/// The closure is not shown.
+impl<F, O> std::fmt::Debug for MajorityOfFive<'_, F, O> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MajorityOfFive")
+            .field("n_parts", &self.n_parts)
+            .field("seed", &self.seed)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a> MajorityOfFive<'a> {
     /// Constructs Majority-of-5 for `sample`, with 5 parts and seed `0`.
+    /// Set the booster with [`MajorityOfFive::booster`], or train with
+    /// [`MajorityOfFive::run_with`].
     ///
     /// Time complexity: `O(1)`.
     ///
@@ -83,9 +118,38 @@ impl<'a> MajorityOfFive<'a> {
             sample,
             n_parts: 5,
             seed: 0,
+            voters: Voters::new(()),
         }
     }
 
+    /// Sets the booster run on each part, which makes this type a
+    /// [`Booster`](crate::Booster).
+    ///
+    /// `train(part, weak_learner)` receives a part as its own [`Sample`] and
+    /// the weak learner passed to [`Booster::run`](crate::Booster::run), and
+    /// returns a voting classifier, typically
+    /// `SomeBooster::init(part).run(weak_learner)` with the booster's
+    /// parameters set in between.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// See [`MajorityOfFive`].
+    #[must_use]
+    pub fn booster<H, F, O>(self, train: F) -> MajorityOfFive<'a, F, O>
+    where
+        F: Fn(&Sample, &DynWeakLearner<'_, H>) -> O,
+    {
+        MajorityOfFive {
+            sample: self.sample,
+            n_parts: self.n_parts,
+            seed: self.seed,
+            voters: Voters::new(train),
+        }
+    }
+}
+
+impl<F, O> MajorityOfFive<'_, F, O> {
     /// Sets the number of parts. Default is `5`, the value the paper's
     /// guarantee covers.
     ///
@@ -169,7 +233,8 @@ impl<'a> MajorityOfFive<'a> {
     /// Runs `train` on every part, in parallel, and returns the unweighted
     /// majority vote of the results. `train` receives the part as its own
     /// [`Sample`] and should return a voting classifier, e.g. by running a
-    /// booster with a weak learner built for that sample.
+    /// booster with a weak learner built for that sample. This does not use
+    /// the closure of [`MajorityOfFive::booster`].
     ///
     /// Time complexity: the total time of the calls to `train`, plus `O(m k)`
     /// to copy the parts for `k` features.
@@ -179,12 +244,65 @@ impl<'a> MajorityOfFive<'a> {
     ///
     /// # Examples
     /// See [`MajorityOfFive`].
-    pub fn run<H, F>(&self, train: F) -> MajorityVote<H>
+    pub fn run_with<H, T>(&self, train: T) -> MajorityVote<H>
     where
         H: Classifier + Send,
-        F: Fn(&Sample) -> H + Sync,
+        T: Fn(&Sample) -> H + Sync,
     {
         vote(self.sample, self.parts(), train)
+    }
+}
+
+impl<H, F, O> Booster<H> for MajorityOfFive<'_, F, O>
+where
+    F: Fn(&Sample, &DynWeakLearner<'_, H>) -> O,
+    O: Classifier + Clone,
+{
+    type Output = MajorityVote<O>;
+
+    fn name(&self) -> &str {
+        "Majority-of-5"
+    }
+
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        Some(vec![
+            ("# of parts", self.n_parts.to_string()),
+            ("Seed", self.seed.to_string()),
+        ])
+    }
+
+    /// Checks the labels and partitions the rows.
+    ///
+    /// # Panics
+    /// Panics as [`MajorityOfFive::parts`] does, or if the labels are not a
+    /// valid binary instance.
+    fn preprocess(&mut self) {
+        self.sample.is_valid_binary_instance();
+        self.voters.reset(self.parts());
+    }
+
+    /// Runs the booster on part `iteration` and breaks after the last part.
+    fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
+    where
+        W: WeakLearner<Hypothesis = H>,
+    {
+        self.voters.train(self.sample, weak_learner, iteration)
+    }
+
+    fn postprocess(&mut self) -> Self::Output {
+        self.voters.vote()
+    }
+}
+
+impl<F, O> CurrentHypothesis for MajorityOfFive<'_, F, O>
+where
+    O: Classifier + Clone,
+{
+    type Output = MajorityVote<O>;
+
+    /// The majority vote of the parts trained so far.
+    fn current_hypothesis(&self) -> Self::Output {
+        self.voters.vote()
     }
 }
 
@@ -226,7 +344,7 @@ mod tests {
             }
         }
         let learner = MajorityOfFive::init(&sample).seed(4);
-        let f = learner.run(|part| {
+        let f = learner.run_with(|part| {
             Seen(
                 (0..part.shape().0)
                     .map(|i| part["feature_0"][i] as usize)

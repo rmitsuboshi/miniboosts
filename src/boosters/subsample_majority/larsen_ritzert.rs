@@ -1,6 +1,7 @@
-use super::{shuffled, vote};
+use super::{Voters, shuffled, vote};
 use crate::MajorityVote;
-use crate::core::{Classifier, Sample};
+use crate::core::{Booster, Classifier, CurrentHypothesis, DynWeakLearner, Sample, WeakLearner};
+use std::ops::ControlFlow;
 
 /// The optimal weak-to-strong learner of Larsen and Ritzert (2022): run a
 /// booster on Hanneke's highly overlapping sub-samples and take the
@@ -21,7 +22,7 @@ use crate::core::{Classifier, Sample};
 /// There are `k = 3^L` sub-samples, where `L` is the number of levels until
 /// `|A| <= 3`; `k ≈ m^{log_4 3} ≈ m^{0.79}`.
 ///
-/// Here the booster is the closure passed to [`LarsenRitzert::run`]. The
+/// Here the booster is the closure passed to [`LarsenRitzert::booster`]. The
 /// sub-samples depend on the order of `S`; this implementation first
 /// shuffles the rows with [`LarsenRitzert::seed`], which changes nothing
 /// for i.i.d. samples but avoids sub-samples that follow a sorted file.
@@ -48,8 +49,15 @@ use crate::core::{Classifier, Sample};
 ///   than one run of the booster.
 /// - The closure must handle any sub-sample it receives; many boosters panic
 ///   on a sub-sample with a single label.
-/// - Not a [`Booster`](crate::Booster): there are no rounds, logging, or
-///   [`CurrentHypothesis`](crate::core::CurrentHypothesis).
+///
+/// # As a booster
+/// With [`LarsenRitzert::booster`], this type implements
+/// [`Booster`](crate::Booster): round `i` runs the closure on sub-sample
+/// `C_i` with the weak learner given to `run`, so there are as many rounds
+/// as sub-samples, one after the other. The weak learner is the same for
+/// every sub-sample. [`LarsenRitzert::run_with`] instead takes a closure
+/// that trains on a sub-sample by any means, e.g. with a weak learner built
+/// for it, and runs the sub-samples in parallel.
 ///
 /// # Paper
 /// Kasper Green Larsen and Martin Ritzert, [Optimal Weak to Strong
@@ -69,23 +77,45 @@ use crate::core::{Classifier, Sample};
 /// let learner = LarsenRitzert::init(&sample);
 /// // 16 → 4 → 1 rows in A: two levels, 3² sub-samples.
 /// assert_eq!(learner.n_subsamples(), 9);
-/// let f = learner.run(|sub: &Sample| {
+/// let labels: Vec<i64> = y.iter().map(|&v| v as i64).collect();
+///
+/// // As a booster: the closure runs AdaBoost on a sub-sample.
+/// let stump = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+/// let f = learner
+///     .booster(|sub, weak_learner| AdaBoost::init(sub).force_quit_at(10).run(weak_learner))
+///     .run(&stump);
+/// assert_eq!(f.hypotheses.len(), 9);
+/// assert_eq!(f.predict_all(&sample), labels);
+///
+/// // With a closure that also builds the weak learner for its sub-sample.
+/// let f = LarsenRitzert::init(&sample).run_with(|sub: &Sample| {
 ///     let stump = DecisionTreeBuilder::new(sub).max_depth(1).build();
 ///     AdaBoost::init(sub).force_quit_at(10).run(&stump)
 /// });
 /// assert_eq!(f.hypotheses.len(), 9);
-/// assert_eq!(f.predict_all(&sample), y.iter().map(|&v| v as i64).collect::<Vec<_>>());
+/// assert_eq!(f.predict_all(&sample), labels);
 /// ```
-#[derive(Debug)]
-pub struct LarsenRitzert<'a> {
+pub struct LarsenRitzert<'a, F = (), O = ()> {
     sample: &'a Sample,
     seed: u64,
     max_subsamples: Option<usize>,
+    voters: Voters<F, O>,
+}
+
+/// The closure is not shown.
+impl<F, O> std::fmt::Debug for LarsenRitzert<'_, F, O> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LarsenRitzert")
+            .field("seed", &self.seed)
+            .field("max_subsamples", &self.max_subsamples)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a> LarsenRitzert<'a> {
     /// Constructs the learner for `sample`, using every sub-sample, with seed
-    /// `0`.
+    /// `0`. Set the booster with [`LarsenRitzert::booster`], or train with
+    /// [`LarsenRitzert::run_with`].
     ///
     /// Time complexity: `O(1)`.
     ///
@@ -96,9 +126,40 @@ impl<'a> LarsenRitzert<'a> {
             sample,
             seed: 0,
             max_subsamples: None,
+            voters: Voters::new(()),
         }
     }
 
+    /// Sets the booster run on each sub-sample, which makes this type a
+    /// [`Booster`](crate::Booster).
+    ///
+    /// `train(sub, weak_learner)` receives a sub-sample as its own
+    /// [`Sample`] and the weak learner passed to
+    /// [`Booster::run`](crate::Booster::run), and returns a voting
+    /// classifier with margins at least `γ/2` on the sub-sample (see
+    /// [`LarsenRitzert`]), typically
+    /// `SomeBooster::init(sub).run(weak_learner)` with the booster's
+    /// parameters set in between.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// See [`LarsenRitzert`].
+    #[must_use]
+    pub fn booster<H, F, O>(self, train: F) -> LarsenRitzert<'a, F, O>
+    where
+        F: Fn(&Sample, &DynWeakLearner<'_, H>) -> O,
+    {
+        LarsenRitzert {
+            sample: self.sample,
+            seed: self.seed,
+            max_subsamples: self.max_subsamples,
+            voters: Voters::new(train),
+        }
+    }
+}
+
+impl<F, O> LarsenRitzert<'_, F, O> {
     /// Sets the seed of the shuffle of the rows (and of the choice of
     /// sub-samples with [`LarsenRitzert::max_subsamples`]). Default is `0`.
     ///
@@ -206,6 +267,7 @@ impl<'a> LarsenRitzert<'a> {
     /// unweighted majority vote of the results. `train` receives the
     /// sub-sample as its own [`Sample`] and should return a voting
     /// classifier with margins at least `γ/2` on it (see [`LarsenRitzert`]).
+    /// This does not use the closure of [`LarsenRitzert::booster`].
     ///
     /// Time complexity: the total time of the calls to `train`, plus
     /// `O(k m f)` to copy `k` sub-samples with `f` features.
@@ -215,12 +277,69 @@ impl<'a> LarsenRitzert<'a> {
     ///
     /// # Examples
     /// See [`LarsenRitzert`].
-    pub fn run<H, F>(&self, train: F) -> MajorityVote<H>
+    pub fn run_with<H, T>(&self, train: T) -> MajorityVote<H>
     where
         H: Classifier + Send,
-        F: Fn(&Sample) -> H + Sync,
+        T: Fn(&Sample) -> H + Sync,
     {
         vote(self.sample, self.subsamples(), train)
+    }
+}
+
+impl<H, F, O> Booster<H> for LarsenRitzert<'_, F, O>
+where
+    F: Fn(&Sample, &DynWeakLearner<'_, H>) -> O,
+    O: Classifier + Clone,
+{
+    type Output = MajorityVote<O>;
+
+    fn name(&self) -> &str {
+        "Larsen-Ritzert"
+    }
+
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        let cap = self
+            .max_subsamples
+            .map_or_else(|| "all".to_string(), |count| count.to_string());
+        Some(vec![
+            ("# of sub-samples", self.n_subsamples().to_string()),
+            ("Sub-samples used (max)", cap),
+            ("Seed", self.seed.to_string()),
+        ])
+    }
+
+    /// Checks the labels and computes the sub-samples.
+    ///
+    /// # Panics
+    /// Panics if the labels are not a valid binary instance.
+    fn preprocess(&mut self) {
+        self.sample.is_valid_binary_instance();
+        self.voters.reset(self.subsamples());
+    }
+
+    /// Runs the booster on sub-sample `iteration` and breaks after the last
+    /// one.
+    fn boost<W>(&mut self, weak_learner: &W, iteration: usize) -> ControlFlow<usize>
+    where
+        W: WeakLearner<Hypothesis = H>,
+    {
+        self.voters.train(self.sample, weak_learner, iteration)
+    }
+
+    fn postprocess(&mut self) -> Self::Output {
+        self.voters.vote()
+    }
+}
+
+impl<F, O> CurrentHypothesis for LarsenRitzert<'_, F, O>
+where
+    O: Classifier + Clone,
+{
+    type Output = MajorityVote<O>;
+
+    /// The majority vote of the sub-samples trained so far.
+    fn current_hypothesis(&self) -> Self::Output {
+        self.voters.vote()
     }
 }
 

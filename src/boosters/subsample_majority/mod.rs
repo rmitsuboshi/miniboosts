@@ -3,10 +3,12 @@
 //! Larsen, and Mathiasen, 2024) and [`LarsenRitzert`] (Larsen and Ritzert,
 //! 2022).
 //!
-//! Both take a closure that trains a voting classifier on a sub-sample, so
-//! any booster and weak learner can be plugged in. They do not implement
-//! [`Booster`](crate::Booster), whose rounds call a single weak learner on
-//! the whole sample.
+//! Both take a closure that runs a booster on a sub-sample, so any booster
+//! can be plugged in. With that closure set by `booster`, they implement
+//! [`Booster`](crate::Booster): each round runs the closure on one
+//! sub-sample with the weak learner given to `run`. `run_with` takes a
+//! closure that trains on a sub-sample by any means and runs the
+//! sub-samples in parallel.
 mod larsen_ritzert;
 mod majority_of_five;
 
@@ -14,9 +16,10 @@ pub use larsen_ritzert::LarsenRitzert;
 pub use majority_of_five::MajorityOfFive;
 
 use crate::MajorityVote;
-use crate::core::{Classifier, Sample};
+use crate::core::{Classifier, DynWeakLearner, Sample, WeakLearner};
 use crate::optimization::sparsification::SplitMix64;
 use rayon::prelude::*;
+use std::ops::ControlFlow;
 
 /// Returns `0, ..., n - 1` in an order drawn uniformly at random with
 /// `seed` (Fisher–Yates).
@@ -44,6 +47,66 @@ where
         .map(|rows| train(&sample.select_rows(&rows)))
         .collect();
     MajorityVote::new(hypotheses)
+}
+
+/// The per-run state of a sub-sample majority used as a
+/// [`Booster`](crate::Booster): the closure `train` that runs a booster,
+/// the sub-samples of the current run, and the voters trained so far.
+struct Voters<F, O> {
+    train: F,
+    subsets: Vec<Vec<usize>>,
+    voters: Vec<O>,
+}
+
+impl<F, O> Voters<F, O> {
+    fn new(train: F) -> Self {
+        Self {
+            train,
+            subsets: Vec::new(),
+            voters: Vec::new(),
+        }
+    }
+
+    /// Starts a run over `subsets`.
+    fn reset(&mut self, subsets: Vec<Vec<usize>>) {
+        self.subsets = subsets;
+        self.voters.clear();
+    }
+
+    /// Round `iteration` (1-based): trains on the rows of the
+    /// `iteration`-th subset. Breaks, with the number of subsets, once the
+    /// last one is trained.
+    fn train<H, W>(
+        &mut self,
+        sample: &Sample,
+        weak_learner: &W,
+        iteration: usize,
+    ) -> ControlFlow<usize>
+    where
+        F: Fn(&Sample, &DynWeakLearner<'_, H>) -> O,
+        W: WeakLearner<Hypothesis = H>,
+    {
+        let total = self.subsets.len();
+        if self.voters.len() < total {
+            debug_assert_eq!(iteration, self.voters.len() + 1);
+            let part = sample.select_rows(&self.subsets[self.voters.len()]);
+            let voter = (self.train)(&part, &DynWeakLearner::new(weak_learner));
+            self.voters.push(voter);
+        }
+        if self.voters.len() < total {
+            ControlFlow::Continue(())
+        } else {
+            ControlFlow::Break(total)
+        }
+    }
+
+    /// The unweighted majority vote of the voters trained so far.
+    fn vote(&self) -> MajorityVote<O>
+    where
+        O: Clone,
+    {
+        MajorityVote::new(self.voters.clone())
+    }
 }
 
 #[cfg(test)]

@@ -946,6 +946,80 @@ class LarsenRitzertClassifier(_SubsampleMajority):
         return _native.larsen_ritzert_subsamples(n_samples, int(self.seed), count)
 
 
+class BoostedLearnerClassifier(ClassifierMixin, BaseEstimator):
+    """A booster used as a weak learner, by resampling.
+
+    ``fit(X, y, sample_weight)`` draws ``sample_size`` rows (default: as many
+    as X has) from the weights, with replacement, and fits a clone of
+    ``estimator`` (a booster holding its own weak learner; default
+    ``AdaBoostClassifier()``) on them. Rust picks the rows, as a function of
+    ``seed`` and the weights. The confidence is the booster's
+    ``decision_function``, or its -1/+1 prediction with ``sign=True``.
+    If every drawn row has the same label, no booster is fitted and the
+    learner predicts that label everywhere (``estimator_`` is None and
+    ``constant_`` holds the label).
+
+    This is boosting by resampling: the booster's guarantees hold on the
+    drawn rows, and its edge under the weights is only approximated.
+    """
+    def __init__(self, *, estimator=None, sample_size=None, seed=0, sign=False):
+        self.estimator = estimator
+        self.sample_size = sample_size
+        self.seed = seed
+        self.sign = sign
+
+    def fit(self, X, y, sample_weight=None):
+        """Fit a clone of ``estimator`` on rows drawn from ``sample_weight``."""
+        _reset(self)
+        try:
+            _nonnegative_integer('seed', self.seed)
+            if self.sample_size is not None:
+                _positive_integer('sample_size', self.sample_size)
+            if not isinstance(self.sign, (bool, np.bool_)):
+                raise ValueError('sign must be a boolean')
+            X, encoded, classes = _training_data(self, X, y)
+            template = self.estimator if self.estimator is not None else AdaBoostClassifier()
+            method = 'predict' if self.sign else 'decision_function'
+            if not callable(getattr(template, 'fit', None)) or not callable(getattr(template, method, None)):
+                raise TypeError(f'estimator needs fit(X, y) and {method}(X)')
+            weights = _distribution(sample_weight, X.shape[0])
+            size = None if self.sample_size is None else int(self.sample_size)
+            rows = np.asarray(_native.boosted_learner_rows(weights.tolist(), int(self.seed), size),
+                              dtype=np.intp)
+            labels = encoded[rows]
+            if (labels == labels[0]).all():
+                fitted, constant = None, float(labels[0])
+            else:
+                # Labels are already -1/+1, so the booster does not re-encode them.
+                fitted, constant = clone(template), None
+                fitted.fit(X[rows].copy(), labels.copy())
+            self.estimator_ = fitted
+            self.constant_ = constant
+            self.rows_ = rows
+            self.classes_ = classes
+            return self
+        except BaseException:
+            _reset(self)
+            raise
+
+    def decision_function(self, X):
+        """The booster's confidence, its -1/+1 prediction with ``sign``, or the constant."""
+        check_is_fitted(self, 'rows_')
+        X = validate_data(self, X, accept_sparse='csc', reset=False, dtype=np.float64)
+        if self.estimator_ is None:
+            return np.full(X.shape[0], self.constant_)
+        if not self.sign:
+            return np.asarray(self.estimator_.decision_function(X), dtype=np.float64)
+        raw = np.asarray(self.estimator_.predict(X))
+        if raw.shape != (X.shape[0],) or not np.isin(raw, [-1, 1]).all():
+            raise ValueError('BoostedLearnerClassifier: with sign=True the estimator must predict -1/+1')
+        return raw.astype(np.float64)
+
+    def predict(self, X):
+        scores = self.decision_function(X)
+        return self.classes_[(scores >= 0).astype(np.intp)]
+
+
 class PredictionAdapter(ClassifierMixin, BaseEstimator):
     """Explicitly use a classifier's hard predictions as -1/+1 confidence.
 

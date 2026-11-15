@@ -122,3 +122,68 @@ pub trait WeakLearner {
     /// Implementations may panic on malformed input; see each implementation.
     fn produce(&self, sample: &Sample, dist: &[f64]) -> Self::Hypothesis;
 }
+
+/// A borrowed weak learner whose concrete type is erased; only its
+/// hypothesis type `H` is known.
+///
+/// [`Booster::boost`](crate::Booster::boost) is generic over the weak
+/// learner, so a booster that stores a closure cannot name the weak
+/// learner's type in the closure's signature. Boosters that hand their weak
+/// learner to a closure ([`MajorityOfFive`](crate::MajorityOfFive),
+/// [`LarsenRitzert`](crate::LarsenRitzert)) pass it as `&DynWeakLearner<H>`,
+/// which is a [`WeakLearner`] itself and forwards every call.
+///
+/// # Examples
+/// ```
+/// use miniboosts::{DynWeakLearner, Sample, prelude::*};
+///
+/// let rows = vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]];
+/// let sample = Sample::from_dense(&rows, Some(&[-1.0, -1.0, 1.0, 1.0])).unwrap();
+/// let stump = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+///
+/// let erased = DynWeakLearner::new(&stump);
+/// assert_eq!(erased.name(), stump.name());
+/// let f = AdaBoost::init(&sample).run(&erased);
+/// assert_eq!(f.predict_all(&sample), vec![-1, -1, 1, 1]);
+/// ```
+pub struct DynWeakLearner<'a, H>(&'a dyn WeakLearner<Hypothesis = H>);
+
+impl<'a, H> DynWeakLearner<'a, H> {
+    /// Wraps a reference to `weak_learner`.
+    ///
+    /// Time complexity: `O(1)`.
+    ///
+    /// # Examples
+    /// See [`DynWeakLearner`].
+    pub fn new<W>(weak_learner: &'a W) -> Self
+    where
+        W: WeakLearner<Hypothesis = H>,
+    {
+        Self(weak_learner)
+    }
+}
+
+/// Shows the name of the wrapped weak learner.
+impl<H> std::fmt::Debug for DynWeakLearner<'_, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("DynWeakLearner")
+            .field(&self.0.name())
+            .finish()
+    }
+}
+
+impl<H> WeakLearner for DynWeakLearner<'_, H> {
+    type Hypothesis = H;
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn info(&self) -> Option<Vec<(&str, String)>> {
+        self.0.info()
+    }
+
+    fn produce(&self, sample: &Sample, dist: &[f64]) -> H {
+        self.0.produce(sample, dist)
+    }
+}

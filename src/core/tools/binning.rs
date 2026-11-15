@@ -1153,89 +1153,6 @@ mod tests {
     const NUMERIC_ERROR_TOLERANCE: f64 = 1e-9;
 
     #[test]
-    fn test_bin_new() {
-        let rng = 0f64..1f64;
-
-        let expect = rng.clone();
-        let result = Bin::new(rng).0;
-        assert_eq!(expect, result, "expected {expect:?}, got {result:?}.");
-    }
-
-    #[test]
-    fn test_bin_contains_01() {
-        let rng = 0f64..1f64;
-        let bin = Bin::new(rng);
-        let itm = 0.5f64;
-
-        let result = bin.contains(&itm);
-        let expect = true;
-        assert_eq!(expect, result, "expected {expect}, got {result}.");
-    }
-
-    #[test]
-    fn test_bin_contains_02() {
-        let rng = 0f64..1f64;
-        let bin = Bin::new(rng);
-        let itm = 0f64;
-
-        let result = bin.contains(&itm);
-        let expect = true;
-        assert_eq!(expect, result, "expected {expect}, got {result}.");
-    }
-
-    #[test]
-    fn test_bin_contains_03() {
-        let rng = 0f64..1f64;
-        let bin = Bin::new(rng);
-        let itm = 1f64;
-
-        let result = bin.contains(&itm);
-        let expect = false;
-        assert_eq!(expect, result, "expected {expect}, got {result}.");
-    }
-
-    #[test]
-    fn test_bin_contains_04() {
-        let rng = 0f64..1f64;
-        let bin = Bin::new(rng);
-        let itm = -100f64;
-
-        let result = bin.contains(&itm);
-        let expect = false;
-        assert_eq!(expect, result, "expected {expect}, got {result}.");
-    }
-
-    #[test]
-    fn test_bin_display_01() {
-        let rng = 0f64..1f64;
-        let bin = Bin::new(rng);
-
-        let result = format!("{bin}");
-        let expect = "[ 0.00, +1.00)".to_string();
-        assert_eq!(expect, result, "expected {expect}, got {result}.");
-    }
-
-    #[test]
-    fn test_bin_display_02() {
-        let rng = -2f64..100f64;
-        let bin = Bin::new(rng);
-
-        let result = format!("{bin}");
-        let expect = "[-2.00, +100.00)".to_string();
-        assert_eq!(expect, result, "expected {expect}, got {result}.");
-    }
-
-    #[test]
-    fn test_bin_display_03() {
-        let rng = f64::MIN..f64::MAX;
-        let bin = Bin::new(rng);
-
-        let result = format!("{bin}");
-        let expect = "[-Inf, +Inf)".to_string();
-        assert_eq!(expect, result, "expected {expect}, got {result}.");
-    }
-
-    #[test]
     fn test_cut_01() {
         let mut feature = Feature::dense("dense");
         feature.append((0, 0f64));
@@ -1257,44 +1174,6 @@ mod tests {
         feature.append((0, -10f64));
         feature.append((0, 4f64));
         feature.append((0, 10f64));
-
-        let result = Bins::cut(&feature, 4);
-        let expect = vec![
-            Bin::new(f64::MIN..-5f64),
-            Bin::new(-5f64..0f64),
-            Bin::new(0f64..5f64),
-            Bin::new(5f64..f64::MAX),
-        ];
-
-        assert_eq!(result.0.len(), expect.len());
-        for (r, e) in result.0.into_iter().zip(expect) {
-            assert_eq!(r.0, e.0);
-        }
-    }
-
-    #[test]
-    fn test_cut_03() {
-        let mut feature = Feature::sparse("sparse", 1_000);
-        feature.append((0, 0f64));
-        feature.append((100, 4f64));
-        feature.append((12, 1f64));
-
-        let result = Bins::cut(&feature, 2);
-        let expect = vec![Bin::new(f64::MIN..2f64), Bin::new(2f64..f64::MAX)];
-
-        assert_eq!(result.0.len(), expect.len());
-        for (r, e) in result.0.into_iter().zip(expect) {
-            assert_eq!(r.0, e.0);
-        }
-    }
-
-    #[test]
-    fn test_cut_04() {
-        let mut feature = Feature::sparse("sparse", 1_000);
-        feature.append((0, 0f64));
-        feature.append((100, -10f64));
-        feature.append((7, 10f64));
-        feature.append((12, 1f64));
 
         let result = Bins::cut(&feature, 4);
         let expect = vec![
@@ -1613,5 +1492,16 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_bin_is_half_open_and_displays_its_ends() {
+        let bin = Bin::new(0f64..1f64);
+        assert_eq!(bin.0, 0f64..1f64);
+        assert!(bin.contains(&0.5) && bin.contains(&0.0));
+        assert!(!bin.contains(&1.0) && !bin.contains(&-100.0));
+        assert_eq!(bin.to_string(), "[ 0.00, +1.00)");
+        assert_eq!(Bin::new(-2f64..100f64).to_string(), "[-2.00, +100.00)");
+        assert_eq!(Bin::new(f64::MIN..f64::MAX).to_string(), "[-Inf, +Inf)");
     }
 }

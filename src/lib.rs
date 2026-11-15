@@ -11,7 +11,9 @@ pub mod weak_learners;
 
 pub mod prelude;
 
-pub use crate::core::{Booster, Classifier, Regressor, Sample, SampleReader, WeakLearner};
+pub use crate::core::{
+    Booster, Classifier, DynWeakLearner, Regressor, Sample, SampleReader, WeakLearner,
+};
 pub use crate::hypotheses::{
     AdditiveModel, MajorityVote, NaiveAggregation, ScoreLink, WeightedMajority,
 };
@@ -38,6 +40,7 @@ pub use crate::boosters::sparsiboost::SparsiBoost;
 pub use crate::boosters::subsample_majority::{LarsenRitzert, MajorityOfFive};
 pub use crate::boosters::totalboost::TotalBoost;
 
+pub use crate::weak_learners::boosted::{BoostedHypothesis, BoostedLearner};
 pub use crate::weak_learners::decision_tree::{
     DecisionTree, DecisionTreeBuilder, DecisionTreeClassifier, LeafConfidence, SplitBy, node,
     split_by,

@@ -253,6 +253,25 @@ voters that reach large margins (`Ω(γ)` for Majority-of-5, `γ/2` for
 Larsen–Ritzert); `max_subsamples` is an approximation without the guarantee.
 A part with a single label makes the voter's fit fail.
 
+### Boosters as weak learners
+
+`BoostedLearnerClassifier(estimator=None, sample_size=None, seed=0, sign=False)`
+makes a booster a weak learner, so boosters can be nested:
+
+```python
+inner = BoostedLearnerClassifier(estimator=AdaBoostClassifier(max_iterations=10))
+model = LPBoostClassifier(estimator=inner).fit(X, y)
+```
+
+Its `fit(X, y, sample_weight)` draws `sample_size` rows (default: as many as
+`X` has) from the weights, with replacement, and fits a clone of `estimator`
+(default `AdaBoostClassifier()`) on them; the rows (`rows_`) depend only on
+`seed` and the weights. The confidence is the booster's `decision_function`,
+or its -1/+1 prediction with `sign=True`. If every drawn row has the same label, no booster is fitted and
+that label is predicted everywhere (`estimator_` is `None`). This is boosting
+by resampling: the inner booster's guarantees hold on the drawn rows, and its
+edge under the weights is only approximated.
+
 `tolerance` has the original algorithm-specific meaning: an iteration-budget
 parameter for AdaBoost/MadaBoost, a margin-update and budget parameter for
 AdaBoostV, or an optimization stopping tolerance for the LP-based methods.

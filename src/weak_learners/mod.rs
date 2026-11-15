@@ -16,11 +16,14 @@
 //!   ([`GradientBoosting`](crate::GradientBoosting),
 //!   [`LogitBoost`](crate::LogitBoost));
 //! - [`union`]: the candidate with the largest edge among other weak
-//!   learners, possibly with different hypothesis types.
+//!   learners, possibly with different hypothesis types;
+//! - [`boosted`]: a booster together with its weak learner, run on rows
+//!   resampled from the distribution.
 //!
 //! Implement `WeakLearner` for your own hypothesis class to compare
 //! boosters with other learners.
 
+pub mod boosted;
 pub mod decision_tree;
 pub mod finite_class;
 pub mod linear;

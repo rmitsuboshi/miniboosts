@@ -126,72 +126,25 @@ pub fn capped_simplex_condition(slice: &[f64], nu: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn test_nu_success_01() {
+    fn capping_parameter_accepts_one_to_the_sample_size() {
         let m = 1_000;
-        let nu = 0.01 * m as f64;
-        capping_parameter(nu, m);
+        for nu in [1.0, 0.01 * m as f64, m as f64] {
+            capping_parameter(nu, m);
+        }
+        for nu in [0.0, (m + 1) as f64] {
+            assert!(std::panic::catch_unwind(|| capping_parameter(nu, m)).is_err());
+        }
     }
 
     #[test]
-    fn test_nu_success_02() {
-        let m = 1_000;
-        let nu = 1f64;
-        capping_parameter(nu, m);
-    }
-
-    #[test]
-    fn test_nu_success_03() {
-        let m = 1_000;
-        let nu = m as f64;
-        capping_parameter(nu, m);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_nu_failure_01() {
-        let m = 1_000;
-        let nu = 0f64;
-        capping_parameter(nu, m);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_nu_failure_02() {
-        let m = 1_000;
-        let nu = (m + 1) as f64;
-        capping_parameter(nu, m);
-    }
-
-    #[test]
-    fn test_stepsize_success_01() {
-        let s = 0.5f64;
-        stepsize(s);
-    }
-
-    #[test]
-    fn test_stepsize_success_02() {
-        let s = 0f64;
-        stepsize(s);
-    }
-
-    #[test]
-    fn test_stepsize_success_03() {
-        let s = 1f64;
-        stepsize(s);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_stepsize_failure_01() {
-        let s = -0.0001;
-        stepsize(s);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_stepsize_failure_02() {
-        let s = 1.0001;
-        stepsize(s);
+    fn stepsize_accepts_the_unit_interval() {
+        for s in [0.0, 0.5, 1.0] {
+            stepsize(s);
+        }
+        for s in [-0.0001, 1.0001] {
+            assert!(std::panic::catch_unwind(|| stepsize(s)).is_err());
+        }
     }
 }
