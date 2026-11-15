@@ -145,11 +145,13 @@ as for the boosters. Rust failures (e.g. non-convergence) raise `RuntimeError`.
 `RegressionTreeRegressor` considers every split between consecutive distinct
 values of a feature (threshold at the midpoint) when the feature has at most
 `n_bins` distinct values (default cap 255); above the cap it uses `n_bins`
-equal-width bins, and the best split may be missed.
+bins holding about the same number of examples each, and the best split may
+be missed. `DecisionTreeClassifier` cuts its bins the same way, with a cap of
+255.
 
 - `DecisionTreeClassifier` splits by `"entropy"`, `"edge"`, `"gini"`, or
   `"twoing"`. `exact_splits=True` tries every midpoint between distinct values
-  instead of equal-width bins, and `leaf_confidence="sign"` makes leaves
+  even for a feature with more than 255 of them, and `leaf_confidence="sign"` makes leaves
   predict `±1`. With `max_depth=1`, `split_by="edge"`, `exact_splits=True`,
   and `leaf_confidence="sign"`, it is an exact edge-maximizing decision stump.
 - `BoundedLinearClassifier` exactly maximizes the edge over its class; `R` is

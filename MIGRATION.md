@@ -186,6 +186,31 @@ bytes into the columns, instead of through a vector of values and a vector of
 rows. On 20000 examples with 300 dense features, `decision_function` of a
 native weak learner takes 14 ms instead of 32 ms.
 
+**The default bins of the tree learners changed, so `DecisionTree` and
+`RegressionTree` give different trees than before** on features that used to
+be cut into equal-width bins. A feature with at most 255 distinct values (or
+the count set by `DecisionTreeBuilder::set_nbins` /
+`RegressionTreeBuilder::n_bins`, which is now a cap) gets one bin per value,
+so every split between consecutive values is a candidate; `DecisionTree`
+used to cut such a feature into as many equal-width bins as it has values,
+which can put several values into one bin. A feature with more values gets
+that many bins holding about the same number of examples each
+(`Bins::quantile`, new) instead of bins of equal width, so the candidate
+thresholds follow the data. The bins depend on the feature values only and
+are invariant under increasing transformations of a feature. `Bins::cut`
+(equal width) and `Bins::per_value` are unchanged, and
+`DecisionTreeBuilder::exact_splits` still gives one bin per value for every
+feature.
+
+With AdaBoost and depth-2 trees for 300 rounds on 4200 training and 1800 test
+examples with 20 features (one seed), the test error was 12.1% before and
+12.3% now on normal features; 27.1% before and 12.3% now when every feature
+is `exp(2 z)` of a normal `z` (a heavy right tail); and 45.2% before and
+12.0% now when 0.2% of the rows are scaled by `10⁴` (outliers). On
+`tests/data/german.csv` (700/300 split) it was 23.0% before and 24.0% now.
+Training took about 10% longer on the normal features, where the equal-width
+bins were mostly nonempty.
+
 # Changes in 0.5.2
 
 Version 0.5.2 only adds API: code that compiled against 0.5.1 compiles

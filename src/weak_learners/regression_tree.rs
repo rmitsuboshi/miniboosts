@@ -36,7 +36,7 @@ pub const DEFAULT_MAX_DEPTH: usize = 3;
 /// | Builder method | Default | Meaning |
 /// | --- | --- | --- |
 /// | [`max_depth`](RegressionTreeBuilder::max_depth) | [`DEFAULT_MAX_DEPTH`] (`3`) | Levels of splits. |
-/// | [`n_bins`](RegressionTreeBuilder::n_bins) | `255` | Cap `k` on the bins per feature: one bin per distinct value if there are at most `k`, otherwise `k` equal-width bins. |
+/// | [`n_bins`](RegressionTreeBuilder::n_bins) | `255` | Cap `k` on the bins per feature: one bin per distinct value if there are at most `k`, otherwise `k` bins holding about the same number of examples each. |
 ///
 /// # Examples
 /// See the [module documentation](self).
@@ -73,8 +73,9 @@ impl<'a> RegressionTreeBuilder<'a> {
 
     /// Caps the bins per feature at `n_bins`: a feature with at most
     /// `n_bins` distinct values gets one bin per value (every split between
-    /// consecutive values is a candidate); otherwise it gets `n_bins`
-    /// equal-width bins.
+    /// consecutive values is a candidate); otherwise it gets `n_bins` bins
+    /// holding about the same number of examples each (see
+    /// `Bins::quantile`).
     ///
     /// # Panics
     /// Panics if `n_bins == 0`.
@@ -109,15 +110,10 @@ impl<'a> RegressionTreeBuilder<'a> {
         let bins: Vec<(String, Bins)> = features
             .iter()
             .map(|f| {
-                let cap = self.n_bins.unwrap_or(DEFAULT_NBIN);
-                // Equal-width bins can merge distinct values even when there
-                // are no more values than bins, so up to the cap every value
-                // gets its own bin (exact CART splits).
-                let bins = if f.distinct_value_count() <= cap {
-                    Bins::per_value(f)
-                } else {
-                    Bins::cut(f, cap)
-                };
+                // One bin per value (exact CART splits) if the values fit
+                // under the cap, and bins of equal shares of the examples
+                // otherwise.
+                let bins = Bins::quantile(f, self.n_bins.unwrap_or(DEFAULT_NBIN));
                 (f.name().to_string(), bins)
             })
             .collect();
@@ -147,7 +143,8 @@ impl<'a> RegressionTreeBuilder<'a> {
 /// the builder) that contain the node's examples. A feature with at most
 /// [`n_bins`](RegressionTreeBuilder::n_bins) distinct values has one bin per
 /// value, with boundaries at the midpoints, so every split of exact CART is
-/// a candidate. A node
+/// a candidate; a feature with more values has `n_bins` bins holding about
+/// the same number of examples each. A node
 /// becomes a leaf when its depth budget is `0`, its `SSE` is `0`, or no
 /// split decreases it. Features and thresholds are scanned in order and
 /// ties keep the first, so the result is deterministic.
@@ -167,9 +164,9 @@ impl<'a> RegressionTreeBuilder<'a> {
 ///
 /// # Limitations
 /// - A feature with more distinct values than
-///   [`n_bins`](RegressionTreeBuilder::n_bins) is cut into equal-width bins,
-///   and only their boundaries are candidate thresholds, so the best split
-///   may be missed.
+///   [`n_bins`](RegressionTreeBuilder::n_bins) is cut into bins of equal
+///   shares of the examples, and only their boundaries are candidate
+///   thresholds, so the best split may be missed.
 /// - The returned [`RegressionTreeRegressor`] is a [`Regressor`], not a
 ///   classifier; its predictions are unbounded.
 /// - `SSE` is computed from weighted sums of `z` and `z²`, which can lose

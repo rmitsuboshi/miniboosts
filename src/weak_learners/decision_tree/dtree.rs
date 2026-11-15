@@ -53,11 +53,16 @@ use std::fmt;
 /// Thus `max_depth = k` yields at most `k` levels of splits and at most
 /// `2^k` leaves; `max_depth = 1` gives a decision stump.
 ///
-/// **Candidate thresholds.** Each feature is cut once, when the builder is
-/// built, into equal-width bins (see [`crate::core::binning::Bins::cut`];
-/// by default `min(number of distinct values, 255)` bins), or, with
+/// **Candidate thresholds.** Each feature is cut into bins once, when the
+/// builder is built (see [`crate::core::binning::Bins::quantile`]). A
+/// feature with at most 255 distinct values gets one bin per value, with
+/// boundaries at the midpoints between consecutive values, so every split
+/// is a candidate. A feature with more values gets 255 bins holding about
+/// the same number of examples each, so the boundaries are dense where the
+/// data are; this is the binning of histogram-based tree learners, not part
+/// of the original CART method, which tries every split. With
 /// [`DecisionTreeBuilder::exact_splits`](crate::DecisionTreeBuilder::exact_splits),
-/// at the midpoints between consecutive distinct values. At each node the
+/// every feature gets one bin per value. At each node the
 /// candidate thresholds for a feature are the boundaries between the bins
 /// that contain at least one of the node's examples. The criterion is
 /// evaluated for every candidate of every feature; see [`SplitBy`] for the
@@ -83,8 +88,10 @@ use std::fmt;
 /// - Labels must be `-1` and `+1`. They are converted with `as i64` /
 ///   `as i32` and not validated here; other values (e.g., `0`/`1`) yield
 ///   meaningless confidences.
-/// - Thresholds are restricted to bin boundaries, so the tree may miss the
-///   best split on the raw values. Bins are fixed by the sample given to the
+/// - Thresholds are restricted to bin boundaries, so for a feature with
+///   more than 255 distinct values the tree may miss the best split on the
+///   raw values. The bins depend on the feature values only, not on the
+///   labels or on the distribution. Bins are fixed by the sample given to the
 ///   builder; `produce` must be called on a sample with the same feature
 ///   names. Values outside the builder's range fall into the outer bins.
 /// - The bin of every row of the builder's sample is stored for each dense

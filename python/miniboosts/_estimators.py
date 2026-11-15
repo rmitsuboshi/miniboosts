@@ -619,8 +619,10 @@ class DecisionTreeClassifier(_NativeWeakClassifier):
     """Rust decision tree with bounded confidence.
 
     ``split_by`` is ``"entropy"`` (default), ``"edge"``, ``"gini"``, or
-    ``"twoing"``. Thresholds lie on equal-width bins unless
-    ``exact_splits=True``, which tries every midpoint between distinct values.
+    ``"twoing"``. A feature with at most 255 distinct values gets every split
+    between consecutive values (threshold at the midpoint); one with more gets
+    255 bins holding about the same number of examples each, unless
+    ``exact_splits=True``, which tries every midpoint for every feature.
     ``leaf_confidence="sign"`` makes nodes predict +-1 instead of the weighted
     purity. With ``max_depth=1``, ``split_by="edge"``, ``exact_splits=True``,
     and ``leaf_confidence="sign"``, the tree is an exact edge-maximizing stump.
@@ -746,7 +748,8 @@ class RegressionTreeRegressor(_SparseInput, RegressorMixin, BaseEstimator):
 
     A feature with at most ``n_bins`` (default 255) distinct values gets
     every split between consecutive values (threshold at the midpoint);
-    otherwise its splits lie on ``n_bins`` equal-width bin boundaries.
+    otherwise its splits lie on the boundaries of ``n_bins`` bins holding
+    about the same number of examples each.
     ``max_depth=0`` gives the weighted mean. Predictions are unbounded.
     """
     def __init__(self, *, max_depth=3, n_bins=None):

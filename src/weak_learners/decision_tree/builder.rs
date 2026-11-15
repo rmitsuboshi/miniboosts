@@ -5,7 +5,9 @@ use crate::weak_learners::decision_tree::{DecisionTree, LeafConfidence};
 use std::collections::HashMap;
 
 /// The default maximal number of bins per feature. Each feature gets
-/// `min(number of distinct values, DEFAULT_NBIN)` bins.
+/// `min(number of distinct values, DEFAULT_NBIN)` bins: one per distinct
+/// value if there are at most this many, and otherwise bins holding about
+/// the same number of examples each (see `Bins::quantile`).
 pub const DEFAULT_NBIN: usize = 255;
 /// The default maximal depth of the tree.
 pub const DEFAULT_MAX_DEPTH: usize = 2;
@@ -13,7 +15,8 @@ pub const DEFAULT_MAX_DEPTH: usize = 2;
 /// Configures and builds a [`DecisionTree`] weak learner.
 ///
 /// The builder borrows the training sample, from which [`Self::build`]
-/// computes the equal-width bins of every feature; the resulting
+/// computes the bins of every feature (one per distinct value if there are
+/// at most 255, bins of equal shares of the examples otherwise); the resulting
 /// [`DecisionTree`] borrows the sample's feature names.
 ///
 /// # Parameters
@@ -21,8 +24,8 @@ pub const DEFAULT_MAX_DEPTH: usize = 2;
 /// |---|---|---|
 /// | [`Self::max_depth`] | `2` | maximal number of split levels (`>= 1`) |
 /// | [`Self::split_by`] | [`SplitBy::Entropy`] | splitting criterion |
-/// | [`Self::set_nbins`] | `min(distinct values, 255)` | bins of one feature |
-/// | [`Self::exact_splits`] | off | thresholds between all distinct values |
+/// | [`Self::set_nbins`] | `min(distinct values, 255)` | maximal number of bins of one feature |
+/// | [`Self::exact_splits`] | off | thresholds between all distinct values, however many |
 /// | [`Self::leaf_confidence`] | [`LeafConfidence::Purity`] | what nodes predict |
 ///
 /// # Examples
@@ -167,10 +170,14 @@ impl<'a> DecisionTreeBuilder<'a> {
         self
     }
 
-    /// Sets the number of equal-width bins for the feature named `name`.
+    /// Sets the maximal number of bins for the feature named `name`.
+    /// A feature with at most `n_bins` distinct values (an implicit sparse
+    /// zero counts once) gets one bin per value, so that every split between
+    /// consecutive values is a candidate threshold. A feature with more
+    /// values gets `n_bins` bins holding about the same number of examples
+    /// each ([`Bins::quantile`]), and only their boundaries are candidates.
     /// More bins give more candidate thresholds at a higher cost.
-    /// By default, a feature with `k` distinct values (an implicit sparse
-    /// zero counts once) gets `min(k, 255)` bins.
+    /// The default is `min(k, 255)` for a feature with `k` distinct values.
     ///
     /// Unlike the other setters, this method takes `&mut self` and cannot be
     /// chained.
@@ -223,16 +230,19 @@ impl<'a> DecisionTreeBuilder<'a> {
     }
 
     /// Uses every midpoint between consecutive distinct values of a feature
-    /// as a candidate threshold (see [`Bins::per_value`]), instead of
-    /// equal-width bins. Bin counts set by [`Self::set_nbins`] are ignored.
+    /// as a candidate threshold (see [`Bins::per_value`]), however many
+    /// values the feature has. Bin counts set by [`Self::set_nbins`] are
+    /// ignored.
     ///
-    /// The split search then costs `O(m)` per feature and node instead of
-    /// `O(number of bins)` (plus the `O(m)` pass over the node's examples in
-    /// both cases), and building sorts every feature once.
+    /// This is already the default for a feature with at most 255 distinct
+    /// values; it matters for features with more, whose values otherwise
+    /// share 255 bins. The split search then costs `O(m)` per feature and
+    /// node instead of `O(number of bins)` (plus the `O(m)` pass over the
+    /// node's examples in both cases).
     ///
     /// # Examples
-    /// Equal-width bins cannot separate `0` from `0.1` when `100` stretches
-    /// the range; exact splits can.
+    /// With fewer bins than distinct values, some values share a bin and
+    /// cannot be separated; exact splits always can.
     /// ```
     /// use miniboosts::{Classifier, DecisionTreeBuilder, Sample, WeakLearner};
     ///
@@ -240,8 +250,15 @@ impl<'a> DecisionTreeBuilder<'a> {
     /// let sample = Sample::from_dense(&rows, Some(&[-1.0, 1.0, 1.0])).unwrap();
     /// let uniform = [1.0 / 3.0; 3];
     ///
-    /// let binned = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// // Two bins for three values: `0` and `0.1` share the first.
+    /// let mut builder = DecisionTreeBuilder::new(&sample).max_depth(1);
+    /// builder.set_nbins("feature_0", 2);
+    /// let binned = builder.build();
     /// assert_ne!(binned.produce(&sample, &uniform).predict_all(&sample), vec![-1, 1, 1]);
+    ///
+    /// // By default the three values get a bin each.
+    /// let default = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    /// assert_eq!(default.produce(&sample, &uniform).predict_all(&sample), vec![-1, 1, 1]);
     ///
     /// let exact = DecisionTreeBuilder::new(&sample).max_depth(1).exact_splits().build();
     /// assert_eq!(exact.produce(&sample, &uniform).predict_all(&sample), vec![-1, 1, 1]);
@@ -306,10 +323,12 @@ impl<'a> DecisionTreeBuilder<'a> {
             .iter()
             .map(|feature| {
                 let name = feature.name();
+                // One bin per value if the values fit in the feature's bin
+                // count, and bins of equal shares of the examples otherwise.
                 let bins = if self.exact_splits {
                     Bins::per_value(feature)
                 } else {
-                    Bins::cut(feature, *self.n_bins.get(name).unwrap())
+                    Bins::quantile(feature, self.n_bins[name])
                 };
                 (name, bins)
             })

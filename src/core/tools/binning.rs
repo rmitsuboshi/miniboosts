@@ -1,12 +1,16 @@
-//! Equal-width binning of feature values.
+//! Binning of feature values.
 //!
-//! The decision tree ([`crate::DecisionTree`]) does not consider every
-//! distinct feature value as a split threshold. Instead, each feature is cut
-//! once into equal-width bins ([`Bins::cut`]), and only bin boundaries are
-//! candidate thresholds. At each node, [`Bins::pack`] accumulates the
-//! booster's example weights per bin and label. The regression tree
-//! ([`crate::RegressionTree`]) instead gives each distinct value its own bin
-//! when there are at most as many values as its bin cap.
+//! The tree learners ([`crate::DecisionTree`], [`crate::RegressionTree`]) do
+//! not search every threshold at every node. Each feature is cut once into
+//! bins, and only bin boundaries are candidate thresholds; at each node,
+//! [`Bins::pack`] accumulates the booster's example weights per bin and
+//! label. There are three ways to cut:
+//! - [`Bins::quantile`], the trees' default: one bin per distinct value if
+//!   they fit, and otherwise bins holding about the same number of examples,
+//!   so that the boundaries follow the data;
+//! - [`Bins::per_value`]: one bin per distinct value, whatever their number;
+//! - [`Bins::cut`]: bins of equal width between the smallest and the largest
+//!   value.
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -74,7 +78,7 @@ impl Bin {
 }
 
 /// An ordered list of contiguous [`Bin`]s covering all finite values,
-/// created by [`Bins::cut`].
+/// created by [`Bins::quantile`], [`Bins::per_value`], or [`Bins::cut`].
 #[derive(Debug)]
 pub struct Bins(Vec<Bin>);
 
@@ -188,27 +192,111 @@ impl Bins {
     /// assert_eq!(bins.len(), 3);
     /// ```
     pub fn per_value(feature: &Feature) -> Self {
-        let mut values: Vec<f64> = match feature {
-            Feature::Dense { vals, .. } => vals.clone(),
-            Feature::Sparse { vals, .. } => {
-                let mut values: Vec<f64> = vals.iter().map(|&(_, v)| v).collect();
-                if feature.has_zero() {
-                    values.push(0.0);
-                }
-                values
+        let values = distinct_values(feature);
+        // A cut after every value but the last.
+        Self::between(&values, 0..values.len() - 1)
+    }
+
+    /// Returns at most `n_bin` bins adapted to the values of a nonempty,
+    /// finite feature (sparse implicit zeros count as values).
+    ///
+    /// If the feature has at most `n_bin` distinct values, each gets its own
+    /// bin, as in [`Bins::per_value`], and every split is a candidate.
+    /// Otherwise there are exactly `n_bin` bins holding about the same number
+    /// of examples each (quantiles): the distinct values are taken in
+    /// increasing order, and a bin is closed where its size is nearest to
+    /// its share of the examples not yet assigned,
+    /// `remaining examples / remaining bins`. A value shared by many examples
+    /// thus fills a bin of its own and the other bins divide the rest,
+    /// rather than several boundaries falling on the same value. Equal values are never separated, and a boundary is
+    /// the midpoint of the two distinct values it separates, as in
+    /// [`Bins::per_value`].
+    ///
+    /// The boundaries depend on the values only, not on labels or example
+    /// weights: a booster changes the weights every round, while the bins
+    /// are cut once. This is the binning of histogram-based tree learners
+    /// (e.g. scikit-learn's `HistGradientBoostingClassifier`, which also
+    /// uses 255 bins by default), with a greedy rule instead of percentiles
+    /// for the boundaries.
+    ///
+    /// Time complexity: `O(m log m)` for `m` values.
+    ///
+    /// # Panics
+    /// Panics for zero bins, empty features, or non-finite values.
+    ///
+    /// # Examples
+    /// ```
+    /// use miniboosts::Sample;
+    /// use miniboosts::core::binning::Bins;
+    ///
+    /// // Eight values with an outlier.
+    /// let rows: Vec<Vec<f64>> = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 1000.0]
+    ///     .iter()
+    ///     .map(|&x| vec![x])
+    ///     .collect();
+    /// let sample = Sample::from_dense(&rows, None).unwrap();
+    /// let x = &sample["feature_0"];
+    ///
+    /// // Four bins of two examples each: boundaries 2.5, 4.5, and 6.5.
+    /// let bins = Bins::quantile(x, 4);
+    /// assert_eq!(bins.to_string(), "[-Inf, +2.50), [+2.50, +4.50), ..., [+6.50, +Inf)");
+    ///
+    /// // Equal-width bins put the first seven values into one bin.
+    /// let wide = Bins::cut(x, 4);
+    /// assert_eq!(wide.to_string(), "[-Inf, +250.75), [+250.75, +500.50), ..., [+750.25, +Inf)");
+    ///
+    /// // With at least as many bins as distinct values: one bin per value.
+    /// assert_eq!(Bins::quantile(x, 255).len(), 8);
+    /// ```
+    pub fn quantile(feature: &Feature, n_bin: usize) -> Self {
+        assert!(n_bin > 0, "bin count must be positive");
+        let (values, counts) = distinct_values_and_counts(feature);
+        if values.len() <= n_bin {
+            return Self::between(&values, 0..values.len() - 1);
+        }
+        let mut cuts = Vec::with_capacity(n_bin - 1);
+        // Examples and bins not yet assigned, and the size of the open bin.
+        let mut remaining: usize = counts.iter().sum();
+        let mut bins_left = n_bin;
+        let mut in_bin = 0;
+        for (i, &count) in counts.iter().enumerate() {
+            if bins_left == 1 {
+                break;
             }
-        };
-        assert!(!values.is_empty(), "cannot bin an empty feature");
-        assert!(
-            values.iter().all(|v| v.is_finite()),
-            "binning requires finite feature values"
-        );
-        values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        values.dedup();
-        let mut bins = Vec::with_capacity(values.len());
+            // The share of the open bin is `remaining / bins_left`. Close it
+            // before this value if that leaves it nearer to its share than
+            // taking the value would: `share - in_bin < in_bin + count -
+            // share`, in integers.
+            if in_bin > 0 && (2 * in_bin + count) * bins_left > 2 * remaining {
+                cuts.push(i - 1);
+                remaining -= in_bin;
+                in_bin = 0;
+                bins_left -= 1;
+                if bins_left == 1 {
+                    break;
+                }
+            }
+            in_bin += count;
+            // Each bin after this one needs a distinct value of its own.
+            let values_left = values.len() - (i + 1);
+            if values_left == bins_left - 1 || in_bin * bins_left >= remaining {
+                cuts.push(i);
+                remaining -= in_bin;
+                in_bin = 0;
+                bins_left -= 1;
+            }
+        }
+        Self::between(&values, cuts)
+    }
+
+    /// Bins over the increasing distinct `values` with a boundary after
+    /// `values[i]` for every `i` in `cuts` (increasing, below the last
+    /// index).
+    fn between(values: &[f64], cuts: impl IntoIterator<Item = usize>) -> Self {
+        let mut bins = Vec::new();
         let mut left = f64::MIN;
-        for pair in values.windows(2) {
-            let (a, b) = (pair[0], pair[1]);
+        for i in cuts {
+            let (a, b) = (values[i], values[i + 1]);
             // Halves first: `a + b` may overflow.
             let mid = a / 2.0 + b / 2.0;
             let right = if a < mid && mid <= b { mid } else { b };
@@ -641,6 +729,52 @@ fn pack_stored_entries(
     true
 }
 
+/// The distinct values of a nonempty, finite feature in increasing order
+/// (sparse implicit zeros count as a value).
+fn distinct_values(feature: &Feature) -> Vec<f64> {
+    distinct_values_and_counts(feature).0
+}
+
+/// The distinct values of a nonempty, finite feature in increasing order,
+/// and the number of examples with each (`-0.0` and `0.0` are one value).
+fn distinct_values_and_counts(feature: &Feature) -> (Vec<f64>, Vec<usize>) {
+    let (mut sorted, zeros): (Vec<f64>, usize) = match feature {
+        Feature::Dense { vals, .. } => (vals.clone(), 0),
+        Feature::Sparse { vals, size, .. } => {
+            (vals.iter().map(|&(_, v)| v).collect(), size - vals.len())
+        }
+    };
+    assert!(
+        !sorted.is_empty() || zeros > 0,
+        "cannot bin an empty feature"
+    );
+    assert!(
+        sorted.iter().all(|v| v.is_finite()),
+        "binning requires finite feature values"
+    );
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let (mut values, mut counts): (Vec<f64>, Vec<usize>) = (Vec::new(), Vec::new());
+    for value in sorted {
+        if values.last() == Some(&value) {
+            *counts.last_mut().unwrap() += 1;
+        } else {
+            values.push(value);
+            counts.push(1);
+        }
+    }
+    if zeros > 0 {
+        // The implicit zeros join a stored zero or take their place in order.
+        let at = values.partition_point(|&v| v < 0.0);
+        if values.get(at) == Some(&0.0) {
+            counts[at] += zeros;
+        } else {
+            values.insert(at, 0.0);
+            counts.insert(at, zeros);
+        }
+    }
+    (values, counts)
+}
+
 impl fmt::Display for Bins {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bins = &self.0;
@@ -702,6 +836,116 @@ impl fmt::Display for Bin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dense(values: &[f64]) -> Feature {
+        let mut feature = Feature::dense("x");
+        for &v in values {
+            feature.append((0, v));
+        }
+        feature
+    }
+
+    fn sparse(values: &[f64]) -> Feature {
+        let mut feature = Feature::sparse("x", values.len());
+        for (row, &v) in values.iter().enumerate() {
+            feature.append((row, v));
+        }
+        feature
+    }
+
+    fn boundaries(bins: &Bins) -> Vec<f64> {
+        bins.as_slice()[1..].iter().map(Bin::start).collect()
+    }
+
+    #[test]
+    fn quantile_bins_hold_equal_shares() {
+        // 0, 1, ..., 99: ten bins of ten values, boundaries at the midpoints.
+        let values: Vec<f64> = (0..100).map(f64::from).collect();
+        let bins = Bins::quantile(&dense(&values), 10);
+        let expected: Vec<f64> = (1..10).map(|k| f64::from(k * 10) - 0.5).collect();
+        assert_eq!(boundaries(&bins), expected);
+        // The order of the rows does not matter.
+        let mut shuffled = values.clone();
+        shuffled.reverse();
+        shuffled.swap(3, 70);
+        assert_eq!(boundaries(&Bins::quantile(&dense(&shuffled), 10)), expected);
+        // The outer bins are unbounded.
+        assert_eq!(bins.as_slice()[0].start(), f64::MIN);
+        assert_eq!(bins.as_slice()[9].end(), f64::MAX);
+    }
+
+    #[test]
+    fn quantile_bins_follow_the_data_not_the_range() {
+        // 98 values in [0, 1) and two outliers.
+        let mut values: Vec<f64> = (0..98).map(|i| f64::from(i) / 98.0).collect();
+        values.extend([1e6, -1e6]);
+        let feature = dense(&values);
+        let inside = |bins: &Bins| {
+            boundaries(bins)
+                .iter()
+                .filter(|b| (0.0..1.0).contains(*b))
+                .count()
+        };
+        // Equal width: only the middle boundary (0) is inside [0, 1).
+        assert_eq!(inside(&Bins::cut(&feature, 20)), 1);
+        // Quantiles: all 19 boundaries separate values of [0, 1).
+        assert_eq!(inside(&Bins::quantile(&feature, 20)), 19);
+    }
+
+    #[test]
+    fn quantile_bins_give_a_heavy_value_its_own_bin() {
+        // 60 zeros and 1, ..., 40: the zeros take one bin and the other
+        // three bins divide the 40 remaining values (13, 14, 13).
+        let mut values = vec![0.0; 60];
+        values.extend((1..=40).map(f64::from));
+        for feature in [dense(&values), sparse(&values)] {
+            let bins = Bins::quantile(&feature, 4);
+            assert_eq!(boundaries(&bins), vec![0.5, 13.5, 27.5]);
+        }
+        // Implicit zeros between negative and positive stored values.
+        let values = [-2.0, 0.0, 0.0, 0.0, 3.0, -1.0, 0.0, 5.0];
+        for feature in [dense(&values), sparse(&values)] {
+            assert_eq!(boundaries(&Bins::quantile(&feature, 3)), vec![-0.5, 1.5]);
+            assert_eq!(
+                boundaries(&Bins::per_value(&feature)),
+                vec![-1.5, -0.5, 1.5, 4.0]
+            );
+        }
+    }
+
+    #[test]
+    fn quantile_bins_are_per_value_when_the_values_fit() {
+        let values = [3.0, 1.0, 3.0, 2.0, 100.0, 1.0];
+        for feature in [dense(&values), sparse(&values)] {
+            let exact = boundaries(&Bins::per_value(&feature));
+            assert_eq!(exact, vec![1.5, 2.5, 51.5]);
+            assert_eq!(boundaries(&Bins::quantile(&feature, 4)), exact);
+            assert_eq!(boundaries(&Bins::quantile(&feature, 255)), exact);
+            // One bin fewer than values: exactly three bins.
+            assert_eq!(Bins::quantile(&feature, 3).len(), 3);
+            assert_eq!(Bins::quantile(&feature, 1).len(), 1);
+        }
+        // A constant feature has one bin.
+        assert_eq!(Bins::quantile(&dense(&[2.0; 5]), 255).len(), 1);
+    }
+
+    #[test]
+    fn quantile_bins_always_number_n_bin_when_the_values_do_not_fit() {
+        // Skewed counts, so that the greedy rule must leave a value for each
+        // remaining bin: 1000 copies of 0 and the values 1, ..., 9.
+        let mut values = vec![0.0; 1000];
+        values.extend((1..10).map(f64::from));
+        for n_bin in 1..10 {
+            let bins = Bins::quantile(&dense(&values), n_bin);
+            assert_eq!(bins.len(), n_bin, "{n_bin} bins");
+            // Every value falls into a bin, and the boundaries increase.
+            let edges = boundaries(&bins);
+            assert!(edges.windows(2).all(|pair| pair[0] < pair[1]));
+            for &v in &values {
+                assert!(bins.as_slice()[bins.index_of(v)].contains(&v));
+            }
+        }
+    }
 
     #[test]
     fn bin_ids_use_the_narrowest_width_that_holds_every_bin() {
