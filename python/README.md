@@ -138,6 +138,7 @@ as for the boosters. Rust failures (e.g. non-convergence) raise `RuntimeError`.
 | `BoundedLinearClassifier` | none | Edge-maximizing `(w·x + b) / S`, `‖(w, b)‖₂ ≤ 1`, `S = √(R² + 1)` |
 | `LogisticRegressionClassifier` | `regularization=1e-4`, `output="sign"` | Weighted L2-regularized logistic regression |
 | `NaiveBayesClassifier` | `var_smoothing=1e-9` | Weighted Gaussian naive Bayes, `P(+1∣x) − P(−1∣x)` |
+| `TwoLayerNetworkClassifier` | `hidden_units=8`, `activation="tanh"`, `loss="logistic"`, `output="tanh"`, `optimizer="adopt"`, `learning_rate=0.1`, `iterations=300`, `batch_size=None`, `regularization=1e-4`, `seed=0`, `min_edge=0.01`, `max_retries=3` | Network with one hidden layer, `tanh(s(x))` or its sign |
 | `RBFClassifier` | `bandwidth` (required), `centers=None`, `selection="largest"`, `gamma=None` | Edge-maximizing Gaussian bump `±exp(−‖x − c‖² / (2σ²))` |
 | `FiniteClassClassifier` | `hypotheses` (required), `with_negations=False`, `selection="largest"`, `gamma=None` | Edge-maximizing (or adversarial) member of a fixed list |
 | `RegressionTreeRegressor` | `max_depth=3`, `n_bins=None` | Weighted least-squares regression tree (for regression boosters) |
@@ -164,6 +165,20 @@ be missed. `DecisionTreeClassifier` cuts its bins the same way, with a cap of
   The bias is regularized too.
 - `NaiveBayesClassifier` uses weighted means, variances, and priors; it has no
   edge guarantee. With uniform weights it matches sklearn's `GaussianNB`.
+- `TwoLayerNetworkClassifier` standardizes the features by their weighted
+  mean and standard deviation, then minimizes the weighted `loss`
+  (`"logistic"`: `ln(1 + e^{−2ys})`; `"squared"`: `(y − tanh s)² / 2`) plus
+  `regularization / 2` times the squared weights, with `iterations` updates
+  of ADOPT or Adam. Each update uses all rows, or `batch_size` rows drawn
+  with replacement (an unbiased gradient, as ADOPT's analysis assumes). A
+  network with a negative edge is negated; one with an edge below `min_edge`
+  is retrained from a new initialization up to `max_retries` times, and
+  `edge_shortfall_` is `True` if none reached it. The random stream depends
+  only on `seed` and `sample_weight`, so every boosting round gets a
+  different stream and a fit can be reproduced. It has no edge guarantee,
+  and each fit costs `O(iterations · batch · hidden_units · features)`. The
+  default learning rate was chosen on a small two-dimensional example and is
+  not tuned for other data.
 - `RBFClassifier` chooses among bumps centered at the training rows indexed by
   `centers` (all rows by default). After fitting, `center_index_`, `center_`,
   and `sign_` describe the chosen bump. The class has no bias term, and each

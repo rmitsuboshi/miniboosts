@@ -26,6 +26,8 @@
 //! - [`sparsification`]: margin-preserving sparsification of hypothesis
 //!   weights by discrepancy minimization, used by
 //!   [`SparsiBoost`](crate::SparsiBoost). It needs no solver.
+//! - [`adaptive`]: the first-order methods [`Adam`] and [`Adopt`], used to
+//!   train [`TwoLayerNetwork`](crate::TwoLayerNetwork). They need no solver.
 //!
 //! Linear, quadratic, and conic problems are solved with the
 //! [Clarabel](https://docs.rs/clarabel) interior-point solver. Solver failures
@@ -76,6 +78,7 @@
 //! let value = SoftMarginObjective::new(nu).objective_value(&theta);
 //! assert!((value - rho).abs() < 1e-6);
 //! ```
+pub mod adaptive;
 pub mod edge_minimization;
 mod entropy_certificate;
 mod entropy_solver;
@@ -84,6 +87,7 @@ pub mod objective_function;
 pub mod soft_margin_optimization;
 pub mod sparsification;
 
+pub use adaptive::{Adam, AdaptiveOptimizer, AdaptiveState, Adopt};
 pub use edge_minimization::{
     EntropyRegularizedMaxEdge, RowGeneration, RowGenerationObjective, edge_minimization,
 };

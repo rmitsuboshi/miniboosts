@@ -45,7 +45,7 @@ use std::ops::ControlFlow;
 /// - The number of rounds is not set by a stopping rule: set
 ///   [`LogitBoost::force_quit_at`] (training panics otherwise).
 /// - The weak learner must accept real-valued targets and weights (for
-///   example [`RegressionTree`](crate::weak_learners::regression_tree::RegressionTree)).
+///   example [`RegressionTree`](crate::weak_learners::tree::regression_tree::RegressionTree)).
 /// - On separable data the scores grow without bound; the clipping keeps
 ///   the working response finite, and the weights of well-classified
 ///   examples vanish.
@@ -277,7 +277,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::weak_learners::regression_tree::{RegressionTreeBuilder, RegressionTreeRegressor};
+    use crate::weak_learners::tree::regression_tree::{
+        RegressionTreeBuilder, RegressionTreeRegressor,
+    };
     use std::io::BufReader;
 
     fn xor_like_sample() -> Sample {

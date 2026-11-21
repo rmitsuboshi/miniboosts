@@ -1,7 +1,7 @@
 //! [`DecisionTreeBuilder`]: configures and builds a [`DecisionTree`].
 use crate::core::{Sample, binning::*, tree::*};
-use crate::weak_learners::decision_tree::split_by::*;
-use crate::weak_learners::decision_tree::{DecisionTree, LeafConfidence};
+use crate::weak_learners::tree::decision_tree::split_by::*;
+use crate::weak_learners::tree::decision_tree::{DecisionTree, LeafConfidence};
 use std::collections::HashMap;
 
 /// The default maximal number of bins per feature. Each feature gets

@@ -6,9 +6,12 @@ use miniboosts::{
     AdditiveModel, ClassMember, Classifier, DecisionTree, DecisionTreeClassifier, FiniteClass,
     GbmLoss, LinearClassifier, LinearOutput, MajorityVote, NaiveAggregation, NaiveBayesClassifier,
     ObjectiveFunction, RbfHypothesis, RegressionTree, RegressionTreeBuilder,
-    RegressionTreeRegressor, Regressor, Sample, ScoreLink, SoftMarginObjective, WeightedMajority,
+    RegressionTreeRegressor, Regressor, Sample, ScoreLink, SoftMarginObjective,
+    TwoLayerNetworkClassifier, WeightedMajority,
     core::{CurrentHypothesis, helpers::log_weighted_edge_coefficient},
+    optimization::adaptive::{Adam, AdaptiveOptimizer, Adopt},
     prelude::*,
+    weak_learners::neural_network::Activation,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -346,6 +349,15 @@ enum LearnerSpec {
         bandwidth: f64,
         selection: RbfSelection,
     },
+    Network {
+        hidden_units: usize,
+        activation: Activation,
+        optimizer: AdaptiveOptimizer,
+        iterations: usize,
+        // `None` for full batches.
+        batch_size: Option<usize>,
+        seed: u64,
+    },
 }
 
 /// The RBF class's selection rule; see `FiniteClass`.
@@ -406,6 +418,36 @@ impl LearnerSpec {
                     },
                 }
             }
+            "neural_network" => {
+                let learning_rate = w.positive("learningRate")?;
+                // ADOPT moves each parameter by at most learning_rate · t^{1/4}
+                // per update and Adam by about learning_rate, so a bounded
+                // rate keeps the parameters and gradients finite.
+                if learning_rate > 1.0 {
+                    return Err(JsError::new("the learning rate must be at most 1"));
+                }
+                Self::Network {
+                    hidden_units: w.count("hiddenUnits", 1)?,
+                    activation: match w.text("activation")?.as_str() {
+                        "tanh" => Activation::Tanh,
+                        "relu" => Activation::Relu,
+                        "softplus" => Activation::Softplus,
+                        _ => return Err(JsError::new("unknown activation")),
+                    },
+                    optimizer: match w.text("optimizer")?.as_str() {
+                        "adopt" => AdaptiveOptimizer::Adopt(Adopt::new(learning_rate)),
+                        "adam" => AdaptiveOptimizer::Adam(Adam::new(learning_rate)),
+                        _ => return Err(JsError::new("unknown optimizer")),
+                    },
+                    iterations: w.count("iterations", 1)?,
+                    // 0 (an empty field) means full batches.
+                    batch_size: match w.count("batchSize", 0)? {
+                        0 => None,
+                        b => Some(b),
+                    },
+                    seed: w.count("networkSeed", 0)? as u64,
+                }
+            }
             _ => return Err(JsError::new("unknown weak learner")),
         })
     }
@@ -452,6 +494,24 @@ impl LearnerSpec {
                     RbfSelection::Largest => class,
                     RbfSelection::Weakest(gamma) => class.weakest_with_edge(gamma),
                     RbfSelection::Exactly(gamma) => class.edge_exactly(gamma),
+                })
+            }
+            Self::Network {
+                hidden_units,
+                activation,
+                optimizer,
+                iterations,
+                batch_size,
+                seed,
+            } => {
+                let learner = TwoLayerNetwork::new(hidden_units)
+                    .activation(activation)
+                    .optimizer(optimizer)
+                    .iterations(iterations)
+                    .seed(seed);
+                Learner::Network(match batch_size {
+                    Some(b) => learner.batch_size(b),
+                    None => learner,
                 })
             }
         }
@@ -613,6 +673,7 @@ enum Learner<'a> {
     Linear(BoundedLinear),
     Bayes(NaiveBayes),
     Rbf(FiniteClass<RbfHypothesis>),
+    Network(TwoLayerNetwork),
 }
 
 /// A hypothesis returned by [`Learner`].
@@ -622,6 +683,7 @@ enum Hypothesis {
     Linear(LinearClassifier),
     Bayes(NaiveBayesClassifier),
     Rbf(ClassMember<RbfHypothesis>),
+    Network(TwoLayerNetworkClassifier),
 }
 
 impl Classifier for Hypothesis {
@@ -631,6 +693,7 @@ impl Classifier for Hypothesis {
             Self::Linear(h) => h.confidence(sample, row),
             Self::Bayes(h) => h.confidence(sample, row),
             Self::Rbf(h) => h.confidence(sample, row),
+            Self::Network(h) => h.confidence(sample, row),
         }
     }
 }
@@ -644,6 +707,7 @@ impl WeakLearner for Learner<'_> {
             Self::Linear(l) => Hypothesis::Linear(l.produce(sample, dist)),
             Self::Bayes(l) => Hypothesis::Bayes(l.produce(sample, dist)),
             Self::Rbf(l) => Hypothesis::Rbf(l.produce(sample, dist)),
+            Self::Network(l) => Hypothesis::Network(l.produce(sample, dist)),
         }
     }
 }
@@ -1762,6 +1826,23 @@ mod tests {
             .sum();
         // 24 terms with one rounding each in the scale γ / γ_j.
         assert!((edge - gamma).abs() < 1e-14, "{edge}");
+
+        // The network learner with minibatches: a nonnegative edge after the
+        // sign flip, and the same network for the same inputs.
+        let spec = LearnerSpec::Network {
+            hidden_units: 4,
+            activation: Activation::Relu,
+            optimizer: AdaptiveOptimizer::Adam(Adam::new(0.05)),
+            iterations: 50,
+            batch_size: Some(8),
+            seed: 2,
+        };
+        let h = spec.build(&s).produce(&s, &dist);
+        let edge: f64 = (0..24)
+            .map(|i| dist[i] * s.target()[i] * h.confidence(&s, i))
+            .sum();
+        assert!(edge >= 0.0, "{edge}");
+        assert!(h == spec.build(&s).produce(&s, &dist));
     }
 
     /// 24 points on two interleaved arcs, labels alternating.

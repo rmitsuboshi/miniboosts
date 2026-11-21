@@ -692,6 +692,70 @@ class LogisticRegressionClassifier(_NativeWeakClassifier):
                                                float(self.regularization), self.output)
 
 
+class TwoLayerNetworkClassifier(_NativeWeakClassifier):
+    """A network with one hidden layer, trained in Rust on the weighted rows.
+
+    The features are standardized by their weighted mean and standard
+    deviation; ``hidden_units`` units with ``activation`` (``"tanh"``,
+    ``"relu"``, or ``"softplus"``) feed a score s(x), and the confidence is
+    tanh(s) or its sign (``output``). The weighted ``loss`` (``"logistic"``,
+    ln(1 + exp(-2ys)), or ``"squared"``, (y - tanh s)^2 / 2) plus
+    ``regularization`` / 2 times the squared weights is minimized with
+    ``iterations`` updates of ``optimizer`` (``"adopt"`` or ``"adam"``) at
+    ``learning_rate``, on all rows or on ``batch_size`` rows drawn with
+    replacement. A network with a negative edge is negated; one with an edge
+    below ``min_edge`` is retrained up to ``max_retries`` times, and
+    ``edge_shortfall_`` is True if none reached it. The random stream depends
+    only on ``seed`` and the weights, so the rounds of a booster get
+    different streams and a fit can be reproduced.
+    """
+    def __init__(self, *, hidden_units=8, activation='tanh', loss='logistic', output='tanh',
+                 optimizer='adopt', learning_rate=0.1, iterations=300, batch_size=None,
+                 regularization=1e-4, seed=0, min_edge=0.01, max_retries=3):
+        self.hidden_units = hidden_units
+        self.activation = activation
+        self.loss = loss
+        self.output = output
+        self.optimizer = optimizer
+        self.learning_rate = learning_rate
+        self.iterations = iterations
+        self.batch_size = batch_size
+        self.regularization = regularization
+        self.seed = seed
+        self.min_edge = min_edge
+        self.max_retries = max_retries
+
+    def _check_parameters(self):
+        _positive_integer('hidden_units', self.hidden_units)
+        _positive_integer('iterations', self.iterations)
+        if self.batch_size is not None:
+            _positive_integer('batch_size', self.batch_size)
+        _nonnegative_integer('seed', self.seed)
+        if self.seed >= 2**64:
+            raise ValueError('seed must be an integer in [0, 2**64)')
+        _nonnegative_integer('max_retries', self.max_retries)
+        _positive_finite('learning_rate', self.learning_rate)
+        if _finite_real('regularization', self.regularization) < 0:
+            raise ValueError('regularization must be nonnegative')
+        if not 0 <= _finite_real('min_edge', self.min_edge) <= 1:
+            raise ValueError('min_edge must lie in [0, 1]')
+        for name, allowed in [('activation', ('tanh', 'relu', 'softplus')),
+                              ('loss', ('logistic', 'squared')), ('output', ('tanh', 'sign')),
+                              ('optimizer', ('adopt', 'adam'))]:
+            if getattr(self, name) not in allowed:
+                raise ValueError(f'{name} must be one of {", ".join(allowed)}')
+
+    def _fit_native(self, X, encoded, weights):
+        batch = None if self.batch_size is None else int(self.batch_size)
+        model = _native.fit_two_layer_network(
+            _native_matrix(X), encoded.tolist(), weights.tolist(), int(self.hidden_units),
+            self.activation, self.loss, self.output, self.optimizer, float(self.learning_rate),
+            int(self.iterations), batch, float(self.regularization), int(self.seed),
+            float(self.min_edge), int(self.max_retries))
+        self.edge_shortfall_ = model.assumption_violated
+        return model
+
+
 class NaiveBayesClassifier(_NativeWeakClassifier):
     """Weighted Gaussian naive Bayes; confidence is P(+1 | x) - P(-1 | x)."""
     def __init__(self, *, var_smoothing=1e-9):

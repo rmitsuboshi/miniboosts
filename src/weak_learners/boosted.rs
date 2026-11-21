@@ -289,10 +289,7 @@ pub fn resample(dist: &[f64], size: usize, seed: u64) -> Vec<usize> {
 
     // The stream depends on the seed and on every weight, so that the draw
     // is a function of the distribution alone.
-    let state = dist.iter().fold(seed, |state, d| {
-        SplitMix64::new(state ^ d.to_bits()).next_u64()
-    });
-    let mut rng = SplitMix64::new(state);
+    let mut rng = SplitMix64::from_seed_and_weights(seed, dist);
     let mut rows: Vec<usize> = (0..size)
         .map(|_| {
             let point = rng.uniform() * total;

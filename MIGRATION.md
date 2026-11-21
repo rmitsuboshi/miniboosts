@@ -1,5 +1,23 @@
 # Unreleased
 
+`TwoLayerNetwork` is a new weak learner, in `weak_learners::neural_network`
+and the prelude: a network with one hidden layer (`tanh`, ReLU, or softplus
+units) and a `tanh` or sign output, trained on the weighted sample with the
+logistic or squared loss by Adam or ADOPT, on all rows or on minibatches drawn
+with replacement. A network with a negative edge is negated, and one with an
+edge below `min_edge` is retrained from a new initialization up to
+`max_retries` times. The random stream of a call depends only on `seed` and
+the distribution. Its hypothesis is `TwoLayerNetworkClassifier`. The
+optimizers are separate: `Adam`, `Adopt`, `AdaptiveOptimizer`, and
+`AdaptiveState` in `optimization::adaptive`, also exported from the crate
+root.
+
+The tree learners moved under `weak_learners::tree`:
+`weak_learners::decision_tree` is now `weak_learners::tree::decision_tree`,
+and `weak_learners::regression_tree` is now
+`weak_learners::tree::regression_tree`. The types are unchanged and still
+exported from the crate root and the prelude.
+
 Decision trees train and predict faster; the trees themselves are unchanged.
 `DecisionTree` stores the bin of every row of the builder's sample for each
 dense feature (1 byte per value with at most 256 bins) and uses it when `produce` is called on that
@@ -324,7 +342,7 @@ bounds were unused. `ErlpBoost::max_loop` is now public. `SoftBoost::max_loop`
 and `CorrectiveErlpBoost::max_loop` take `&self`, and
 `CorrectiveErlpBoost::max_loop` returns the actual budget before training
 instead of `1`. `DEFAULT_MAX_DEPTH` and `DEFAULT_NBIN` are exported from
-`miniboosts::weak_learners::decision_tree`.
+`miniboosts::weak_learners::tree::decision_tree`.
 
 # Migrating to 0.5.0
 

@@ -693,6 +693,16 @@ impl SplitMix64 {
         Self { state: seed }
     }
 
+    /// A generator whose stream depends on `seed` and on every entry of
+    /// `weights`, so that a weighted call can be reproduced from its inputs
+    /// alone, in any order of calls.
+    pub(crate) fn from_seed_and_weights(seed: u64, weights: &[f64]) -> Self {
+        let state = weights
+            .iter()
+            .fold(seed, |state, w| Self::new(state ^ w.to_bits()).next_u64());
+        Self::new(state)
+    }
+
     pub(crate) fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.state;

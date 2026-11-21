@@ -2,7 +2,7 @@ use rayon::prelude::*;
 
 use crate::core::{Sample, WeakLearner, binning::*, tree::*};
 
-use crate::weak_learners::decision_tree::{
+use crate::weak_learners::tree::decision_tree::{
     classifier::DecisionTreeClassifier,
     node::*,
     split_by::{BinCache, SplitBy},

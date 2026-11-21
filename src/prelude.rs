@@ -14,7 +14,7 @@
 //!   [`DecisionTreeBuilder`], [`SplitBy`], and [`LeafConfidence`], [`FiniteClass`],
 //!   [`RbfClassBuilder`], [`BoundedLinear`], [`LogisticRegression`] with
 //!   [`LinearOutput`], [`NaiveBayes`], [`RegressionTreeBuilder`],
-//!   [`WeakLearnerUnion`], and [`BoostedLearner`].
+//!   [`TwoLayerNetwork`], [`WeakLearnerUnion`], and [`BoostedLearner`].
 //!
 //! It does **not** import [`Sample`](crate::Sample),
 //! [`Regressor`](crate::Regressor), the combined hypotheses
@@ -71,10 +71,11 @@ pub use crate::boosters::sparsiboost::SparsiBoost;
 pub use crate::boosters::subsample_majority::{LarsenRitzert, MajorityOfFive};
 pub use crate::boosters::totalboost::TotalBoost;
 pub use crate::weak_learners::boosted::BoostedLearner;
-pub use crate::weak_learners::decision_tree::{DecisionTreeBuilder, LeafConfidence, SplitBy};
 pub use crate::weak_learners::finite_class::FiniteClass;
 pub use crate::weak_learners::linear::{BoundedLinear, LinearOutput, LogisticRegression};
 pub use crate::weak_learners::naive_bayes::NaiveBayes;
+pub use crate::weak_learners::neural_network::TwoLayerNetwork;
 pub use crate::weak_learners::rbf::RbfClassBuilder;
-pub use crate::weak_learners::regression_tree::RegressionTreeBuilder;
+pub use crate::weak_learners::tree::decision_tree::{DecisionTreeBuilder, LeafConfidence, SplitBy};
+pub use crate::weak_learners::tree::regression_tree::RegressionTreeBuilder;
 pub use crate::weak_learners::union::WeakLearnerUnion;

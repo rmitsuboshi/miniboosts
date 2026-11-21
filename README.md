@@ -190,7 +190,9 @@ examples, as a `FiniteClass`), `BoundedLinear` (exact edge maximization over
 bounded linear functions; boosting it yields a linear classifier),
 `LogisticRegression` (weighted logistic regression returning halfspaces or
 `tanh` rules, with no edge guarantee), `NaiveBayes` (weighted Gaussian naive
-Bayes), and `RegressionTreeBuilder` (a weighted least-squares regression tree for
+Bayes), `TwoLayerNetwork` (a network with one hidden layer trained with
+[Adam][adam] or [ADOPT][adopt], negated if its edge is negative and retrained
+if its edge is too small, with no edge guarantee), and `RegressionTreeBuilder` (a weighted least-squares regression tree for
 `GradientBoosting` and `LogitBoost`, which fit real-valued responses and return
 an `AdditiveModel`). `WeakLearnerUnion` runs several of these learners and returns
 the candidate with the largest edge in each round. `BoostedLearner` turns a
@@ -298,8 +300,10 @@ retested. See the [release guide](RELEASING.md) for publishing `miniboosts`.
 
 MiniBoosts is licensed under [MIT](https://github.com/rmitsuboshi/miniboosts/blob/main/LICENSE).
 
+[adam]: https://arxiv.org/abs/1412.6980
 [adaboost]: https://www.sciencedirect.com/science/article/pii/S002200009791504X?via%3Dihub
 [adaboostv]: http://jmlr.org/papers/v6/ratsch05a.html
+[adopt]: https://arxiv.org/abs/2411.02853
 [arcgv]: https://doi.org/10.1162/089976699300016106
 [bbm]: https://doi.org/10.1006/inco.1995.1136
 [brownboost]: https://doi.org/10.1023/A:1010852229904

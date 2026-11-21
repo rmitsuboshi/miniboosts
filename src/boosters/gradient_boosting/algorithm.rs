@@ -117,7 +117,7 @@ fn softplus(u: f64) -> f64 {
 /// - The number of rounds is not set by a stopping rule: set
 ///   [`GradientBoosting::force_quit_at`] (training panics otherwise).
 /// - The weak learner must accept real-valued targets (for example
-///   [`RegressionTree`](crate::weak_learners::regression_tree::RegressionTree));
+///   [`RegressionTree`](crate::weak_learners::tree::regression_tree::RegressionTree));
 ///   a classification learner would ignore the residual values.
 /// - Each round copies the features (`O(m d)`) to attach the residuals.
 /// - With the logistic or exponential loss, a weak hypothesis that orders
@@ -433,7 +433,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::weak_learners::regression_tree::{RegressionTreeBuilder, RegressionTreeRegressor};
+    use crate::weak_learners::tree::regression_tree::{
+        RegressionTreeBuilder, RegressionTreeRegressor,
+    };
     use std::io::BufReader;
 
     fn xor_like_sample() -> Sample {

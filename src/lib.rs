@@ -41,17 +41,18 @@ pub use crate::boosters::subsample_majority::{LarsenRitzert, MajorityOfFive};
 pub use crate::boosters::totalboost::TotalBoost;
 
 pub use crate::weak_learners::boosted::{BoostedHypothesis, BoostedLearner};
-pub use crate::weak_learners::decision_tree::{
-    DecisionTree, DecisionTreeBuilder, DecisionTreeClassifier, LeafConfidence, SplitBy, node,
-    split_by,
-};
 pub use crate::weak_learners::finite_class::{ClassMember, FiniteClass, TableHypothesis};
 pub use crate::weak_learners::linear::{
     BoundedLinear, LinearClassifier, LinearOutput, LogisticRegression,
 };
 pub use crate::weak_learners::naive_bayes::{NaiveBayes, NaiveBayesClassifier};
+pub use crate::weak_learners::neural_network::{TwoLayerNetwork, TwoLayerNetworkClassifier};
 pub use crate::weak_learners::rbf::{RbfClassBuilder, RbfHypothesis};
-pub use crate::weak_learners::regression_tree::{
+pub use crate::weak_learners::tree::decision_tree::{
+    DecisionTree, DecisionTreeBuilder, DecisionTreeClassifier, LeafConfidence, SplitBy, node,
+    split_by,
+};
+pub use crate::weak_learners::tree::regression_tree::{
     RegressionTree, RegressionTreeBuilder, RegressionTreeRegressor,
 };
 pub use crate::weak_learners::union::{DynClassifier, WeakLearnerUnion};

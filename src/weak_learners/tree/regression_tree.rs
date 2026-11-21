@@ -7,7 +7,7 @@
 //! Fit a step function under uniform weights.
 //! ```
 //! use miniboosts::{Regressor, Sample, WeakLearner};
-//! use miniboosts::weak_learners::regression_tree::RegressionTreeBuilder;
+//! use miniboosts::weak_learners::tree::regression_tree::RegressionTreeBuilder;
 //!
 //! let rows: Vec<Vec<f64>> = (0..6).map(|i| vec![i as f64]).collect();
 //! let y = [0.0, 0.0, 0.0, 2.0, 2.0, 2.0];
@@ -83,7 +83,7 @@ impl<'a> RegressionTreeBuilder<'a> {
     /// # Examples
     /// ```
     /// use miniboosts::{Regressor, Sample, WeakLearner};
-    /// use miniboosts::weak_learners::regression_tree::RegressionTreeBuilder;
+    /// use miniboosts::weak_learners::tree::regression_tree::RegressionTreeBuilder;
     ///
     /// let rows: Vec<Vec<f64>> = (0..4).map(|i| vec![i as f64]).collect();
     /// let sample = Sample::from_dense(&rows, Some(&[0.0, 0.0, 1.0, 1.0])).unwrap();

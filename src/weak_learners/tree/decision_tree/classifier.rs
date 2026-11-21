@@ -2,7 +2,7 @@
 //! [`crate::DecisionTree`].
 use crate::core::{Classifier, Sample};
 
-use crate::weak_learners::decision_tree::node::*;
+use crate::weak_learners::tree::decision_tree::node::*;
 use serde::{Deserialize, Serialize};
 
 use std::fs::File;

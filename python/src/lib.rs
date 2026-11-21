@@ -2,8 +2,11 @@
 //! independently fitted weak hypotheses as batches of confidence values (or,
 //! for boosters with regression weak learners, of real-valued predictions).
 use miniboosts::{
-    Classifier, FwUpdateRule, RegressionTreeRegressor, Regressor, Sample, WeightedMajority,
-    prelude::*, weak_learners::boosted::resample,
+    Adam, AdaptiveOptimizer, Adopt, Classifier, FwUpdateRule, RegressionTreeRegressor, Regressor,
+    Sample, WeightedMajority,
+    prelude::*,
+    weak_learners::boosted::resample,
+    weak_learners::neural_network::{Activation, NetworkLoss, NetworkOutput},
 };
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
@@ -935,6 +938,91 @@ fn fit_logistic_regression(
     Ok(native(h, d))
 }
 
+/// Trains `TwoLayerNetwork`; `assumption_violated` reports a network whose
+/// edge stayed below `min_edge`.
+#[pyfunction]
+#[pyo3(signature = (
+    x, y, weights, hidden_units, activation, loss, output, optimizer, learning_rate,
+    iterations, batch_size, regularization, seed, min_edge, max_retries
+))]
+#[allow(clippy::too_many_arguments)]
+fn fit_two_layer_network(
+    py: Python<'_>,
+    x: Matrix,
+    y: Vec<f64>,
+    weights: Vec<f64>,
+    hidden_units: usize,
+    activation: &str,
+    loss: &str,
+    output: &str,
+    optimizer: &str,
+    learning_rate: f64,
+    iterations: usize,
+    batch_size: Option<usize>,
+    regularization: f64,
+    seed: u64,
+    min_edge: f64,
+    max_retries: usize,
+) -> PyResult<NativeClassifier> {
+    let invalid = |message: &str| Err(PyValueError::new_err(message.to_string()));
+    let activation = match activation {
+        "tanh" => Activation::Tanh,
+        "relu" => Activation::Relu,
+        "softplus" => Activation::Softplus,
+        _ => return invalid("activation must be tanh, relu, or softplus"),
+    };
+    let loss = match loss {
+        "logistic" => NetworkLoss::Logistic,
+        "squared" => NetworkLoss::Squared,
+        _ => return invalid("loss must be logistic or squared"),
+    };
+    let output = match output {
+        "tanh" => NetworkOutput::Tanh,
+        "sign" => NetworkOutput::Sign,
+        _ => return invalid("output must be tanh or sign"),
+    };
+    if !(learning_rate.is_finite() && learning_rate > 0.0) {
+        return invalid("learning_rate must be finite and positive");
+    }
+    let optimizer = match optimizer {
+        "adopt" => AdaptiveOptimizer::Adopt(Adopt::new(learning_rate)),
+        "adam" => AdaptiveOptimizer::Adam(Adam::new(learning_rate)),
+        _ => return invalid("optimizer must be adopt or adam"),
+    };
+    if hidden_units == 0 || iterations == 0 || batch_size == Some(0) {
+        return invalid("hidden_units, iterations, and batch_size must be positive");
+    }
+    if !(regularization.is_finite() && regularization >= 0.0) {
+        return invalid("regularization must be finite and nonnegative");
+    }
+    if !(0.0..=1.0).contains(&min_edge) {
+        return invalid("min_edge must lie in [0, 1]");
+    }
+    let (result, d) = fit_native(py, x, y, weights, |s, w| {
+        let learner = TwoLayerNetwork::new(hidden_units)
+            .activation(activation)
+            .loss(loss)
+            .output(output)
+            .optimizer(optimizer)
+            .iterations(iterations)
+            .regularization(regularization)
+            .seed(seed)
+            .min_edge(min_edge)
+            .max_retries(max_retries);
+        let learner = match batch_size {
+            Some(b) => learner.batch_size(b),
+            None => learner,
+        };
+        let h = learner.produce(s, w);
+        (h, learner.shortfalls() > 0)
+    })?;
+    let (h, shortfall) = result;
+    Ok(NativeClassifier {
+        assumption_violated: Some(shortfall),
+        ..native(h, d)
+    })
+}
+
 #[pyfunction]
 fn fit_naive_bayes(
     py: Python<'_>,
@@ -1155,6 +1243,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit_bounded_linear, m)?)?;
     m.add_function(wrap_pyfunction!(fit_logistic_regression, m)?)?;
     m.add_function(wrap_pyfunction!(fit_naive_bayes, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_two_layer_network, m)?)?;
     m.add_function(wrap_pyfunction!(fit_rbf, m)?)?;
     m.add_function(wrap_pyfunction!(select_finite_class, m)?)?;
     m.add_function(wrap_pyfunction!(fit_regression_tree, m)?)?;
