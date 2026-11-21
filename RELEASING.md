@@ -23,6 +23,24 @@ commands. Review and commit release changes before the actual upload. Check
 that the package contains its sources, README, logging guide, and MIT LICENSE;
 it must not contain `.venv`, experiment output, or local credentials.
 
+Before the release commit, look for leftovers that `git status` does not show
+and remove them:
+
+```sh
+# Empty directories outside build output (e.g. from moved modules).
+find . -type d -empty -not -path './.git/*' -not -path '*/target/*' \
+    -not -path './.venv/*' -not -path './.claude/*'
+# Worktrees of finished sessions, and branches already merged into main.
+git worktree prune -v && git worktree list
+git branch --merged main
+# Untracked or ignored files, without build output and caches.
+git status --short --ignored |
+    grep -v 'target/\|\.venv/\|\.claude/\|__pycache__\|\.pytest_cache\|\.so$'
+```
+
+In the homepage repository, check that `miniboosts/pkg/` and the `?v=` keys in
+`miniboosts/index.html` are the ones CI built, not a local build.
+
 The root API and prelude remain available. Source layout changes do not change
 boosting update rules. Read `MIGRATION.md` for the breaking API changes since
 0.4.0 and the numerical changes made during development.

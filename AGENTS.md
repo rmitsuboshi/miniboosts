@@ -64,3 +64,10 @@ reason given to the user:
   assertions and justified floating-point tolerances.
 - Check affected public examples and documentation when APIs change.
 - Report commands run, failures, and checks that could not be completed.
+
+## Releases
+Follow `RELEASING.md`. Before publishing, check both this repository and the
+homepage repository for leftovers and remove them, or report them to the user:
+empty directories outside build output (git does not show them), stale git
+worktrees and merged `claude/*` branches, untracked scratch files, and local
+demo builds (`pkg/` and a temporary `?v=` in `index.html`).
