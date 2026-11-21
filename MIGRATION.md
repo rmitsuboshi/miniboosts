@@ -1,4 +1,27 @@
-# Unreleased
+# Migrating to 0.6.0
+
+Version 0.6.0 breaks code and results written for 0.5.x in these places;
+everything else below adds API or changes only speed and memory.
+
+- `MajorityOfFive::run(train)` and `LarsenRitzert::run(train)`, which take a
+  closure that trains on a sub-sample, are now `run_with(train)`. Both types
+  implement `Booster`, so `run` takes a weak learner, after the booster to
+  run on each sub-sample is set with `.booster(|part, weak_learner| ...)`.
+- `miniboosts::weak_learners::decision_tree` and
+  `miniboosts::weak_learners::regression_tree` moved to
+  `miniboosts::weak_learners::tree::decision_tree` and
+  `miniboosts::weak_learners::tree::regression_tree`. The types are still
+  exported from the crate root and the prelude.
+- The default bins of `DecisionTree` and `RegressionTree` hold about the same
+  number of examples each, instead of being of equal width, so the trees
+  learned with default settings can differ (see below).
+- `LpBoost::tolerance` panics for values below `1e-6`.
+- Builder methods are `#[must_use]`; calling one as a statement and dropping
+  its result, which never had an effect, now warns.
+
+The Python package has the same version. Its estimators keep their
+parameters; trees fitted with default settings can differ for the same
+reason.
 
 `TwoLayerNetwork` is a new weak learner, in `weak_learners::neural_network`
 and the prelude: a network with one hidden layer (`tanh`, ReLU, or softplus

@@ -1,7 +1,7 @@
 # Builds the Python package (abi3 wheels for CPython 3.10+ and an sdist) and
 # publishes it with PyPI Trusted Publishing; no API token is stored.
 #
-# - Push a tag `py-v<version>` (e.g. `py-v0.5.2`) to publish to PyPI.
+# - Push a tag `py-v<version>` (e.g. `py-v0.6.0`) to publish to PyPI.
 # - Run the workflow manually (Actions > Python release > Run workflow) to
 #   build everything and publish to TestPyPI instead.
 #

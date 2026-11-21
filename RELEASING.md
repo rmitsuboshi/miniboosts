@@ -1,7 +1,7 @@
 # Publishing MiniBoosts
 
 The release is a single `miniboosts` package. Its version is set in
-`[workspace.package]` (currently `0.5.2`). The only other workspace member,
+`[workspace.package]` (currently `0.6.0`). The only other workspace member,
 `miniboosts-example`, has `publish = false`. There are no internal registry
 dependencies to publish first.
 
@@ -35,7 +35,7 @@ publish `miniboosts`; local token presence and dry-run success do not establish
 server-side permission. Authenticate interactively with `cargo login` if needed;
 never put tokens in this repository.
 
-After verifying that the new version (e.g. `0.5.2`) is still unused, publish only the root package:
+After verifying that the new version (e.g. `0.6.0`) is still unused, publish only the root package:
 
 ```sh
 cargo publish --locked
@@ -75,7 +75,7 @@ Each release:
    release commit. It publishes to TestPyPI; check the result in a fresh
    environment with
    `pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ miniboosts`.
-4. Tag the commit `py-v<version>` (e.g. `py-v0.5.2`) and push the tag. The
+4. Tag the commit `py-v<version>` (e.g. `py-v0.6.0`) and push the tag. The
    workflow checks that the tag matches the package version and publishes to
    PyPI.
 

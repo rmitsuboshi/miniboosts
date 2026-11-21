@@ -255,7 +255,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "miniboosts"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "clarabel",
  "colored",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "miniboosts-example"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "miniboosts",
 ]

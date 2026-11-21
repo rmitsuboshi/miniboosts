@@ -11,7 +11,7 @@ from ._estimators import (
     BoostedLearnerClassifier, TwoLayerNetworkClassifier,
 )
 
-__version__ = '0.5.2'
+__version__ = '0.6.0'
 __all__ = [
     'AdaBoostClassifier', 'AdaBoostVClassifier', 'ArcGvClassifier', 'BoostByMajorityClassifier',
     'BrownBoostClassifier', 'GradientBoostingClassifier', 'LogitBoostClassifier', 'MadaBoostClassifier',
