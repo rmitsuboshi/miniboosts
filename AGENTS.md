@@ -71,3 +71,10 @@ homepage repository for leftovers and remove them, or report them to the user:
 empty directories outside build output (git does not show them), stale git
 worktrees and merged `claude/*` branches, untracked scratch files, and local
 demo builds (`pkg/` and a temporary `?v=` in `index.html`).
+
+## Scratch files
+`tmp/` (ignored by git) holds scratch experiments and logs. At the start of
+a session that adds to it, and before a release, check its size
+(`du -sh tmp`) and delete its oldest entries once they are no longer needed;
+tell the user what was removed. Keep results worth keeping elsewhere, e.g. in
+`img/`.

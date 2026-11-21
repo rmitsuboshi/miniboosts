@@ -36,6 +36,8 @@ git branch --merged main
 # Untracked or ignored files, without build output and caches.
 git status --short --ignored |
     grep -v 'target/\|\.venv/\|\.claude/\|__pycache__\|\.pytest_cache\|\.so$'
+# Scratch files, oldest first (see AGENTS.md).
+du -sh tmp; ls -ltr tmp | head
 ```
 
 In the homepage repository, check that `miniboosts/pkg/` and the `?v=` keys in
