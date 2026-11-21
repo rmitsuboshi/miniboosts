@@ -34,3 +34,14 @@ fn conflicting_labels_stop_with_a_finite_model() {
         .count();
     assert_eq!(errors, 1);
 }
+
+/// The web demo's "Outliers" data with stumps, where SoftBoost's soft-margin
+/// LP once ended at `AlmostSolved` and panicked; this booster shares
+/// `soft_margin_optimization` for its snapshots or final weights.
+#[test]
+fn outliers_snapshots_are_finite() {
+    let sample = support::outliers_sample();
+    let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    let booster = TotalBoost::init(&sample).tolerance(0.01);
+    support::check_snapshots(booster, &learner, &sample, 300);
+}

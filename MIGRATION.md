@@ -19,6 +19,26 @@ the last bits.
 raises `ValueError`. The LP solver cannot certify a smaller gap, so such a run
 might not have stopped. The default `1e-3` is unchanged.
 
+`soft_margin_optimization`, which computes the final weights of LPBoost,
+ERLPBoost, MLPBoost, SoftBoost, and TotalBoost and SoftBoost's and
+TotalBoost's `current_hypothesis`, no longer panics when Clarabel stalls on a
+degenerate LP just short of its tolerances. On the web demo's "Outliers" data
+with SoftBoost, `ν = 10`, and stumps, the LP behind the round-15 snapshot has
+optimal value 0 with 86 examples tied at that margin; Clarabel returned
+`AlmostSolved` with a dual residual of about `1e-7`, above the `1e-7`
+threshold the function required. A result whose residuals and gap pass the
+existing `1e-7` checks is accepted as before. Otherwise a `Solved` or
+`AlmostSolved` result is now checked independently on the unscaled LP by weak
+duality: the returned weights' objective `P(w)` (the mean of their `ν`
+smallest margins) and the maximum edge `D(d)` of the solver's dual
+distribution, repaired to lie in the capped simplex, must satisfy
+`D(d) - P(w) ≤ 1e-6 · max(1, max |y_i h_j(x_i)|)`; in that case the
+returned value is `P(w)`. This is a numerical safeguard, not part of the
+original algorithms. Results that pass neither check still panic, and the
+message now also reports the certified gap. `ColumnGeneration::solve`, used in
+every round of LPBoost and MLPBoost, is unchanged and still accepts
+`AlmostSolved` without residual checks.
+
 `Sample::split` is much faster and returns the same samples. The SVMlight
 reader skips blank lines, text after `#`, and `qid:` fields, which used to
 panic. `LoggerBuilder` and `Entropy` implement `Default`.

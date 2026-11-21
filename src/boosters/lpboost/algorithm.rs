@@ -44,8 +44,9 @@ use std::ops::ControlFlow;
 ///
 /// The hypothesis received in the stopping round is kept. After stopping,
 /// [`Booster::postprocess`] re-solves the same soft-margin LP over all
-/// collected hypotheses with residual and duality-gap checks and returns the
-/// resulting [`WeightedMajority`]. There is no iteration budget: training
+/// collected hypotheses, verified by solver residuals or an independent
+/// duality-gap certificate (see [`soft_margin_optimization`](soft_margin_optimization())), and returns
+/// the resulting [`WeightedMajority`]. There is no iteration budget: training
 /// continues until the stopping rule holds.
 ///
 /// Implementation notes: each LP is solved from scratch by the Clarabel
@@ -87,7 +88,8 @@ use std::ops::ControlFlow;
 ///   panics otherwise.
 /// - Solver failures **panic**: the per-round LP must report `Solved` or
 ///   `AlmostSolved` and yield a valid capped distribution, and the final LP
-///   must additionally pass residual and duality-gap checks.
+///   must additionally pass the residual or certified duality-gap checks of
+///   [`soft_margin_optimization`](soft_margin_optimization()).
 /// - Each round solves an LP with `m + t + 1` variables, so the per-round cost
 ///   grows with the number of hypotheses.
 /// - [`CurrentHypothesis::current_hypothesis`] (used by loggers) uses the

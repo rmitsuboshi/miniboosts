@@ -28,3 +28,14 @@ fn german() {
     let booster = ErlpBoost::init(&sample).tolerance(0.01).nu(1.0);
     support::check_training(booster, &learner, &sample, 0.5);
 }
+
+/// The web demo's "Outliers" data with stumps, where SoftBoost's soft-margin
+/// LP once ended at `AlmostSolved` and panicked; this booster shares
+/// `soft_margin_optimization` for its snapshots or final weights.
+#[test]
+fn outliers_snapshots_are_finite() {
+    let sample = support::outliers_sample();
+    let learner = DecisionTreeBuilder::new(&sample).max_depth(1).build();
+    let booster = ErlpBoost::init(&sample).tolerance(0.01).nu(10.0);
+    support::check_snapshots(booster, &learner, &sample, 300);
+}

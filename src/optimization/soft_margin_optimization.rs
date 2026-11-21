@@ -40,27 +40,50 @@ use std::iter;
 ///      w_1, w_2, ..., w_T ≥ 0,
 ///      ξ_1, ξ_2, ..., ξ_m ≥ 0.
 /// ```
-/// The returned value is `ρ - (1/ν) Σ_i ξ_i` at the solution (the negated
-/// Clarabel objective). The returned weights are the solver's `w`, with
-/// entries in `[-1e-7, 0)` clipped to zero and then renormalized to sum to
-/// one; their order matches `hypotheses`. Boosters use this to compute final
-/// weights for a soft-margin ensemble.
+/// The returned weights are the solver's `w` with negative entries clipped
+/// to zero and then renormalized to sum to one; their order matches
+/// `hypotheses`. Boosters use this to compute final weights for a
+/// soft-margin ensemble.
 ///
 /// Time complexity: building the matrix evaluates every hypothesis on every
 /// example (`O(mT)` confidence calls); the LP has `1 + m + T` variables and
-/// is solved from scratch by an interior-point method.
+/// is solved from scratch by an interior-point method. The independent check
+/// below, when it runs, evaluates the hypotheses once more.
+///
+/// # Accepting the solver's result
+/// Clarabel must return `Solved` or `AlmostSolved` with a finite solution.
+/// Neither status alone is trusted; one of two checks must also pass.
+///
+/// 1. **Solver diagnostics.** The primal and dual residuals and the absolute
+///    primal-dual objective gap are at most `1e-7`, every raw weight is at
+///    least `-1e-7`, and the raw weights sum to one within `1e-7`. The
+///    returned value is then `ρ - (1/ν) Σ_i ξ_i` at the solution (the negated
+///    Clarabel objective).
+/// 2. **Independent certificate** (a numerical safeguard, not part of the
+///    original methods). On degenerate problems (many examples tied at
+///    the optimal margin, many optimal weightings) the interior-point
+///    method can stall one step short of its `1e-8` tolerances and report
+///    `AlmostSolved` with residuals near `1e-7`. Such a solution is
+///    checked on the original, unscaled LP by weak duality:
+///    - `P(w) = min_{d ∈ Δ_{m,ν}} Σ_i d_i y_i Σ_j w_j h_j(x_i)` is the
+///      objective of the returned weights `w` with their best `ρ, ξ` (the
+///      mean of the `ν` smallest margins), a lower bound on the optimum;
+///    - the solver's margin-constraint multipliers are normalized and, if
+///      one exceeds `1/ν`, mixed with the uniform distribution to give a
+///      feasible `d ∈ Δ_{m,ν}`, whose maximum edge
+///      `D(d) = max_j Σ_i d_i y_i h_j(x_i)` is an upper bound.
+///
+///    The solution is accepted if `D(d) - P(w) ≤ 1e-6 · max(1, max_{i,j}
+///    |y_i h_j(x_i)|)`, that is, if the returned weights are certified to
+///    be within that gap of optimal. The returned value is then `P(w)`.
 ///
 /// # Panics
 /// - if `ν ∉ [1, m]`;
 /// - if `hypotheses` is empty (the constraint `Σ_j w_j = 1` is infeasible);
-/// - unless Clarabel returns `Solved` or `AlmostSolved` **and** the solution
-///   and diagnostics are finite, the primal and dual residuals are at most
-///   `1e-7`, and the absolute primal-dual objective gap is at most `1e-7`;
-/// - if a raw weight is below `-1e-7` or the raw weights' sum differs from
-///   one by more than `1e-7`.
+/// - if Clarabel's result passes neither check above. The message reports
+///   the status, the residuals, the solver's gap, and the certified gap.
 ///
-/// `AlmostSolved` is accepted only together with these explicit checks. No
-/// error value is returned.
+/// No error value is returned.
 ///
 /// # Formulation
 /// To solve the problem we build the constraint matrix
@@ -130,7 +153,7 @@ use std::iter;
 ///
 /// let (value, weights) = miniboosts::soft_margin_optimization(1.0, &sample, &hypotheses);
 ///
-/// // The interior-point solution is checked to 1e-7 residuals and gap.
+/// // The solution is verified (see "Accepting the solver's result").
 /// assert!((value - 1.0 / 3.0).abs() < 1e-6);
 /// assert_eq!(weights.len(), hypotheses.len());
 /// assert!(weights.iter().all(|w| (w - 1.0 / 3.0).abs() < 1e-6));
@@ -166,40 +189,197 @@ where
     drop(mat);
     solver.solve();
 
-    // AlmostSolved is a numerical status, not an optimality certificate.
-    // Apply the same explicit residual/gap checks to both successful statuses.
     let solution = &solver.solution;
-    let tolerance = 1e-7;
-    assert!(
-        matches!(
-            solution.status,
-            SolverStatus::Solved | SolverStatus::AlmostSolved
-        ) && solution.x.iter().chain(&solution.z).all(|v| v.is_finite())
-            && solution.obj_val.is_finite()
-            && solution.obj_val_dual.is_finite()
-            && solution.r_prim.is_finite()
-            && solution.r_dual.is_finite()
-            && solution.r_prim <= tolerance
-            && solution.r_dual <= tolerance
-            && (solution.obj_val - solution.obj_val_dual).abs() <= tolerance,
-        "soft-margin LP failed numerical checks: status={}, primal residual={}, dual residual={}, gap={}",
+    let tolerance = SOLVER_TOLERANCE;
+    let status_ok = matches!(
+        solution.status,
+        SolverStatus::Solved | SolverStatus::AlmostSolved
+    );
+    let finite = solution.x.iter().chain(&solution.z).all(|v| v.is_finite())
+        && solution.obj_val.is_finite()
+        && solution.obj_val_dual.is_finite()
+        && solution.r_prim.is_finite()
+        && solution.r_dual.is_finite();
+    let gap = (solution.obj_val - solution.obj_val_dual).abs();
+    let start = 1 + n_examples;
+    let raw_weights = &solution.x[start..];
+
+    // Fast path: Clarabel's own diagnostics meet explicit thresholds.
+    // AlmostSolved is a numerical status, not an optimality certificate, so
+    // both statuses go through the same checks.
+    let diagnostics_ok = status_ok
+        && finite
+        && solution.r_prim <= tolerance
+        && solution.r_dual <= tolerance
+        && gap <= tolerance
+        && raw_weights.iter().all(|w| *w >= -tolerance)
+        && (raw_weights.iter().sum::<f64>() - 1.0).abs() <= tolerance;
+
+    // `clip_and_normalize` returns `None` unless the clipped weights have a
+    // finite positive sum; then the result lies exactly on the simplex (up
+    // to rounding), so it is primal feasible.
+    let weights = if finite {
+        clip_and_normalize(raw_weights)
+    } else {
+        None
+    };
+
+    if diagnostics_ok {
+        if let Some(weights) = weights {
+            return (-solution.obj_val, weights);
+        }
+    }
+
+    // Fallback (a numerical safeguard, not part of the original method):
+    // degenerate LPs can make the interior-point method stall one step short
+    // of its 1e-8 tolerances and report `AlmostSolved` (or `Solved` with
+    // residuals above our thresholds). Verify such a solution independently,
+    // on the original unscaled problem, by weak duality.
+    let certificate = (status_ok && finite)
+        .then_some(weights.as_ref())
+        .flatten()
+        .and_then(|weights| {
+            let dual = solution.z[..n_examples].iter().map(|d| d.max(0.0));
+            certify(nu, sample, hypotheses, weights, dual)
+        });
+    if let Some(cert) = certificate {
+        if cert.gap <= cert.threshold {
+            return (cert.primal_value, weights.unwrap());
+        }
+    }
+
+    panic!(
+        "soft-margin LP failed numerical checks: status={}, primal residual={}, dual residual={}, gap={}, certified gap={}",
         solution.status,
         solution.r_prim,
         solution.r_dual,
-        (solution.obj_val - solution.obj_val_dual).abs(),
+        gap,
+        certificate.map_or_else(
+            || "unavailable".to_string(),
+            |c| format!("{} (threshold {})", c.gap, c.threshold),
+        ),
     );
+}
 
-    let objval = -solution.obj_val;
-    let start = 1 + n_examples;
-    let raw_weights = &solution.x[start..];
-    assert!(raw_weights.iter().all(|w| *w >= -tolerance));
-    assert!((raw_weights.iter().sum::<f64>() - 1.0).abs() <= tolerance);
-    let mut weight: Vec<_> = raw_weights.iter().map(|w| w.max(0.0)).collect();
-    let sum: f64 = weight.iter().sum();
-    assert!(sum.is_finite() && sum > 0.0);
-    weight.iter_mut().for_each(|w| *w /= sum);
+/// Absolute threshold on Clarabel's residuals, objective gap, and raw-weight
+/// feasibility for accepting its solution without the independent check.
+const SOLVER_TOLERANCE: f64 = 1e-7;
 
-    (objval, weight)
+/// Threshold on the independently certified duality gap, relative to
+/// `max(1, max_{i,j} |y_i h_j(x_i)|)`, the scale of the LP's objective.
+const CERTIFIED_GAP_TOLERANCE: f64 = 1e-6;
+
+/// Clips negative entries to zero and rescales to sum to one.
+/// Returns `None` if the clipped sum is not finite and positive.
+fn clip_and_normalize(raw: &[f64]) -> Option<Vec<f64>> {
+    let mut weights: Vec<_> = raw.iter().map(|w| w.max(0.0)).collect();
+    let sum: f64 = weights.iter().sum();
+    if !(sum.is_finite() && sum > 0.0) {
+        return None;
+    }
+    weights.iter_mut().for_each(|w| *w /= sum);
+    Some(weights)
+}
+
+/// An independent optimality certificate for the soft-margin LP.
+#[derive(Debug, Clone, Copy)]
+struct Certificate {
+    /// Objective value `min_{d ∈ Δ_{m,ν}} Σ_i d_i y_i Σ_j w_j h_j(x_i)` of the
+    /// primal-feasible weights `w`: a lower bound on the optimum.
+    primal_value: f64,
+    /// `D - P ≥ 0`, where `D` is the dual objective at a feasible `d`: an
+    /// upper bound on the suboptimality of `primal_value`.
+    gap: f64,
+    /// The largest gap accepted for this problem.
+    threshold: f64,
+}
+
+/// Checks `weights` (on the simplex) against the approximate dual
+/// distribution `dual` by weak duality, on the unscaled problem.
+///
+/// - Primal: for fixed `w` the best `ρ, ξ` give
+///   `P(w) = min_{d ∈ Δ_{m,ν}} Σ_i d_i u_i(w)` with margins
+///   `u_i(w) = y_i Σ_j w_j h_j(x_i)`: the mean of the `ν` smallest margins
+///   (the last one weighted by the fractional part of `ν`).
+/// - Dual: `dual` is normalized to sum to one and, if an entry exceeds
+///   `1/ν`, mixed with the uniform distribution (which lies in `Δ_{m,ν}`)
+///   just enough to satisfy the cap. The repaired `d` is feasible, and
+///   `D(d) = max_j Σ_i d_i y_i h_j(x_i)`.
+///
+/// Weak duality gives `P(w) ≤ OPT ≤ D(d)`, so `D(d) - P(w)` bounds the
+/// suboptimality of `w`. Returns `None` if the dual has no positive finite
+/// mass or a value is not finite. Evaluates every hypothesis on every
+/// example once (`O(mT)` confidence calls) and sorts `m` margins.
+fn certify<H, D>(
+    nu: f64,
+    sample: &Sample,
+    hypotheses: &[H],
+    weights: &[f64],
+    dual: D,
+) -> Option<Certificate>
+where
+    H: Classifier,
+    D: Iterator<Item = f64>,
+{
+    let n_examples = sample.shape().0;
+    let columns: Vec<Vec<f64>> = hypotheses
+        .iter()
+        .map(|h| helpers::margins(sample, h).collect())
+        .collect();
+    let scale = columns
+        .iter()
+        .flatten()
+        .fold(1f64, |acc, u| acc.max(u.abs()));
+
+    // Primal value of `weights`.
+    let mut margins = vec![0f64; n_examples];
+    for (w, column) in weights.iter().zip(&columns) {
+        for (u, c) in margins.iter_mut().zip(column) {
+            *u += w * c;
+        }
+    }
+    if margins.iter().any(|u| !u.is_finite()) {
+        return None;
+    }
+    margins.sort_by(|a, b| a.total_cmp(b));
+    let cap = 1.0 / nu;
+    let mut mass = 1f64;
+    let mut primal_value = 0f64;
+    for u in margins {
+        if mass <= 0.0 {
+            break;
+        }
+        let d = cap.min(mass);
+        primal_value += d * u;
+        mass -= d;
+    }
+
+    // A feasible dual distribution near `dual`.
+    let mut d: Vec<f64> = dual.collect();
+    let sum: f64 = d.iter().sum();
+    if !(sum.is_finite() && sum > 0.0) {
+        return None;
+    }
+    d.iter_mut().for_each(|di| *di /= sum);
+    let max = d.iter().copied().fold(0f64, f64::max);
+    if max > cap {
+        // (1 - θ) max + θ / m = 1/ν; 1/m ≤ 1/ν < max, so θ ∈ (0, 1].
+        let uniform = 1.0 / n_examples as f64;
+        let theta = ((max - cap) / (max - uniform)).min(1.0);
+        d.iter_mut()
+            .for_each(|di| *di = (1.0 - theta) * *di + theta * uniform);
+    }
+    let dual_value = columns
+        .iter()
+        .map(|column| d.iter().zip(column).map(|(di, c)| di * c).sum::<f64>())
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let gap = dual_value - primal_value;
+    (primal_value.is_finite() && gap.is_finite()).then_some(Certificate {
+        primal_value,
+        gap,
+        threshold: CERTIFIED_GAP_TOLERANCE * scale,
+    })
 }
 
 fn build_objective(nu: f64, n_examples: usize, n_hypotheses: usize) -> Vec<f64> {
@@ -685,6 +865,77 @@ mod regression_tests {
                 .all(|w| w.is_finite() && (*w - 0.5).abs() < 1e-7)
         );
         assert!((weights.iter().sum::<f64>() - 1.0).abs() < 1e-14);
+    }
+
+    // The certificate's values below are exact in binary floating point up
+    // to a few roundings of thirds, so 1e-12 is a safe tolerance.
+    const EXACT: f64 = 1e-12;
+
+    fn pair() -> [Margins; 2] {
+        [Margins([1.0, 0.0, -1.0]), Margins([-1.0, 0.0, 1.0])]
+    }
+
+    #[test]
+    fn certificate_of_an_optimal_pair_has_zero_gap() {
+        // ν = 1: w = (1/2, 1/2) gives margins (0, 0, 0), so P = 0; the
+        // uniform d has edge 0 for both hypotheses, so D = 0.
+        let sample = Sample::dummy(3);
+        let cert = certify(1.0, &sample, &pair(), &[0.5, 0.5], [1.0; 3].into_iter()).unwrap();
+        assert!(cert.primal_value.abs() < EXACT);
+        assert!(cert.gap.abs() < EXACT);
+        assert_eq!(cert.threshold, CERTIFIED_GAP_TOLERANCE);
+    }
+
+    #[test]
+    fn certificate_measures_the_suboptimality_of_the_weights() {
+        // ν = 1, w = (1, 0): margins (1, 0, -1), so P = -1. The (unnormalized)
+        // dual (0, 2, 0) becomes d = (0, 1, 0), with edges (0, 0): D = 0.
+        let sample = Sample::dummy(3);
+        let cert = certify(
+            1.0,
+            &sample,
+            &pair(),
+            &[1.0, 0.0],
+            [0.0, 2.0, 0.0].into_iter(),
+        )
+        .unwrap();
+        assert!((cert.primal_value - (-1.0)).abs() < EXACT);
+        assert!((cert.gap - 1.0).abs() < EXACT);
+    }
+
+    #[test]
+    fn certificate_repairs_a_dual_above_the_cap() {
+        // ν = 2, w = (1, 0): P is the mean of the two smallest margins,
+        // (-1 + 0) / 2. The dual (0, 0, 1) exceeds the cap 1/2; mixing with
+        // the uniform distribution at θ = (1 - 1/2) / (1 - 1/3) = 3/4 gives
+        // d = (1/4, 1/4, 1/2), with edges (-1/4, 1/4): D = 1/4.
+        let sample = Sample::dummy(3);
+        let cert = certify(
+            2.0,
+            &sample,
+            &pair(),
+            &[1.0, 0.0],
+            [0.0, 0.0, 1.0].into_iter(),
+        )
+        .unwrap();
+        assert!((cert.primal_value - (-0.5)).abs() < EXACT);
+        assert!((cert.gap - 0.75).abs() < EXACT);
+    }
+
+    #[test]
+    fn certificate_handles_a_fractional_capping_parameter() {
+        // ν = 1.5, w = (1, 0): margins sorted (-1, 0, 1) get d = (2/3, 1/3, 0),
+        // so P = -2/3. The uniform dual has edges (0, 0): D = 0.
+        let sample = Sample::dummy(3);
+        let cert = certify(1.5, &sample, &pair(), &[1.0, 0.0], [1.0; 3].into_iter()).unwrap();
+        assert!((cert.primal_value - (-2.0 / 3.0)).abs() < EXACT);
+        assert!((cert.gap - 2.0 / 3.0).abs() < EXACT);
+    }
+
+    #[test]
+    fn certificate_needs_dual_mass() {
+        let sample = Sample::dummy(3);
+        assert!(certify(1.0, &sample, &pair(), &[0.5, 0.5], [0.0; 3].into_iter()).is_none());
     }
 
     #[test]
